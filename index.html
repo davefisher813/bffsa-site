@@ -3988,8 +3988,8 @@ async function diDetect(idx) {
       messages = [{role:'user', content:'File: '+f.name+'\nContent:\n'+f.raw.slice(0,40000)+'\n\n'+detectionPrompt}];
     }
 
-    var res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',headers:{'Content-Type':'application/json','x-api-key':'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','anthropic-version':'2023-06-01'},
+    var res = await fetch('/.netlify/functions/claude', {
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({model:'claude-sonnet-4-5',max_tokens:diTokenBudget(f&&f.raw?f.raw.length:1000),system:systemPrompt,messages:messages})
     });
     if (!res.ok) {
@@ -4127,8 +4127,8 @@ async function diRunCmd() {
       messages=[{role:'user',content:docContext+'\n\nCommand: '+fullCmd}];
     }
 
-    var res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',headers:{'Content-Type':'application/json','x-api-key':'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','anthropic-version':'2023-06-01'},
+    var res = await fetch('/.netlify/functions/claude', {
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({model:'claude-sonnet-4-5',max_tokens:diTokenBudget(f&&f.raw?f.raw.length:1000),system:systemPrompt,messages:messages})
     });
     if (!res.ok) {
@@ -4224,8 +4224,8 @@ async function diRunStructuredExtract(f, cmd, extractType) {
       messages=[{role:'user',content:'File: '+f.name+'\nContent:\n'+f.raw.slice(0,50000)+'\n\n'+prompt}];
     }
 
-    var res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',headers:{'Content-Type':'application/json','x-api-key':'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','anthropic-version':'2023-06-01'},
+    var res = await fetch('/.netlify/functions/claude', {
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({model:'claude-sonnet-4-5',max_tokens:diTokenBudget(f&&f.raw?f.raw.length:1000),system:systemPrompt,messages:messages})
     });
     if (!res.ok) {
@@ -4282,8 +4282,8 @@ async function diRunCompare() {
     'Provide:\n1. Key similarities\n2. Key differences\n3. Which is more complete/useful for BFFSA?\n4. Recommended action items based on both documents';
 
   try {
-    var res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',headers:{'Content-Type':'application/json','x-api-key':'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','anthropic-version':'2023-06-01'},
+    var res = await fetch('/.netlify/functions/claude', {
+      method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:2500,
         system:'You are the BFFSA Document Intelligence system. Be concise and actionable.',
         messages:[{role:'user',content:prompt}]})
@@ -4651,8 +4651,8 @@ async function diExtractAndRoute() {
     '{"import_type":"roster|financial|donor|tasks|events|null","import_data":[]}';
 
   try {
-    var res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',headers:{'Content-Type':'application/json','x-api-key':'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','anthropic-version':'2023-06-01'},
+    var res = await fetch('/.netlify/functions/claude', {
+      method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:2000,
         system:'Extract structured data. Respond ONLY with valid JSON.',
         messages:[{role:'user',content:extractPrompt}]})
@@ -6710,9 +6710,9 @@ ${transcriptText ? 'See attached transcript above.' : 'No transcript was recorde
 Be formal and professional. If the transcript has little content, still produce complete minutes based on the agenda and attendees. Make reasonable inferences about a typical board meeting of this type.`;
 
   try {
-    var res = await fetch('https://api.anthropic.com/v1/messages', {
+    var res = await fetch('/.netlify/functions/claude', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'x-api-key': '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', 'anthropic-version': '2023-06-01'},
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
         max_tokens: 4000,
