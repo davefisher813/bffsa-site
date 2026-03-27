@@ -4062,7 +4062,7 @@ async function diDetect(idx) {
 
     var res = await fetch('/.netlify/functions/claude', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({model:'claude-sonnet-4-5-20251001',max_tokens:diTokenBudget(f&&f.raw?f.raw.length:1000),system:systemPrompt,messages:messages})
+      body: JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:diTokenBudget(f&&f.raw?f.raw.length:1000),system:systemPrompt,messages:messages})
     });
     if (!res.ok) {
       var errBody = await res.json().catch(function(){ return {}; });
@@ -4201,7 +4201,7 @@ async function diRunCmd() {
 
     var res = await fetch('/.netlify/functions/claude', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({model:'claude-sonnet-4-5-20251001',max_tokens:diTokenBudget(f&&f.raw?f.raw.length:1000),system:systemPrompt,messages:messages})
+      body: JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:diTokenBudget(f&&f.raw?f.raw.length:1000),system:systemPrompt,messages:messages})
     });
     if (!res.ok) {
       var errBody = await res.json().catch(function(){ return {}; });
@@ -4298,7 +4298,7 @@ async function diRunStructuredExtract(f, cmd, extractType) {
 
     var res = await fetch('/.netlify/functions/claude', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({model:'claude-sonnet-4-5-20251001',max_tokens:diTokenBudget(f&&f.raw?f.raw.length:1000),system:systemPrompt,messages:messages})
+      body: JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:diTokenBudget(f&&f.raw?f.raw.length:1000),system:systemPrompt,messages:messages})
     });
     if (!res.ok) {
       var errBody = await res.json().catch(function(){ return {}; });
@@ -4356,7 +4356,7 @@ async function diRunCompare() {
   try {
     var res = await fetch('/.netlify/functions/claude', {
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-5-20251001',max_tokens:2500,
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:2500,
         system:'You are the BFFSA Document Intelligence system. Be concise and actionable.',
         messages:[{role:'user',content:prompt}]})
     });
@@ -4725,7 +4725,7 @@ async function diExtractAndRoute() {
   try {
     var res = await fetch('/.netlify/functions/claude', {
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-5-20251001',max_tokens:2000,
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:2000,
         system:'Extract structured data. Respond ONLY with valid JSON.',
         messages:[{role:'user',content:extractPrompt}]})
     });
@@ -6786,7 +6786,7 @@ Be formal and professional. If the transcript has little content, still produce 
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20251001',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 4000,
         system: 'You are a professional board secretary generating formal meeting minutes for a nonprofit organization. Format output as clean, professional minutes.',
         messages: [{role: 'user', content: prompt}]
