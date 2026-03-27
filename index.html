@@ -3040,6 +3040,70 @@ function openNotifSettings() {
     </div>
     <button class="btn bgh bf" onclick="closeMo()">Done</button>`);
 }
+function exportAppData() {
+  try {
+    var snap = {
+      playerColleges: D.playerColleges,
+      config:         D.config,
+      coordinators:   D.coordinators,
+      assignments:    D.assignments,
+      portalEnabled:  D.portalEnabled,
+      collegeInfo:    D.collegeInfo,
+      roster:         D.roster,
+      aTasks:         D.aTasks,
+      athProfile:     D.athProfile,
+      txns:           D.txns,
+      tasks:          D.tasks,
+      donors:         D.donors,
+      contacts:       D.contacts,
+      goals:          D.goals,
+      events:         D.events,
+      profiles:       D.profiles,
+      acct:           D.acct,
+      offers:         D.offers,
+      scholarships:   D.scholarships
+    };
+    var json = JSON.stringify(snap, null, 2);
+    var blob = new Blob([json], {type: 'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var now = new Date();
+    var stamp = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+    a.href = url;
+    a.download = 'bffsa-backup-' + stamp + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Backup downloaded ✓');
+  } catch(e) { toast('Export failed: ' + e.message); }
+}
+
+function importAppData() {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = function(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        var snap = JSON.parse(ev.target.result);
+        var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','profiles','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments'];
+        var loaded = 0;
+        keys.forEach(function(k) {
+          if (snap[k] !== undefined) { D[k] = snap[k]; loaded++; }
+        });
+        saveAppData();
+        closeMo();
+        toast('Data restored — ' + loaded + ' sections loaded ✓');
+        setTimeout(function(){ location.reload(); }, 1200);
+      } catch(e) { toast('Import failed — invalid file'); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
 function openSettings() {
   openMo(`<div class="mt">Settings</div>
     <div class="fg"><label class="fl">Text Size</label>
@@ -3056,6 +3120,14 @@ function openSettings() {
         <option value="bffsa" ${curTheme==='bffsa'?'selected':''}>BFFSA Dark</option>
         <option value="ios" ${curTheme==='ios'?'selected':''}>iOS Dark</option>
       </select>
+    </div>
+    <div style="border-top:1px solid var(--bdr);margin:12px 0;padding-top:12px;">
+      <div class="fl" style="margin-bottom:8px;font-weight:700;">Data Backup</div>
+      <div style="font-size:.78rem;color:var(--sub);margin-bottom:10px;">Save a backup before updating the app. Restore it after to keep all your data.</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn br3 bf" style="flex:1;background:var(--red);" onclick="exportAppData()">&#8681; Export Backup</button>
+        <button class="btn br3" style="flex:1;" onclick="importAppData()">&#8679; Restore Backup</button>
+      </div>
     </div>
     <button class="btn br3 bf" onclick="toast('Settings saved');closeMo()">Save Settings</button>`);
 }
