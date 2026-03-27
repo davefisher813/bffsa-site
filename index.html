@@ -2578,6 +2578,7 @@ function renderPlayerInfo(idx, a) {
     '<div class="fg"><label class="fl">Commitment</label><input class="fi" id="ap-commit" placeholder="Committed college name" value="'+(a.commitment||'')+'"></div>' +
     '<div class="fg"><label class="fl">Notes</label><textarea class="fi" id="ap-notes" rows="2" style="resize:none;">'+(a.notes||'')+'</textarea></div>' +
     '<button class="btn br3 bf" style="width:100%;margin-top:6px;" onclick="savePlayerInfo('+idx+')">Save Changes</button>' +
+    '<button class="btn br3" style="width:100%;margin-top:8px;background:var(--card2);" onclick="autoGenerateProfile('+idx+')">✨ Auto-Generate Full Profile with AI</button>' +
     (a.status !== 'Graduated' && a.status !== 'Committed' && a.status !== 'Exited' ?
       '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--b1);">' +
       _renderCoordAssignBlock(idx, a) +
@@ -2585,6 +2586,51 @@ function renderPlayerInfo(idx, a) {
     '</div>' +
     '<div style="height:60px;"></div>';
   return out;
+}
+
+async function autoGenerateProfile(idx) {
+  var a = D.roster[idx]; if (!a) return;
+  toast('Generating profile for ' + a.name.split(' ')[0] + '...');
+  var colleges = (D.playerColleges[a.init]||[]).map(function(c){return c.school+' ('+c.division+')';}).join(', ') || 'None yet';
+  var tasks = (D.aTasks[a.init]||[]).slice(0,5).map(function(t){return t.text;}).join(', ') || 'None';
+  var prompt = 'Generate a professional recruiting profile for this student athlete:\n' +
+    'Name: ' + a.name + '\n' +
+    'School: ' + (a.school||'—') + '\n' +
+    'Sport: ' + (a.sport||'Baseball') + '\n' +
+    'Grad Year: ' + (a.grad||'—') + '\n' +
+    'GPA: ' + (a.gpa||'—') + '\n' +
+    'Status: ' + (a.status||'Active') + '\n' +
+    'Recruiting Stage: ' + (a.recruitStage||'—') + '\n' +
+    'SA Plan: ' + (a.saplan||'—') + '\n' +
+    'Commitment: ' + (a.commitment||'None') + '\n' +
+    'College Targets: ' + colleges + '\n' +
+    'Notes: ' + (a.notes||'—') + '\n\n' +
+    'Write a 3-4 sentence recruiting profile summary suitable for coaches. Then list 3-5 key strengths based on available info. Keep it professional and motivating.';
+  try {
+    var res = await fetch('/.netlify/functions/claude', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({model:'claude-haiku-4-5-20251001', max_tokens:600,
+        system:'You are a college recruiting coordinator writing athlete profiles. Be professional, specific, and positive.',
+        messages:[{role:'user', content:prompt}]})
+    });
+    if (!res.ok) throw new Error('API error ' + res.status);
+    var data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    var text = (data.content||[]).filter(function(c){return c.type==='text';}).map(function(c){return c.text;}).join('');
+    // Save to athlete notes/profile
+    if (!D.profiles) D.profiles = [];
+    var existing = D.profiles.findIndex(function(p){ return p.init === a.init; });
+    var prof = {init: a.init, name: a.name, generated: new Date().toISOString().split('T')[0], text: text};
+    if (existing >= 0) D.profiles[existing] = prof; else D.profiles.push(prof);
+    saveAppData();
+    openMo('<div class="mt">'+a.name.split(' ')[0]+' Profile</div>' +
+      '<div style="font-size:.82rem;color:var(--tx2);line-height:1.7;white-space:pre-wrap;padding:4px 0 12px;">'+text+'</div>' +
+      '<div style="display:flex;gap:8px;">' +
+      '<button class="btn br3 bf" style="flex:1;" onclick="navigator.clipboard&&navigator.clipboard.writeText('+JSON.stringify(text)+');toast(\'Copied ✓\');closeMo();">Copy</button>' +
+      '<button class="btn bgh" onclick="closeMo()">Done</button></div>');
+  } catch(e) {
+    toast('Could not generate profile: ' + (e.message||'error'));
+  }
 }
 
 function savePlayerInfo(idx) {
@@ -3990,20 +4036,12 @@ async function diDetect(idx) {
   var isPdf = f.raw && f.raw.startsWith('__PDF__');
 
   var systemPrompt = [
-    'You are the Document Intelligence system for BFFSA (Bridge Foundation for Student Athletes).',
-    'You understand the full app data model:',
-    '  D.roster[]: {name, sport, school, grad, status, program, gpa, contact, guardian, joined, english, recruitStage, saplan, notes}',
-    '  D.profiles[]: {name, sport, school, gradYear, status, program, gpa, email, joined, english, saplan, recruitStage, colleges, commitment, notes}',
-    '  D.txns[]: {desc, cat, date, amt, type:"income|expense", notes}',
-    '  D.donors[]: {name, total, last, init}',
-    '  D.tasks[]: {text, due, who, pri:"high|med|low"}',
-    '  D.events[]: {title, date, mo, time, loc, type:"event|meeting|program"}',
-    '  D.contacts[]: {name, school, role, email}',
-    '  D.playerColleges{}: keyed by player initials — [{school, division, status, coachName, notes, lastUpdated}]',
-  '    division options: D1|D2|D3|NAIA|JUCO|Prep School',
-  '    status options: Target|Building List|In Contact|Visit|Offer|Committed|Not Interested',
-  'Always respond ONLY with valid JSON — no markdown, no backticks, no extra text.'
-  ].join('\n');
+    'You are Doc AI for BFFSA — Bridge Foundation for Student Athletes.',
+    'BFFSA helps student athletes from all sports (currently primarily baseball) get recruited to college programs.',
+    'The app manages: athlete roster, recruiting tracking, college target lists, accounting, donors, tasks, events, coach contacts.',
+    'Coordinators: Dave Fisher (ED), Mike Skrapits (RC), Kevin Valdovinos (RC).',
+    'Respond ONLY with valid JSON — no markdown, no backticks, no extra text.',
+  ].join('\n')
 
   var detectionPrompt = [
     'Analyze this document and respond ONLY with this exact JSON:',
@@ -4156,10 +4194,27 @@ async function diRunCmd() {
   var isProfileIntent = /create.*profile|add.*profile|player.*profile|athlete.*profile|import.*profile|add.*athlete|add.*player|import.*athlete|import.*player|add.*to.*roster|create.*roster|extract.*athlete|extract.*player/.test(cmdLower);
   var isContactIntent = /extract.*coach|find.*coach|list.*contact|import.*contact/.test(cmdLower);
   var isFinancialIntent = /import.*transaction|add.*expense|add.*income|import.*financial|extract.*amount|import.*to.*accounting/.test(cmdLower);
+  var isCollegeListIntent = /college.*list|upload.*college|add.*college|import.*college|save.*college|route.*college/.test(cmdLower);
 
-  // For profile/roster/contact/financial intent, run a structured extraction instead of free-form
-  if (isProfileIntent || isContactIntent || isFinancialIntent) {
-    var extractType = isProfileIntent ? 'profile' : isContactIntent ? 'contacts' : 'financial';
+  // Extract player name from command if mentioned (e.g. "upload to Xavier's college list")
+  var cmdTargetInit = null;
+  if (isCollegeListIntent) {
+    D.roster.forEach(function(r) {
+      var firstName = r.name.split(' ')[0].toLowerCase();
+      var fullName = r.name.toLowerCase();
+      if (cmdLower.indexOf(firstName) >= 0 || cmdLower.indexOf(fullName) >= 0) {
+        cmdTargetInit = r.init;
+      }
+    });
+  }
+
+  // For profile/roster/contact/financial/college intent, run structured extraction
+  if (isProfileIntent || isContactIntent || isFinancialIntent || isCollegeListIntent) {
+    var extractType = isProfileIntent ? 'profile' : isContactIntent ? 'contacts' : isFinancialIntent ? 'financial' : 'college_list';
+    if (isCollegeListIntent) {
+      f.importTargetInit = cmdTargetInit || '';
+      f.importAthleteName = cmdTargetInit ? (D.roster.find(function(r){return r.init===cmdTargetInit;})||{}).name || '' : '';
+    }
     await diRunStructuredExtract(f, cmd, extractType);
     DI.running = false;
     if (rbtn) { rbtn.disabled = false; rbtn.textContent = 'Run'; }
@@ -4172,45 +4227,57 @@ async function diRunCmd() {
     var isImg = f.raw && f.raw.startsWith('__IMG__');
     var isPdf = f.raw && f.raw.startsWith('__PDF__');
 
+    var rosterCtx = D.roster.map(function(r){
+      return r.name+' ('+r.init+') — '+(r.sport||'Sport TBD')+', '+(r.school||'School TBD')+', Class of '+(r.grad||'?')+', '+r.status+(r.gpa?', GPA '+r.gpa:'')+(r.commitment?', COMMITTED: '+r.commitment:'')+(r.recruitStage?', Stage: '+r.recruitStage:'');
+    }).join('\n');
+
+    var coordCtx = D.coordinators.map(function(c){
+      var assigned = Object.keys(D.assignments||{}).filter(function(k){ return (D.assignments[k].coordInit||'')==c.init; });
+      return c.name+' ('+c.init+') — '+c.role+(assigned.length?' — assigned: '+assigned.join(', '):'');
+    }).join('\n');
+
     var systemPrompt = [
-      'You are the Document Intelligence system for BFFSA (Bridge Foundation for Student Athletes).',
-      'You help the admin team extract, analyze, and act on any document.',
-      'The app manages: athlete profiles/roster, accounting (transactions, payment schedule, board contributions),',
-      'donor CRM, board meetings, tasks, calendar events, and a file vault.',
-      'Be specific, concise, and actionable. Format clearly with bullet points where helpful.',
-      'If you extract structured data, end your response with:',
-      'IMPORT_JSON:{"import_type":"profile|roster|financial|donor|tasks|events|contacts|null","import_data":[...]}'
-    ].join('\n');
-
-    var fullCmd = cmd + '\n\nIf you identify structured data that should be imported into the app, append IMPORT_JSON at the end of your response.';
-    var messages;
-
-    if (isImg) {
-      var b64 = f.raw.replace(/^__IMG__data:[^;]+;base64,/,'');
-      var mime = f.ext==='png'?'image/png':'image/jpeg';
-      messages=[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:fullCmd}]}];
-    } else if (isPdf) {
-      var b64p = f.raw.replace('__PDF__','');
-      messages=[{role:'user',content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64p}},{type:'text',text:fullCmd}]}];
-    } else {
-      var docContext = 'Document: ' + f.name + '\n';
-      if (f.summary) docContext += 'AI Summary: ' + f.summary.split('\n')[0] + '\n';
-      docContext += '\nFull Content:\n' + f.raw.slice(0,50000);
-      messages=[{role:'user',content:docContext+'\n\nCommand: '+fullCmd}];
-    }
-
-    var res = await fetch('/.netlify/functions/claude', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:diTokenBudget(f&&f.raw?f.raw.length:1000),system:systemPrompt,messages:messages})
-    });
-    if (!res.ok) {
-      var errBody = await res.json().catch(function(){ return {}; });
-      var errMsg = (errBody.error && errBody.error.message) ? errBody.error.message : ('API error ' + res.status);
-      throw new Error(errMsg);
-    }
-    var data = await res.json();
-    if (data.error) throw new Error(data.error.message || 'API error');
-    var fullResult = (data.content||[]).filter(function(c){return c.type==='text';}).map(function(c){return c.text;}).join('\n');
+      'You are Doc AI — the Document Intelligence system for BFFSA (Bridge Foundation for Student Athletes).',
+      'BFFSA is a nonprofit that helps student athletes from all sports get recruited to college programs.',
+      'Currently the roster is primarily baseball players, but BFFSA serves all sports.',
+      'You are talking to Dave Fisher, Executive Director. Be smart, direct, thorough, and genuinely helpful.',
+      'Think like an experienced college recruiting coordinator, nonprofit administrator, and financial analyst combined.',
+      '',
+      '=== BFFSA APP DATA MODEL ===',
+      'D.roster[]: {name, init, sport, school, grad, status(Active|Committed|Graduated|Exited), program, gpa,',
+      '  contact(email), guardian, joined, english(Yes|No), recruitStage, saplan, notes, pin, commitment}',
+      'D.playerColleges{init}: [{school, division(D1|D2|D3|NAIA|JUCO|Prep School),',
+      '  status(Target|Building List|In Contact|Visit|Offer|Committed|Not Interested), coachName, notes, lastUpdated}]',
+      'D.aTasks{init}: [{text, due, pri(high|med|low), done, notes}] — athlete-specific tasks',
+      'D.tasks[]: [{text, due, who, pri}] — org-wide tasks',
+      'D.txns[]: [{desc, cat(Academy|Summer Team|Scholarship|Transportation|Donations|Operations|Other),',
+      '  date, amt, type(income|expense), notes}]',
+      'D.donors[]: [{name, total, last, init, contact, notes}]',
+      'D.events[]: [{title, date, mo, time, loc, type(event|meeting|program)}]',
+      'D.contacts[]: [{name, school, role, email}] — college coaches',
+      'D.coordinators[]: [{name, init, role, contact, pin}]',
+      'D.assignments{}: {playerInit: {coordInit, tasks:[{id,text,due,notes,priority,done}]}}',
+      'D.goals[]: org goals',
+      'D.profiles[]: full recruiting bios',
+      'D.msgs[]: message board',
+      '',
+      '=== CURRENT STAFF ===',
+      coordCtx,
+      '',
+      '=== FULL ROSTER ===',
+      rosterCtx,
+      '',
+      '=== YOUR CAPABILITIES ===',
+      'Analyze ANY document: spreadsheets, PDFs, Word docs, images, emails, letters, contracts, stats sheets.',
+      'Commands you excel at: summarize, extract data, compare players, draft emails/letters to coaches,',
+      '  analyze financials, build recruiting reports, identify red flags, suggest next steps, format tables.',
+      'When importing data, append IMPORT_JSON at end:',
+      'IMPORT_JSON:{"import_type":"profile|roster|financial|donor|tasks|events|contacts|college_list|null","athlete_name":"player name if college_list, else null","import_data":[...]}',
+      'college_list items: {school, division, status, coachName, notes}',
+      'profile items: {name, sport, school, gradYear, status, gpa, email, guardian, notes}',
+      'financial items: {desc, cat, date, amt, type, notes}',
+      'roster items: {name, sport, school, grad, status, gpa, contact, notes}',
+    ].join('\n')
 
     // Check if AI appended IMPORT_JSON
     var importMatch = fullResult.match(/IMPORT_JSON:\s*(\{[\s\S]+\})\s*$/);
@@ -4272,10 +4339,14 @@ async function diRunStructuredExtract(f, cmd, extractType) {
       'Extract ALL financial transactions. For each return:',
       '{desc, cat:"Academy|Summer Team|Scholarship|Transportation|Donations|Operations|Other",',
       ' date, amt, type:"income|expense", notes}'
+    ].join('\n'),
+    college_list: [
+      'Extract ALL college/university entries. For each return:',
+      '{school, division:"D1|D2|D3|JUCO", status:"Target|Applied|Offered|Committed", notes}'
     ].join('\n')
   };
 
-  var destLabels = {profile:'Player Profiles', contacts:'Coach Contacts', financial:'Accounting'};
+  var destLabels = {profile:'Player Profiles', contacts:'Coach Contacts', financial:'Accounting', college_list:'College List'};
   var systemPrompt = 'You are a structured data extraction engine for BFFSA. Respond ONLY with valid JSON. No markdown, no backticks, no extra text.';
   var prompt = 'User command: "' + cmd + '"\n\n' +
     'File: ' + f.name + '\n\n' +
@@ -4466,11 +4537,33 @@ function diOpenImport(idx) {
 
   if (data.length > 8) preview += '<div style="padding:10px 14px;font-size:.76rem;color:var(--sub);text-align:center;">...and '+(data.length-8)+' more records</div>';
 
+  // For college_list: show player picker
+  var playerPicker = '';
+  if (type === 'college_list') {
+    var detectedName = f.importAthleteName || '';
+    var detectedPlayer = detectedName ? D.roster.find(function(r){
+      var rn = r.name.toLowerCase();
+      var dn = detectedName.toLowerCase();
+      return rn === dn || rn.split(' ')[0] === dn.split(' ')[0];
+    }) : null;
+    var portalAthletes = D.roster.filter(function(r){ return r.sport; });
+    var opts = portalAthletes.map(function(r){
+      var sel = (detectedPlayer && detectedPlayer.init === r.init) ? ' selected' : '';
+      return '<option value="'+r.init+'"'+sel+'>'+r.name+'</option>';
+    }).join('');
+    playerPicker = '<div class="fg" style="margin-bottom:12px;">' +
+      '<label class="fl">Assign to Player' + (detectedName ? ' <span style="color:var(--grn);font-size:.72rem;">(AI detected: '+detectedName+')</span>' : '') + '</label>' +
+      '<select class="fi" id="di-player-pick"><option value="">— Select player —</option>' + opts + '</select></div>';
+    // Store detected init for confirm
+    f.importTargetInit = detectedPlayer ? detectedPlayer.init : '';
+  }
+
   openMo('<div class="mt">'+title+'</div>' +
     '<div class="al b" style="margin-bottom:12px;">Review ' + data.length + ' record' + (data.length!==1?'s':'') + ' from <strong>' + f.name + '</strong></div>' +
-    '<div style="background:var(--card);border:1px solid var(--b1);border-radius:var(--r);margin-bottom:14px;max-height:320px;overflow-y:auto;">' + preview + '</div>' +
+    playerPicker +
+    '<div style="background:var(--card);border:1px solid var(--b1);border-radius:var(--r);margin-bottom:14px;max-height:260px;overflow-y:auto;">' + preview + '</div>' +
     '<div style="display:flex;gap:8px;">' +
-    '<button class="btn br3" style="flex:1;" onclick="diConfirmImport('+idx+')">Import All ' + data.length + '</button>' +
+    '<button class="btn br3" style="flex:1;" onclick="' + (type==='college_list' ? 'f=DI.queue['+idx+'];var sel=document.getElementById(\'di-player-pick\');if(sel&&sel.value)f.importTargetInit=sel.value;' : '') + 'diConfirmImport('+idx+')">Import All ' + data.length + '</button>' +
     '<button class="btn bgh" onclick="closeMo()">Cancel</button></div>');
 }
 
@@ -4612,18 +4705,23 @@ function diConfirmImport(idx) {
     DI.routeData.events = DI.routeData.events.concat(data.slice(0,count));
 
   } else if (type==='college_list') {
-    // Group entries by athlete_name, match to roster, write to D.playerColleges
+    // Use manually selected player if set, else try athlete_name from each entry
+    var forcedInit = f.importTargetInit || null;
     var playerUpdates = {};
     data.forEach(function(entry) {
       if (!entry.school) return;
-      var athleteName = (entry.athlete_name||'').toLowerCase().trim();
-      // Find matching roster player (fuzzy: first name or full name match)
-      var player = D.roster.find(function(r) {
-        var rn = (r.name||'').toLowerCase();
-        return rn === athleteName ||
-               rn.split(' ')[0] === athleteName.split(' ')[0] ||
-               athleteName.indexOf(rn.split(' ')[0]) >= 0;
-      });
+      var player = null;
+      if (forcedInit) {
+        player = D.roster.find(function(r){ return r.init === forcedInit; });
+      } else {
+        var athleteName = (entry.athlete_name||'').toLowerCase().trim();
+        player = D.roster.find(function(r) {
+          var rn = (r.name||'').toLowerCase();
+          return rn === athleteName ||
+                 rn.split(' ')[0] === athleteName.split(' ')[0] ||
+                 athleteName.indexOf(rn.split(' ')[0]) >= 0;
+        });
+      }
       if (!player) return;
       if (!playerUpdates[player.init]) playerUpdates[player.init] = [];
       playerUpdates[player.init].push({
@@ -4718,9 +4816,13 @@ async function diExtractAndRoute() {
   toast('Extracting structured data...');
   DI.running = true;
 
-  var extractPrompt = 'From this analysis result, extract any structured data and respond ONLY with JSON:\n\n' +
+  var extractPrompt = 'From this analysis result, extract structured data. Respond ONLY with valid JSON, no markdown, no explanation.\n\n' +
     f.result + '\n\n' +
-    '{"import_type":"roster|financial|donor|tasks|events|null","import_data":[]}';
+    'Use this format: {"import_type":"roster|college_list|financial|donor|tasks|events|contacts|null","athlete_name":"full player name if college_list else null","import_data":[]}\n' +
+    'For college_list each item needs: school, division (D1/D2/D3/JUCO), status (Target/Applied/Offered/Committed), notes.\n' +
+    'For roster each item needs: name, sport, school, gradYear, status.\n' +
+    'For financial each item needs: desc, amt, type (income/expense), date, cat.\n' +
+    'For contacts each item needs: name, school, role, email.';
 
   try {
     var res = await fetch('/.netlify/functions/claude', {
@@ -4742,6 +4844,7 @@ async function diExtractAndRoute() {
     if (parsed.import_type && parsed.import_type!=='null' && parsed.import_data && parsed.import_data.length) {
       f.importType = parsed.import_type;
       f.importData = parsed.import_data;
+      f.importAthleteName = parsed.athlete_name || null;
       refreshDocUI();
       diOpenImport(DI.active);
     } else {
