@@ -834,11 +834,24 @@ function loadAppData() {
     var raw = localStorage.getItem('bffsa-data');
     if (!raw) return;
     var snap = JSON.parse(raw);
-    var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','profiles','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches','schoolsDB'];
+
+    // Restore all data EXCEPT roster — hardcoded roster is always source of truth
+    var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','coordinators','profiles','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches','schoolsDB'];
     keys.forEach(function(k) {
       if (snap[k] !== undefined) D[k] = snap[k];
     });
-    console.log('App data loaded from localStorage');
+
+    // Merge saved per-athlete data (pin, portalEnabled) onto hardcoded roster by init
+    if (snap.roster && Array.isArray(snap.roster)) {
+      snap.roster.forEach(function(saved) {
+        var live = D.roster.find(function(r){ return r.init === saved.init; });
+        if (live) {
+          if (saved.pin !== undefined) live.pin = saved.pin;
+        }
+      });
+    }
+
+    console.log('App data loaded — roster: ' + D.roster.length + ' athletes');
   } catch(e) { console.warn('Load failed', e); }
 }
 
@@ -915,10 +928,7 @@ var D = {
     {name:'Jariel Martinez',       init:'JM', sport:'',         school:'',                    grad:2025, status:'Exited',    program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'', pin:''}
   ],
   donors: [],
-  colleges: [],
-  checkins: [],
   funding: [],
-  templates: [],
   contacts: [],
   offers: [],
   scholarships: [],
@@ -2688,66 +2698,6 @@ function openPlayerEdit() {
 // ══════════════════════════════════════════════════════════════════
 // SCHOOL REQUIREMENTS LOOKUP (live web search)
 // ══════════════════════════════════════════════════════════════════
-async function lookupSchoolRequirements(playerIdx, collegeIdx) {
-  var a = D.roster[playerIdx]; if (!a) return;
-  var colleges = D.playerColleges[a.init] || [];
-  var college = colleges[collegeIdx]; if (!college) return;
-
-  toast('Looking up ' + college.school + ' requirements...');
-
-  var prompt = 'Search for the current academic and athletic admission requirements for ' + college.school + ' for a student athlete. ' +
-    'Find: minimum GPA, minimum SAT/ACT scores, NCAA eligibility requirements if D1/D2, ' +
-    'sport-specific academic standards, financial aid and athletic scholarship availability, core course requirements. ' +
-    'Be specific with actual numbers. If D3, note there are no athletic scholarships. ' +
-    'Format as clear bullet points a family can act on.';
-
-  try {
-    var res = await fetch('/.netlify/functions/claude', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 800,
-        tools: [{type: 'web_search_20250305', name: 'web_search'}],
-        system: 'You are a college recruiting expert. Search for actual current requirements and give specific, accurate information a student athlete family can act on immediately.',
-        messages: [{role: 'user', content: prompt}]
-      })
-    });
-
-    if (!res.ok) {
-      var errBody = await res.json().catch(function(){ return {}; });
-      throw new Error((errBody.error && errBody.error.message) ? errBody.error.message : 'API error ' + res.status);
-    }
-    var data = await res.json();
-    if (data.error) throw new Error(data.error.message || 'API error');
-
-    var text = (data.content||[]).map(function(c){
-      if (c.type === 'text') return c.text;
-      if (c.type === 'tool_result' && c.content) {
-        return Array.isArray(c.content) ? c.content.map(function(x){return x.text||'';}).join('') : (c.content||'');
-      }
-      return '';
-    }).join('').trim();
-
-    if (!text) throw new Error('No results found');
-
-    colleges[collegeIdx].requirements = text;
-    colleges[collegeIdx].reqLookupDate = new Date().toISOString().split('T')[0];
-    saveAppData();
-
-    openMo(
-      '<div class="mt">' + college.school + '</div>' +
-      '<div style="font-size:.68rem;color:var(--sub);margin-bottom:10px;">Requirements as of ' + colleges[collegeIdx].reqLookupDate + ' · Live web search</div>' +
-      '<div style="font-size:.8rem;color:var(--tx2);line-height:1.7;white-space:pre-wrap;max-height:60vh;overflow-y:auto;">' + text + '</div>',
-      '<button class="btn br3 bf" style="flex:1;" onclick="closeMo()">Done</button>'
-    );
-
-    playerTab('colleges');
-
-  } catch(e) {
-    toast('Lookup failed: ' + (e.message||'check connection'));
-  }
-}
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -4345,39 +4295,6 @@ function saveVisit(idx) {
 // ATHLETE MEASURABLES
 // ══════════════════════════════════════════════════════════════════
 
-function openEditMeasurables(idx) {
-  var a = D.roster[idx]; if (!a) return;
-  var m = D.measurables[a.init] || {};
-  var sport = (a.sport || 'Baseball').toLowerCase();
-  var isBB = sport.includes('baseball') || sport.includes('softball');
-
-  openMo(
-    '<div class="mt">Measurables — '+a.name.split(' ')[0]+'</div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">Height</label><input class="fi" id="ms-height" placeholder="e.g. 6ft 1in" value="'+(m.height||'')+'"></div>' +
-    '<div class="fg"><label class="fl">Weight (lbs)</label><input class="fi" id="ms-weight" type="number" placeholder="175" value="'+(m.weight||'')+'"></div>' +
-    '</div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">Position</label><input class="fi" id="ms-pos" placeholder="SS/RHP" value="'+(m.position||'')+'"></div>' +
-    '<div class="fg"><label class="fl">Bat/Throw</label><input class="fi" id="ms-bt" placeholder="R/R" value="'+(m.batThrow||'')+'"></div>' +
-    '</div>' +
-    (isBB ?
-      '<div class="fr">' +
-      '<div class="fg"><label class="fl">60 Yard Dash</label><input class="fi" id="ms-sixty" placeholder="6.8" value="'+(m.sixty||'')+'"></div>' +
-      '<div class="fg"><label class="fl">Exit Velocity</label><input class="fi" id="ms-ev" placeholder="95 mph" value="'+(m.exitVelo||'')+'"></div>' +
-      '</div>' +
-      '<div class="fr">' +
-      '<div class="fg"><label class="fl">FB Velocity</label><input class="fi" id="ms-fb" placeholder="88 mph" value="'+(m.fbVelo||'')+'"></div>' +
-      '<div class="fg"><label class="fl">Pop Time</label><input class="fi" id="ms-pop" placeholder="2.05s" value="'+(m.popTime||'')+'"></div>' +
-      '</div>' +
-      '<div class="fr">' +
-      '<div class="fg"><label class="fl">Infield Velo</label><input class="fi" id="ms-inf" placeholder="85 mph" value="'+(m.infieldVelo||'')+'"></div>' +
-      '</div>'
-      : '<div class="fg"><label class="fl">Key Stat</label><input class="fi" id="ms-sixty" placeholder="e.g. 40 time, PPG, etc." value="'+(m.sixty||'')+'"></div>') +
-    '<div class="fg"><label class="fl">Highlight Reel URL</label><input class="fi" id="ms-hl" type="url" placeholder="YouTube or Hudl link" value="'+(m.highlightUrl||'')+'"></div>',
-    '<button class="btn br3 bf" style="flex:1;" onclick="saveMeasurables('+idx+')">Save</button>'
-  );
-}
 
 function saveMeasurables(idx) {
   var a = D.roster[idx]; if (!a) return;
@@ -4405,32 +4322,6 @@ function saveMeasurables(idx) {
 // NCAA ELIGIBILITY TRACKER
 // ══════════════════════════════════════════════════════════════════
 
-function openEditEligibility(idx) {
-  var a = D.roster[idx]; if (!a) return;
-  var e = D.eligibility[a.init] || {};
-  openMo(
-    '<div class="mt">NCAA Eligibility — '+a.name.split(' ')[0]+'</div>' +
-    '<div class="fg"><label class="fl">Overall Status</label><select class="fi" id="el-status">' +
-    ['Not Started','In Progress','Cleared','Issue'].map(function(s){ return '<option'+(e.status===s?' selected':'')+'>'+s+'</option>'; }).join('') +
-    '</select></div>' +
-    '<div class="fg"><label class="fl">Clearinghouse Registration</label><select class="fi" id="el-clear">' +
-    ['Not Registered','Registered','Registered & Cleared'].map(function(s){ return '<option'+(e.clearinghouse===s?' selected':'')+'>'+s+'</option>'; }).join('') +
-    '</select></div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">SAT Score</label><input class="fi" id="el-sat" type="number" placeholder="1100" value="'+(e.sat||'')+'"></div>' +
-    '<div class="fg"><label class="fl">ACT Score</label><input class="fi" id="el-act" type="number" placeholder="22" value="'+(e.act||'')+'"></div>' +
-    '</div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">Core Courses GPA</label><input class="fi" id="el-gpa" type="number" step="0.01" placeholder="2.3" value="'+(e.gpa_req||'')+'"></div>' +
-    '<div class="fg"><label class="fl">Core Courses Done</label><input class="fi" id="el-core" placeholder="e.g. 12 of 16" value="'+(e.core_courses||'')+'"></div>' +
-    '</div>' +
-    '<div class="fg"><label class="fl">Amateurism</label><select class="fi" id="el-am">' +
-    ['—','Not Filed','Filed','Certified'].map(function(s){ return '<option'+(e.amateurism===s?' selected':'')+'>'+s+'</option>'; }).join('') +
-    '</select></div>' +
-    '<div class="fg"><label class="fl">Notes / Issues</label><textarea class="fi" id="el-notes" rows="2" placeholder="Any issues, flags, or follow-up needed">'+(e.notes||'')+'</textarea></div>',
-    '<button class="btn br3 bf" style="flex:1;" onclick="saveEligibility('+idx+')">Save</button>'
-  );
-}
 
 function saveEligibility(idx) {
   var a = D.roster[idx]; if (!a) return;
@@ -4492,20 +4383,6 @@ function renderPlayerActivity(idx, a) {
 }
 
 
-function saveAthleteProfile(idx) {
-  var a = D.roster[idx]; if (!a) return;
-  a.status       = (document.getElementById('ap-status')||{}).value  || a.status;
-  a.recruitStage = (document.getElementById('ap-stage')||{}).value   || '';
-  a.school       = (document.getElementById('ap-school')||{}).value  || a.school;
-  a.contact      = (document.getElementById('ap-contact')||{}).value || a.contact;
-  a.guardian     = (document.getElementById('ap-guardian')||{}).value|| a.guardian;
-  a.saplan       = (document.getElementById('ap-saplan')||{}).value  || a.saplan;
-  a.english      = (document.getElementById('ap-eng')||{}).value     || a.english;
-  a.notes        = (document.getElementById('ap-notes')||{}).value   || '';
-  var gpa = parseFloat((document.getElementById('ap-gpa')||{}).value);
-  if (!isNaN(gpa)) a.gpa = gpa;
-  closeMo(); rosterRefresh(); toast(a.name + ' updated');
-}
 
 function openAddAthlete() {
   openMo('<div class="mt">Add Athlete</div>' +
@@ -7848,12 +7725,6 @@ function renderColleges() {
     });
   }
 
-  // Fallback to legacy D.colleges
-  if (colleges.length === 0 && D.colleges && D.colleges.length > 0) {
-    colleges = D.colleges.map(function(c){
-      return {school:c.name||c.school||'', division:c.div||c.division||'', status:c.status||'Target', coachName:'', notes:''};
-    });
-  }
 
   var athRoster = D.roster.find(function(r){ return r.init === athInit; }) || {};
   var athFitProfile = {
@@ -9424,35 +9295,6 @@ function exportMinutes(idx) {
 // ══════════════════════════════════════════════════
 // PLAYER PROFILES — Full athlete profile system
 // ══════════════════════════════════════════════════
-
-// Pre-load all 25 athletes from roster workbook
-if (!D.profiles) D.profiles = [
-  {name:'Angel Valerio',    sport:'Baseball', school:'IADIS',                gradYear:2026,status:'Active',   program:'Bridge',  gpa:3.4,  email:'valeriorebretonangelamin@gmail.com',joined:'2025-09-25',english:'No', saplan:'Academy - Team',recruitStage:'In Contact',colleges:'JUCO',commitment:'',notes:'', pin:''},
-  {name:'Anthony Basilio',  sport:'Baseball', school:'',                     gradYear:2028,status:'Active',   program:'Bridge',  gpa:null, email:'',joined:'',english:'',saplan:'Academy - Team',recruitStage:'',colleges:'',commitment:'',notes:'', pin:''},
-  {name:'Brandon Jimenez',  sport:'Baseball', school:'West 50th',            gradYear:2026,status:'Active',   program:'Bridge',  gpa:2.8,  email:'brandonjimenez236@gmail.com',joined:'2024-09-01',english:'Yes',saplan:'Academy - Team',recruitStage:'In Contact',colleges:'local JUCO',commitment:'',notes:'', pin:''},
-  {name:'Darwins Branche',  sport:'Baseball', school:'Monroe (Comp Sci HS)', gradYear:2027,status:'Active',   program:'Bridge',  gpa:3.9,  email:'darwinssantosb@gmail.com',joined:'2024-09-01',english:'Yes',saplan:'Academy - Team',recruitStage:'In Contact',colleges:'St Lawrence',commitment:'',headfirst:'Yes',notes:'', pin:''},
-  {name:'Derek Soria',      sport:'Baseball', school:'',                     gradYear:2027,status:'Active',   program:'Bridge',  gpa:null, email:'',joined:'',english:'',saplan:'Academy - Team',recruitStage:'In Contact',colleges:'Bucknell, Yale',commitment:'',notes:'', pin:''},
-  {name:'Jayden (JJ) Batista',sport:'Baseball',school:'Elite Squad Academy', gradYear:2025,status:'Active',   program:'Bridge',  gpa:2.8,  email:'batistajayden5@gmail.com',joined:'2024-09-01',english:'Yes',saplan:'Academy - Team',recruitStage:'In Contact',colleges:'FL JUCOs',commitment:'',notes:'', pin:''},
-  {name:'Johan Diaz',       sport:'Baseball', school:'James Monroe',         gradYear:2027,status:'Active',   program:'Bridge',  gpa:null, email:'',joined:'',english:'No', saplan:'Academy - Team',recruitStage:'In Contact',colleges:'Mercy',commitment:'',notes:'', pin:''},
-  {name:'Junior Pena',      sport:'Baseball', school:'Elite Squad Academy',  gradYear:2027,status:'Active',   program:'Bridge',  gpa:null, email:'',joined:'2024-09-24',english:'Yes',saplan:'Academy - Team',recruitStage:'',colleges:'',commitment:'',dob:'2008-10-24',notes:'', pin:''},
-  {name:'Xavier Izquierdo', sport:'Baseball', school:'Westminister',         gradYear:2027,status:'Active',   program:'Bridge',  gpa:3.9,  email:'',joined:'',english:'Yes',saplan:'Academy - Team',recruitStage:'',colleges:'',commitment:'',notes:'', pin:''},
-  {name:'Angel Castillo',   sport:'Baseball', school:'Cardinal Hayes',       gradYear:2026,status:'Committed', program:'Bridge',  gpa:3.1,  email:'a.castillocedano34',joined:'',english:'Yes',saplan:'Academy - Team',recruitStage:'Offer/Commit',colleges:'',commitment:'Cayuga Community College',currentCollege:'Cayuga Community College',currentYear:'Fall 2026',currentAid:'',college1:'',years1:'',aid1:'',college2:'',years2:'',aid2:'',dob:'2008-02-28',notes:'', pin:''},
-  {name:'Angel Perez',      sport:'Baseball', school:'N/A (DR)',             gradYear:2023,status:'Graduated',program:'',        gpa:null, email:'',joined:'2025-05-24',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',dob:'2005-08-16',notes:'', pin:''},
-  {name:'Brian Valdovinos', sport:'',         school:'Port Chester HS',      gradYear:2023,status:'Graduated',program:'',        gpa:null, email:'',joined:'',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',notes:'', pin:''},
-  {name:'Carlos Carmona',   sport:'',         school:'',                     gradYear:2022,status:'Graduated',program:'',        gpa:null, email:'',joined:'',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',notes:'', pin:''},
-  {name:'Erwins Branche',   sport:'',         school:'James Monroe',         gradYear:2022,status:'Graduated',program:'',        gpa:null, email:'',joined:'',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',notes:'', pin:''},
-  {name:'Gialdri Gomez',    sport:'',         school:'Acellus (Online)',      gradYear:2022,status:'Graduated',program:'',        gpa:null, email:'',joined:'',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',notes:'', pin:''},
-  {name:'Harby Valera',     sport:'Baseball', school:'Inwood',               gradYear:2022,status:'Graduated', program:'',       gpa:null, email:'',joined:'',english:'',saplan:'',recruitStage:'Committed',colleges:'Calhoun CC, Post University',commitment:'Post University',currentCollege:'',currentYear:'',currentAid:'',college1:'Calhoun CC',years1:"'22-'23; '23-'24",aid1:'Full Scholarship',college2:'Post University',years2:"'24-'25",aid2:'Senior Year Aid',notes:'Scholarship recipient — Bridge Foundation. Full path: Calhoun CC → Post University.', pin:''},
-  {name:'Henry Tolentino',  sport:'',         school:'Inwood',               gradYear:2023,status:'Graduated',program:'',        gpa:null, email:'',joined:'2025-05-24',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',dob:'2005-09-22',notes:'', pin:''},
-  {name:'Jeremy Recio',     sport:'',         school:'',                     gradYear:2023,status:'Graduated',program:'',        gpa:null, email:'',joined:'2025-05-24',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',dob:'2006-03-04',notes:'', pin:''},
-  {name:'Jon Legrande',     sport:'',         school:'George Washington',     gradYear:2022,status:'Graduated',program:'',        gpa:null, email:'',joined:'',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',notes:'', pin:''},
-  {name:'Jose Ulloa',       sport:'Baseball', school:'Inwood',               gradYear:2024,status:'In College', program:'',       gpa:null, email:'',joined:'',english:'',saplan:'',recruitStage:'Committed',colleges:'Mercy University',commitment:'Mercy University',currentCollege:'Mercy University',currentYear:"'25-'26",currentAid:'Full Scholarship',college1:'',years1:'',aid1:'',college2:'',years2:'',aid2:'',notes:'Bridge Foundation Scholarship recipient 2025-26. Scholarship payments Jan/May 2026. Mercy Travel Trip Jan 2026.', pin:''},
-  {name:'Kengri De Los Santos',sport:'',      school:'N/A (DR)',             gradYear:2023,status:'Graduated',program:'',        gpa:null, email:'',joined:'2025-05-24',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',dob:'2004-09-11',notes:'', pin:''},
-  {name:'Richie Bonomolo',  sport:'',         school:'Cardinal Hayes',       gradYear:2022,status:'Graduated',program:'',        gpa:null, email:'',joined:'',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',dob:'2003-10-30',notes:'', pin:''},
-  {name:'Denzel Mieja',     sport:'',         school:'',                     gradYear:2025,status:'Exited',   program:'',        gpa:null, email:'',joined:'',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',notes:'', pin:''},
-  {name:'Fausto Dominguez', sport:'',         school:'',                     gradYear:2025,status:'Exited',   program:'',        gpa:null, email:'',joined:'',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',notes:'', pin:''},
-  {name:'Jariel Martinez',  sport:'',         school:'',                     gradYear:2025,status:'Exited',   program:'',        gpa:null, email:'',joined:'',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',notes:'', pin:''}
-];
 
 if (!D.profileView) D.profileView = {mode:'list', selected:-1, filter:'all', search:''};
 
