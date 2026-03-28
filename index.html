@@ -485,7 +485,7 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
     <div class="ss a2">
       <div class="sc"><span class="sn" id="stat-athletes">0</span><span class="sl">Athletes</span></div>
       <div class="sc"><span class="sn" id="stat-placed">0</span><span class="sl">Placed</span></div>
-      <div class="sc"><span class="sn" id="stat-raised">$28K</span><span class="sl">Raised</span></div>
+      <div class="sc"><span class="sn" id="stat-raised">$0</span><span class="sl">Raised</span></div>
     </div>
     <div class="shdr a2"><span class="sti">Quick Actions</span></div>
     <div class="qag a2">
@@ -1276,7 +1276,7 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
     <div class="ss a2">
       <div class="sc"><span class="sn" id="stat-athletes">0</span><span class="sl">Athletes</span></div>
       <div class="sc"><span class="sn" id="stat-placed">0</span><span class="sl">Placed</span></div>
-      <div class="sc"><span class="sn" id="stat-raised">$28K</span><span class="sl">Raised</span></div>
+      <div class="sc"><span class="sn" id="stat-raised">$0</span><span class="sl">Raised</span></div>
     </div>
     <div class="shdr a2"><span class="sti">Quick Actions</span></div>
     <div class="qag a2">
@@ -1871,8 +1871,25 @@ function renderAdmHome() {
     feed.innerHTML = '<div style="padding:16px;font-size:.82rem;color:var(--sub);text-align:center;">No recent activity yet.</div>';
   }
   renderTaskPrev();
-  var sa = document.getElementById('stat-athletes');
-  if (sa) sa.textContent = D.roster.length;
+
+  // Athletes
+  document.querySelectorAll('#stat-athletes').forEach(function(el){ el.textContent = D.roster.length; });
+
+  // Placed = Committed athletes
+  var placedCount = D.roster.filter(function(r){ return r.status === 'Committed'; }).length;
+  document.querySelectorAll('#stat-placed').forEach(function(el){ el.textContent = placedCount; });
+
+  // Raised = income transactions + donor gifts
+  var txIncome = (D.txns||[]).filter(function(t){ return t.type==='income' || t.amt>0; })
+    .reduce(function(s,t){ return s + Math.abs(t.amt); }, 0);
+  var donorTotal = (D.donors||[]).reduce(function(s,d){
+    return s + ((d.gifts||[]).reduce(function(gs,g){ return gs + (parseFloat(g.amount)||0); }, 0));
+  }, 0);
+  var totalRaised = txIncome + donorTotal;
+  var raisedFmt = totalRaised >= 1000000 ? '$' + (totalRaised/1000000).toFixed(1) + 'M' :
+                  totalRaised >= 1000    ? '$' + Math.round(totalRaised/1000) + 'K' :
+                  totalRaised > 0        ? '$' + Math.round(totalRaised) : '$0';
+  document.querySelectorAll('#stat-raised').forEach(function(el){ el.textContent = raisedFmt; });
 }
 
 // ── ADMIN BOTTOM NAV ──
@@ -5496,8 +5513,7 @@ function saveAthlete() {
   };
   D.roster.push(a);
   closeMo(); rosterRefresh();
-  var sa = document.getElementById('stat-athletes');
-  if (sa) sa.textContent = D.roster.length;
+  document.querySelectorAll('#stat-athletes').forEach(function(el){ el.textContent = D.roster.length; });
   toast(name + ' added');
 }
 
@@ -5506,8 +5522,7 @@ function removeAthlete(idx) {
   if (!confirm('Remove ' + name + ' from roster?')) return;
   D.roster.splice(idx, 1);
   closeMo(); rosterRefresh();
-  var sa = document.getElementById('stat-athletes');
-  if (sa) sa.textContent = D.roster.length;
+  document.querySelectorAll('#stat-athletes').forEach(function(el){ el.textContent = D.roster.length; });
   toast(name + ' removed');
 }
 
@@ -5564,8 +5579,7 @@ function importRosterFromWb(wb) {
       D.roster.push(newA);
     }
   });
-  var sa = document.getElementById('stat-athletes');
-  if (sa) sa.textContent = D.roster.length;
+  document.querySelectorAll('#stat-athletes').forEach(function(el){ el.textContent = D.roster.length; });
   toast('Roster imported: ' + profileSheets.length + ' athletes');
 }
 
@@ -5671,6 +5685,13 @@ function copyReport() {
 
 // ── MORE / SETTINGS ──
 function renderMore() {
+  // Calculate localStorage usage
+  var storageSize = 0;
+  try {
+    var raw = localStorage.getItem('bffsa-data');
+    storageSize = raw ? (raw.length / 1024).toFixed(1) : 0;
+  } catch(e) {}
+
   return `<div class="shdr"><span class="sti">All Sections</span></div>
   <div class="cl" style="margin:0 16px 16px;">
     ${[['&#128176;','g','acct','Accounting'],['&#128172;','b','msgs','Message Board'],['&#127919;','r','goals','Goals'],['&#129309;','g','donors','Donor CRM'],['&#128202;','b','reports','Reports'],['&#127909;','b','meetings','Board Meetings']].map(function(it){
@@ -5681,11 +5702,21 @@ function renderMore() {
       </button>`;
     }).join('')}
   </div>
-  <div class="shdr"><span class="sti">Theme</span></div>
-  <div class="ttg">
-    <button class="to ${curTheme==='bffsa'?'on':''}" onclick="setTheme('bffsa')">&#9679; BFFSA Dark</button>
-    <button class="to ${curTheme==='ios'?'on':''}" onclick="setTheme('ios')">&#127822; iOS Dark</button>
+  <div class="shdr"><span class="sti">Data Backup</span></div>
+  <div style="margin:0 16px 16px;">
+    <div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;padding:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:.82rem;font-weight:700;color:var(--tx);">Stored Data</span>
+        <span style="font-size:.75rem;color:${storageSize > 3000 ? '#ff9500' : 'var(--grn)'};">${storageSize} KB saved</span>
+      </div>
+      <div style="font-size:.72rem;color:var(--sub);margin-bottom:12px;">Export a backup before every app update. Restore it after to recover your data. Includes roster, donors, transactions, college lists, coaches, and all uploaded data.</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn bf" style="flex:1;background:var(--red);border-radius:10px;" onclick="exportAppData()">&#8681; Export Backup</button>
+        <button class="btn" style="flex:1;background:var(--card2);border:1px solid var(--b2);border-radius:10px;" onclick="importAppData()">&#8679; Restore</button>
+      </div>
+    </div>
   </div>
+  <div class="shdr"><span class="sti">App</span></div>
   <div class="cl" style="margin:0 16px 16px;">
     <button class="cr" onclick="openNotifSettings()">
       <div class="ci y">&#128276;</div><div style="flex:1;"><div class="cn">Notifications</div></div><span class="chv">&#8250;</span>
@@ -5732,12 +5763,19 @@ function exportAppData() {
       tasks:          D.tasks,
       donors:         D.donors,
       contacts:       D.contacts,
+      coaches:        D.coaches,
+      schoolsDB:      D.schoolsDB,
       goals:          D.goals,
       events:         D.events,
       profiles:       D.profiles,
       acct:           D.acct,
       offers:         D.offers,
-      scholarships:   D.scholarships
+      scholarships:   D.scholarships,
+      athleteFiles:   D.athleteFiles,
+      commLog:        D.commLog,
+      visits:         D.visits,
+      measurables:    D.measurables,
+      eligibility:    D.eligibility
     };
     var json = JSON.stringify(snap, null, 2);
     var blob = new Blob([json], {type: 'application/json'});
@@ -5764,7 +5802,7 @@ function importAppData() {
     reader.onload = function(ev) {
       try {
         var snap = JSON.parse(ev.target.result);
-        var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','profiles','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches'];
+        var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','profiles','acct','athProfile','txns','tasks','donors','contacts','coaches','schoolsDB','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility'];
         var loaded = 0;
         keys.forEach(function(k) {
           if (snap[k] !== undefined) { D[k] = snap[k]; loaded++; }
@@ -7359,8 +7397,7 @@ function diConfirmImport(idx) {
       else D.roster.push(rosterEntry);
       count++;
     });
-    var sa = document.getElementById('stat-athletes');
-    if (sa) sa.textContent = D.roster.length;
+    document.querySelectorAll('#stat-athletes').forEach(function(el){ el.textContent = D.roster.length; });
     DI.routeData.roster = DI.routeData.roster.concat(data.slice(0,count));
 
   } else if (type==='roster') {
@@ -7376,8 +7413,7 @@ function diConfirmImport(idx) {
       else D.roster.push(entry);
       count++;
     });
-    var sa2 = document.getElementById('stat-athletes');
-    if (sa2) sa2.textContent = D.roster.length;
+    document.querySelectorAll('#stat-athletes').forEach(function(el){ el.textContent = D.roster.length; });
     DI.routeData.roster = DI.routeData.roster.concat(data.slice(0,count));
 
   } else if (type==='contacts') {
