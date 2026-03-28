@@ -518,6 +518,12 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
         </div>
         <span class="ql">Calendar</span>
       </button>
+      <button class="qa" data-sec="events" onclick="admSec('events')">
+        <div style="width:42px;height:42px;border-radius:11px;background:#9b59b622;display:flex;align-items:center;justify-content:center;color:#9b59b6;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <span class="ql">Events</span>
+      </button>
       <button class="qa" data-sec="goals" onclick="admSec('goals')">
         <div style="width:42px;height:42px;border-radius:11px;background:#cc000022;display:flex;align-items:center;justify-content:center;color:#cc0000;">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
@@ -812,10 +818,11 @@ function saveAppData() {
         schoolsDB:      D.schoolsDB,
         goals:          D.goals,
         events:         D.events,
-          acct:           D.acct,
+        acct:           D.acct,
         offers:         D.offers,
         scholarships:   D.scholarships,
-        athleteFiles:   D.athleteFiles
+        athleteFiles:   D.athleteFiles,
+        specialEvents:  D.specialEvents
       };
       localStorage.setItem('bffsa-data', JSON.stringify(snap));
     } catch(e) { console.warn('Save failed', e); }
@@ -829,7 +836,7 @@ function loadAppData() {
     var snap = JSON.parse(raw);
 
     // Restore all data EXCEPT roster — hardcoded roster is always source of truth
-    var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','coordinators','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches','schoolsDB'];
+    var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents'];
     keys.forEach(function(k) {
       if (snap[k] !== undefined) D[k] = snap[k];
     });
@@ -844,6 +851,13 @@ function loadAppData() {
       });
     }
 
+    // Merge saved coordinator PINs onto hardcoded coordinators
+    if (snap.coordinators && Array.isArray(snap.coordinators)) {
+      snap.coordinators.forEach(function(saved) {
+        var live = D.coordinators.find(function(c){ return c.init === saved.init; });
+        if (live && saved.pin) live.pin = saved.pin;
+      });
+    }
     console.log('App data loaded — roster: ' + D.roster.length + ' athletes');
   } catch(e) { console.warn('Load failed', e); }
 }
@@ -876,6 +890,7 @@ var D = {
   msgs: [],
   goals: [],
   events: [],
+  specialEvents: [],
   roster: [
     // ── ACTIVE ──
     {name:'Angel Valerio',         init:'AV', sport:'Baseball', school:'IADIS',               grad:2026, status:'Active',    program:'Bridge', gpa:3.4,  contact:'valeriorebretonangelamin@gmail.com', guardian:'', joined:'2025-09-25', english:'No',  recruitStage:'In Contact',   saplan:'Academy - Team', notes:'', pin:''},
@@ -1073,11 +1088,13 @@ function renderAdmHome() {
   var placedCount = D.roster.filter(function(r){ return r.status === 'Committed' || r.status === 'Graduated'; }).length;
   document.querySelectorAll('#stat-placed').forEach(function(el){ el.textContent = placedCount; });
 
-  // Raised = income transactions + donor gifts
-  var txIncome = (D.txns||[]).filter(function(t){ return t.type==='income' || t.amt>0; })
-    .reduce(function(s,t){ return s + Math.abs(t.amt); }, 0);
+  // Raised = income transactions + donor totals
+  // Raised = all positive ledger entries (income)
+  var txIncome = (D.acct&&D.acct.ledger||[]).filter(function(t){ return t.amt>0; })
+    .reduce(function(s,t){ return s + t.amt; }, 0);
   var donorTotal = (D.donors||[]).reduce(function(s,d){
-    return s + ((d.gifts||[]).reduce(function(gs,g){ return gs + (parseFloat(g.amount)||0); }, 0));
+    var n = parseFloat(String(d.total||'0').replace(/[^0-9.]/g,''))||0;
+    return s + n;
   }, 0);
   var totalRaised = txIncome + donorTotal;
   var raisedFmt = totalRaised >= 1000000 ? '$' + (totalRaised/1000000).toFixed(1) + 'M' :
@@ -1110,7 +1127,7 @@ function admSec(sec) {
   }
   curSec = sec;
   goV('vSEC');
-  var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',files:'File Storage',contacts:'Coaches Database',schools:'Schools Database',more:'More Settings'};
+  var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',files:'File Storage',contacts:'Coaches Database',schools:'Schools Database',more:'More Settings',events:'Special Events'};
   var ttl = document.getElementById('sec-ttl');
   if (ttl) ttl.textContent = titles[sec] || sec;
   var addb = document.getElementById('sec-add-btn');
@@ -1122,6 +1139,7 @@ function admSec(sec) {
   else if (sec === 'msgs') body.innerHTML = renderMsgs();
   else if (sec === 'tasks') body.innerHTML = renderTasks();
   else if (sec === 'cal') body.innerHTML = renderCal();
+  else if (sec === 'events') body.innerHTML = renderSpecialEvents();
   else if (sec === 'goals') body.innerHTML = renderGoals();
   else if (sec === 'roster') body.innerHTML = renderRoster();
   else if (sec === 'donors') body.innerHTML = renderDonors();
@@ -1367,8 +1385,9 @@ function acctRefresh() {
 
 // ── DASHBOARD ──
 function acctDashboard() {
-  var inc = D.txns.filter(function(t){return t.type==='income';}).reduce(function(s,t){return s+t.amt;},0);
-  var exp = D.txns.filter(function(t){return t.type==='expense';}).reduce(function(s,t){return s+Math.abs(t.amt);},0);
+  var ledger = D.acct.ledger || [];
+  var inc = ledger.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
+  var exp = ledger.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+Math.abs(t.amt);},0);
   var net = inc - exp;
   var totalDue = (D.acct.paySchedule||[]).reduce(function(s,p){return s+(p.due||0);},0);
   var totalPaid = (D.acct.paySchedule||[]).reduce(function(s,p){return s+(p.paid||0);},0);
@@ -1402,21 +1421,21 @@ function acctDashboard() {
   '<button onclick="exportTxns()" style="padding:10px 14px;background:var(--card2);border:1px solid var(--b2);color:var(--sub);font-size:.8rem;font-weight:700;border-radius:10px;cursor:pointer;">Export</button>' +
   '</div>' +
 
-  // Recent transactions
+  // Recent transactions (from ledger — single source of truth)
   '<div style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:8px;">Recent Transactions</div>' +
-  (D.txns.length === 0 ? '<div style="text-align:center;padding:20px;color:var(--sub);font-size:.82rem;">No transactions yet</div>' :
-    D.txns.slice(0,5).map(function(t,i){
-      var pos = t.type==='income';
-      return '<div onclick="acctEditTxn('+i+')" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--card);border:1px solid var(--b1);border-radius:10px;margin-bottom:6px;cursor:pointer;">' +
-      '<div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.9rem;background:'+( pos?'var(--gm)':'var(--rm)')+';">'+(pos?'↑':'↓')+'</div>' +
+  (ledger.length === 0 ? '<div style="text-align:center;padding:20px;color:var(--sub);font-size:.82rem;">No transactions yet — add income or expense above</div>' :
+    ledger.slice(0,5).map(function(t){
+      var pos = t.amt >= 0;
+      var realIdx = (D.acct.ledger||[]).indexOf(t);
+      return '<div onclick="acctEditLedgerEntry('+realIdx+')" style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--card);border:1px solid var(--b1);border-radius:10px;margin-bottom:6px;cursor:pointer;">' +
+      '<div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.9rem;background:'+(pos?'var(--gm)':'var(--rm)')+';">'+(pos?'↑':'↓')+'</div>' +
       '<div style="flex:1;min-width:0;"><div style="font-size:.84rem;font-weight:600;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+t.desc+'</div>' +
-      '<div style="font-size:.69rem;color:var(--sub);">'+t.cat+' · '+t.date+'</div></div>' +
-      '<div style="display:flex;align-items:center;gap:8px;">' +
-      '<div style="font-size:.88rem;font-weight:700;color:'+(pos?'var(--grn)':'var(--red2)')+';">'+(pos?'+':'-')+'$'+Math.abs(t.amt).toLocaleString()+'</div>' +
-      '<div style="font-size:.75rem;color:var(--tx3);">✎</div></div></div>';
+      '<div style="font-size:.69rem;color:var(--sub);">'+t.cat+' · '+t.date+(t.acct?' · '+t.acct:'')+'</div></div>' +
+      '<div style="font-size:.88rem;font-weight:700;color:'+(pos?'var(--grn)':'var(--red2)')+';">'+(pos?'+$':'-$')+Math.abs(t.amt).toLocaleString('en-US',{minimumFractionDigits:2})+'</div>' +
+      '</div>';
     }).join('')
   ) +
-  (D.txns.length > 5 ? '<button onclick="D.acct.acctView=\'transactions\';acctRefresh()" style="width:100%;padding:10px;background:none;border:1px solid var(--b2);color:var(--sub);border-radius:10px;cursor:pointer;font-size:.78rem;">View all '+D.txns.length+' transactions →</button>' : '') +
+  (ledger.length > 5 ? '<button onclick="D.acct.acctView=\'transactions\';acctRefresh()" style="width:100%;padding:10px;background:none;border:1px solid var(--b2);color:var(--sub);border-radius:10px;cursor:pointer;font-size:.78rem;">View all '+ledger.length+' transactions →</button>' : '') +
   '</div>';
 }
 
@@ -1444,87 +1463,99 @@ function saveBalance() {
 function acctTransactions() {
   var filter = D.acct.txFilter || 'all';
   var search = D.acct.txSearch || '';
-  var txns = D.txns.filter(function(t){
-    if (filter==='income' && t.type!=='income') return false;
-    if (filter==='expense' && t.type!=='expense') return false;
+  var all = D.acct.ledger || [];
+  var txns = all.filter(function(t){
+    if (filter==='income'  && t.amt < 0) return false;
+    if (filter==='expense' && t.amt >= 0) return false;
     if (search && !(t.desc+t.cat).toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+  var totalIn  = txns.filter(function(t){return t.amt>=0;}).reduce(function(s,t){return s+t.amt;},0);
+  var totalOut = txns.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+Math.abs(t.amt);},0);
 
   return '<div style="padding:12px 16px 0;">' +
-  // Controls
   '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
   '<input id="tx-search" placeholder="Search transactions..." value="'+(search||'')+'" ' +
   'oninput="D.acct.txSearch=this.value;acctRefresh()" ' +
   'style="flex:1;padding:9px 12px;background:var(--card2);border:1px solid var(--b2);color:var(--tx);border-radius:10px;font-size:.84rem;outline:none;">' +
   '</div>' +
-  '<div style="display:flex;gap:5px;margin-bottom:12px;">' +
+  '<div style="display:flex;gap:5px;margin-bottom:8px;">' +
   ['all','income','expense'].map(function(f){
     return '<button onclick="D.acct.txFilter=\''+f+'\';acctRefresh()" style="padding:6px 14px;font-size:.72rem;font-weight:600;border-radius:20px;border:none;cursor:pointer;' +
-      (filter===f?'background:var(--red);color:#fff;':'background:var(--card2);color:var(--sub);')+'">'+
+      (filter===f?'background:var(--red);color:#fff;':'background:var(--card2);color:var(--sub);')+'">' +
       (f==='all'?'All':f==='income'?'Income':'Expenses')+'</button>';
   }).join('') +
   '<button onclick="openAddTxn(\'income\')" style="margin-left:auto;padding:6px 12px;font-size:.72rem;font-weight:700;border-radius:20px;border:none;cursor:pointer;background:var(--red);color:#fff;">+ Add</button>' +
   '</div>' +
-
-  // Transaction list
+  (txns.length > 0 ?
+    '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
+    '<div style="flex:1;padding:8px 10px;background:var(--gm);border-radius:8px;text-align:center;">' +
+    '<div style="font-size:.68rem;color:var(--sub);">In</div>' +
+    '<div style="font-size:.88rem;font-weight:700;color:var(--grn);">+$'+totalIn.toLocaleString('en-US',{minimumFractionDigits:2})+'</div></div>' +
+    '<div style="flex:1;padding:8px 10px;background:var(--rm);border-radius:8px;text-align:center;">' +
+    '<div style="font-size:.68rem;color:var(--sub);">Out</div>' +
+    '<div style="font-size:.88rem;font-weight:700;color:var(--red2);">-$'+Math.abs(totalOut).toLocaleString('en-US',{minimumFractionDigits:2})+'</div></div>' +
+    '</div>' : '') +
   (txns.length === 0 ? '<div style="text-align:center;padding:30px;color:var(--sub);">No transactions found</div>' :
-    txns.map(function(t,i){
-      var pos = t.type==='income';
-      var realIdx = D.txns.indexOf(t);
+    txns.map(function(t){
+      var pos = t.amt >= 0;
+      var realIdx = (D.acct.ledger||[]).indexOf(t);
       return '<div style="display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--card);border:1px solid var(--b1);border-radius:10px;margin-bottom:6px;">' +
-      '<div style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0;background:'+( pos?'var(--gm)':'var(--rm)')+';">'+(pos?'↑':'↓')+'</div>' +
+      '<div style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0;background:'+(pos?'var(--gm)':'var(--rm)')+';">'+(pos?'↑':'↓')+'</div>' +
       '<div style="flex:1;min-width:0;">' +
       '<div style="font-size:.85rem;font-weight:600;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+t.desc+'</div>' +
-      '<div style="font-size:.7rem;color:var(--sub);margin-top:1px;">'+t.cat+' · '+t.date+'</div>' +
-      (t.notes?'<div style="font-size:.68rem;color:var(--sub);margin-top:2px;font-style:italic;">'+t.notes+'</div>':'') +
+      '<div style="font-size:.7rem;color:var(--sub);margin-top:1px;">'+t.cat+' · '+t.date+(t.acct?' · '+t.acct:'')+'</div>' +
       '</div>' +
-      '<div style="font-size:.9rem;font-weight:700;color:'+(pos?'var(--grn)':'var(--red2)');+'flex-shrink:0;">'+(pos?'+':'-')+'$'+Math.abs(t.amt).toLocaleString()+'</div>' +
+      '<div style="font-size:.9rem;font-weight:700;color:'+(pos?'var(--grn)':'var(--red2)')+';flex-shrink:0;">'+(pos?'+$':'-$')+Math.abs(t.amt).toLocaleString('en-US',{minimumFractionDigits:2})+'</div>' +
       '<div style="display:flex;flex-direction:column;gap:4px;margin-left:6px;">' +
-      '<button onclick="acctEditTxn('+realIdx+')" style="padding:3px 8px;font-size:.65rem;background:var(--card2);border:1px solid var(--b2);color:var(--sub);border-radius:5px;cursor:pointer;">Edit</button>' +
-      '<button onclick="acctDelTxn('+realIdx+')" style="padding:3px 8px;font-size:.65rem;background:var(--rm);border:1px solid rgba(204,0,0,.2);color:var(--red2);border-radius:5px;cursor:pointer;">Del</button>' +
+      '<button onclick="acctEditLedgerEntry('+realIdx+')" style="padding:3px 8px;font-size:.65rem;background:var(--card2);border:1px solid var(--b2);color:var(--sub);border-radius:5px;cursor:pointer;">Edit</button>' +
+      '<button onclick="acctDelLedgerEntry('+realIdx+')" style="padding:3px 8px;font-size:.65rem;background:var(--rm);border:1px solid rgba(204,0,0,.2);color:var(--red2);border-radius:5px;cursor:pointer;">Del</button>' +
       '</div></div>';
     }).join('')
-  ) + '</div>';
+  ) + '<div style="height:20px;"></div></div>';
 }
 
-function acctEditTxn(idx) {
-  var t = D.txns[idx];
+function acctEditLedgerEntry(idx) {
+  var t = (D.acct.ledger||[])[idx];
   if (!t) return;
-  var opts = function(type) {
-    var cats = type==='income'
-      ? ['Donations','Sponsorships','Programs','Events','Grants','Other']
-      : ['Academy','Summer Team','Scholarship','Travel','Operations','Marketing','Other'];
-    return cats.map(function(c){ return '<option'+(t.cat===c?' selected':'')+'>'+c+'</option>'; }).join('');
-  };
-  openMo('<div class="mt">Edit Transaction</div>' +
+  var pos = t.amt >= 0;
+  var allCats = pos
+    ? ['Donations','Board Contributions','Sponsorships','Programs','Events','Grants','Special Events','Other']
+    : ['Academy','Summer Team','Scholarship','Travel','Transportation','Operations','Marketing','Transaction Fees','College Camp','Insurance','Other'];
+  openMo('<div class="mt">Edit Entry</div>' +
     '<div class="fg"><label class="fl">Description</label><input class="fi" id="etx-d" value="'+t.desc+'"></div>' +
     '<div class="fr">' +
     '<div class="fg"><label class="fl">Amount ($)</label><input class="fi" id="etx-a" type="number" step="0.01" value="'+Math.abs(t.amt)+'"></div>' +
-    '<div class="fg"><label class="fl">Date</label><input class="fi" id="etx-dt" value="'+t.date+'"></div>' +
+    '<div class="fg"><label class="fl">Date</label><input class="fi" id="etx-dt" type="date" value="'+t.date+'"></div>' +
     '</div>' +
-    '<div class="fg"><label class="fl">Category</label><select class="fi" id="etx-c">'+opts(t.type)+'</select></div>' +
-    '<div class="fg"><label class="fl">Notes</label><input class="fi" id="etx-n" value="'+(t.notes||'')+'" placeholder="Optional notes"></div>' +
-    '<div class="fr">' +
-    '<button class="btn br3 bf" style="flex:1;" onclick="acctSaveEditTxn('+idx+')">Save Changes</button>' +
-    '<button class="btn bgh bsm" onclick="closeMo()">Cancel</button>' +
-    '</div>');
+    '<div class="fg"><label class="fl">Category</label><select class="fi" id="etx-c">' +
+    allCats.map(function(c){ return '<option'+(t.cat===c?' selected':'')+'>'+c+'</option>'; }).join('') +
+    '</select></div>' +
+    '<div class="fg"><label class="fl">Account</label><input class="fi" id="etx-ac" value="'+(t.acct||'')+'" placeholder="e.g. Chase, FSA"></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="acctSaveEditLedgerEntry('+idx+')">Save</button>'
+  );
 }
-function acctSaveEditTxn(idx) {
-  var t = D.txns[idx];
+function acctSaveEditLedgerEntry(idx) {
+  var t = (D.acct.ledger||[])[idx];
   if (!t) return;
-  t.desc  = (document.getElementById('etx-d')||{}).value || t.desc;
-  t.amt   = t.type==='expense' ? -parseFloat((document.getElementById('etx-a')||{}).value||Math.abs(t.amt)) : parseFloat((document.getElementById('etx-a')||{}).value||t.amt);
-  t.date  = (document.getElementById('etx-dt')||{}).value || t.date;
-  t.cat   = (document.getElementById('etx-c')||{}).value || t.cat;
-  t.notes = (document.getElementById('etx-n')||{}).value || '';
-  closeMo(); acctRefresh(); toast('Transaction updated');
+  var pos = t.amt >= 0;
+  t.desc = (document.getElementById('etx-d')||{}).value || t.desc;
+  var newAmt = parseFloat((document.getElementById('etx-a')||{}).value) || Math.abs(t.amt);
+  t.amt  = pos ? Math.abs(newAmt) : -Math.abs(newAmt);
+  t.date = (document.getElementById('etx-dt')||{}).value || t.date;
+  t.cat  = (document.getElementById('etx-c')||{}).value || t.cat;
+  t.acct = (document.getElementById('etx-ac')||{}).value || t.acct;
+  t.year = parseInt((t.date||'').split('-')[0]) || t.year;
+  saveAppData(); closeMo(); acctRefresh(); toast('Entry updated ✓');
 }
-function acctDelTxn(idx) {
-  if (!confirm('Delete this transaction?')) return;
-  D.txns.splice(idx, 1);
-  acctRefresh(); toast('Deleted');
+function acctDelLedgerEntry(idx) {
+  if (!confirm('Delete this entry?')) return;
+  (D.acct.ledger||[]).splice(idx, 1);
+  saveAppData(); acctRefresh(); toast('Deleted');
 }
+// Legacy stubs — redirect to ledger functions
+function acctEditTxn(idx) { acctEditLedgerEntry(idx); }
+function acctDelTxn(idx) { acctDelLedgerEntry(idx); }
 
 // ── PAYMENT SCHEDULE ──
 function acctSchedule() {
@@ -1631,8 +1662,7 @@ function markPayment(idx) {
   p.paid = p.due; p.status = 'Paid';
   var dateStr = new Date().toISOString().split('T')[0];
   var txn = {desc:p.name+' — '+p.prog, cat:p.cat, date:p.month, amt:-(p.due||0), type:'expense', notes:'From payment schedule', pin:''};
-  D.txns.unshift(txn);
-  // Also write to ledger so Ledger tab reflects it
+  // Write to ledger (single source of truth)
   if (!D.acct.ledger) D.acct.ledger = [];
   D.acct.ledger.unshift({acct:'Chase', date:dateStr, desc:p.name+' — '+p.prog, amt:-(p.due||0), cat:p.cat, year:new Date().getFullYear()});
   acctRefresh(); toast('Marked as paid ✓');
@@ -2206,16 +2236,20 @@ function openAddTxn(type) {
 function saveTxn(type) {
   var desc = (document.getElementById('tx-d')||{}).value||'';
   var amt  = parseFloat((document.getElementById('tx-a')||{}).value||0);
-  var date = (document.getElementById('tx-dt')||{}).value||'Today';
+  var date = (document.getElementById('tx-dt')||{}).value||new Date().toISOString().split('T')[0];
   var cat  = (document.getElementById('tx-c')||{}).value||'Other';
   var notes= (document.getElementById('tx-n')||{}).value||'';
-  if (!desc||!amt) { toast('Fill all fields'); return; }
-  D.txns.unshift({desc:desc,cat:cat,date:date,amt:type==='expense'?-amt:amt,type:type,notes:notes});
-  closeMo(); acctRefresh(); toast(type==='income'?'Income added':'Expense added');
+  if (!desc||!amt) { toast('Fill in description and amount'); return; }
+  if (!D.acct.ledger) D.acct.ledger = [];
+  var signedAmt = type==='expense' ? -Math.abs(amt) : Math.abs(amt);
+  D.acct.ledger.unshift({desc:desc, cat:cat, date:date, amt:signedAmt, acct:'Manual',
+    year:parseInt((date||'').split('-')[0])||new Date().getFullYear(), notes:notes});
+  saveAppData();
+  closeMo(); acctRefresh(); toast(type==='income'?'Income added ✓':'Expense added ✓');
 }
 function exportTxns() {
-  var rows = [['Date','Description','Category','Amount','Type','Notes']];
-  D.txns.forEach(function(t){ rows.push([t.date,t.desc,t.cat,Math.abs(t.amt),t.type,t.notes||'']); });
+  var rows = [['Date','Description','Category','Amount','Type','Account']];
+  (D.acct.ledger||[]).forEach(function(t){ rows.push([t.date,t.desc,t.cat,Math.abs(t.amt),(t.amt>=0?'income':'expense'),t.acct||'']); });
   var csv = rows.map(function(r){ return r.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
   var blob = new Blob([csv],{type:'text/csv'});
   var url = URL.createObjectURL(blob);
@@ -2351,6 +2385,508 @@ function saveEvent() {
 }
 
 // ── GOALS ──
+// ══════════════════════════════════════════════════════════════════
+// SPECIAL EVENTS — Fundraiser Planning & Execution
+// ══════════════════════════════════════════════════════════════════
+
+function renderSpecialEvents() {
+  if (!D.specialEvents) D.specialEvents = [];
+  var evts = D.specialEvents;
+  var now  = new Date().toISOString().split('T')[0];
+  var totalRaised = evts.reduce(function(s,e){ return s+(parseFloat(e.actualRevenue)||0); },0);
+  var upcomingCount = evts.filter(function(e){ return (e.date||'')>=now; }).length;
+
+  var out = '<div style="padding:14px 16px 10px;">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+    '<div style="font-size:.95rem;font-weight:800;color:var(--tx);">Special Events</div>' +
+    '<button class="btn br3 bf bsm" onclick="seOpenEdit(null)">+ New Event</button>' +
+    '</div>';
+
+  if (evts.length > 0) {
+    out += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">' +
+      seStatBox(evts.length,'Events','var(--red)') +
+      seStatBox(upcomingCount,'Upcoming','var(--blu)') +
+      seStatBox('$'+(totalRaised>=1000?Math.round(totalRaised/1000)+'K':Math.round(totalRaised)),'Raised','var(--grn)') +
+      '</div>';
+  }
+  out += '</div>';
+
+  if (evts.length === 0) {
+    out += '<div style="padding:50px 16px;text-align:center;">' +
+      '<div style="font-size:2.5rem;margin-bottom:10px;">🎪</div>' +
+      '<div style="font-size:.95rem;font-weight:700;color:var(--tx);margin-bottom:6px;">No events yet</div>' +
+      '<div style="font-size:.78rem;color:var(--sub);">Tap + New Event to start planning.</div></div>';
+  } else {
+    var sorted    = evts.slice().sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+    var upcoming  = sorted.filter(function(e){ return (e.date||'')>=now; });
+    var past      = sorted.filter(function(e){ return (e.date||'')<now; }).reverse();
+    if (upcoming.length) {
+      out += '<div style="padding:0 16px 6px;font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.08em;">Upcoming</div>';
+      upcoming.forEach(function(e){ out += seCard(e, D.specialEvents.indexOf(e), now); });
+    }
+    if (past.length) {
+      out += '<div style="padding:10px 16px 6px;font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.08em;">Past</div>';
+      past.forEach(function(e){ out += seCard(e, D.specialEvents.indexOf(e), now); });
+    }
+  }
+  return out + '<div style="height:28px;"></div>';
+}
+
+function seStatBox(val, label, color) {
+  return '<div style="background:var(--card);border:1px solid var(--b1);border-radius:10px;padding:10px;text-align:center;">' +
+    '<div style="font-size:1.15rem;font-weight:800;color:'+color+';">'+val+'</div>' +
+    '<div style="font-size:.6rem;color:var(--sub);text-transform:uppercase;letter-spacing:.06em;">'+label+'</div></div>';
+}
+
+function seCard(e, idx, now) {
+  var isPast   = (e.date||'') < now;
+  var budget   = parseFloat(e.goalRevenue)||0;
+  var actual   = parseFloat(e.actualRevenue)||0;
+  var pct      = budget>0 ? Math.min(100,Math.round(actual/budget*100)) : 0;
+  var openTasks= (e.tasks||[]).filter(function(t){ return !t.done; }).length;
+  var statusColors = {Planning:'var(--sub)',Active:'var(--blu)',Completed:'var(--grn)',Cancelled:'var(--red2)'};
+  var statusCol = statusColors[e.status]||'var(--sub)';
+  var netRevenue = actual - (parseFloat(e.expenses)||0);
+
+  return '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;margin:0 16px 10px;overflow:hidden;opacity:'+(isPast?'.78':'1')+'">' +
+    '<div style="padding:12px 13px 11px;cursor:pointer;" onclick="seOpenDetail('+idx+')">' +
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:5px;">' +
+    '<div style="flex:1;min-width:0;">' +
+    '<div style="font-size:.92rem;font-weight:800;color:var(--tx);">'+e.name+'</div>' +
+    '<div style="font-size:.7rem;color:var(--sub);margin-top:2px;">' +
+    (e.date?'📅 '+e.date+(e.endDate&&e.endDate!==e.date?' – '+e.endDate:''):'No date') +
+    (e.venue?' &middot; 📍 '+e.venue:'') + '</div>' +
+    '</div>' +
+    '<span style="font-size:.63rem;font-weight:700;padding:3px 8px;border-radius:20px;background:'+statusCol+'22;color:'+statusCol+';white-space:nowrap;margin-left:8px;">'+(e.status||'Planning')+'</span>' +
+    '</div>' +
+    (budget>0?'<div style="margin:8px 0 4px;">' +
+      '<div style="display:flex;justify-content:space-between;font-size:.68rem;margin-bottom:4px;">' +
+      '<span style="color:var(--sub);">Revenue</span>' +
+      '<span style="font-weight:700;color:'+(actual>=budget?'var(--grn)':'var(--tx)')+';">$'+Math.round(actual).toLocaleString()+' / $'+Math.round(budget).toLocaleString()+' ('+pct+'%)</span>' +
+      '</div>' +
+      '<div style="height:4px;background:var(--b1);border-radius:2px;">' +
+      '<div style="height:4px;width:'+pct+'%;background:'+(pct>=100?'var(--grn)':'var(--red)')+';border-radius:2px;"></div></div></div>':'') +
+    '<div style="display:flex;gap:12px;font-size:.68rem;color:var(--sub);margin-top:6px;">' +
+    ((e.guests||[]).length?'<span>👥 '+(e.guests||[]).length+' guests</span>':'') +
+    ((e.sponsors||[]).length?'<span>🤝 '+(e.sponsors||[]).length+' sponsors</span>':'') +
+    (openTasks>0?'<span style="color:var(--red2);">⚠ '+openTasks+' task'+(openTasks>1?'s':'')+' open</span>':'') +
+    (isPast&&netRevenue?'<span style="color:'+(netRevenue>=0?'var(--grn)':'var(--red2)')+';">Net: $'+Math.round(netRevenue).toLocaleString()+'</span>':'') +
+    '</div></div>' +
+    '<div style="display:flex;border-top:1px solid var(--b1);">' +
+    '<button onclick="seOpenDetail('+idx+')" style="flex:1;padding:9px;font-size:.72rem;font-weight:600;background:none;border:none;border-right:1px solid var(--b1);color:var(--tx2);cursor:pointer;">Details</button>' +
+    '<button onclick="seOpenEdit('+idx+')" style="flex:1;padding:9px;font-size:.72rem;font-weight:600;background:none;border:none;border-right:1px solid var(--b1);color:var(--tx2);cursor:pointer;">Edit</button>' +
+    '<button onclick="seDelete('+idx+')" style="padding:9px 14px;font-size:.8rem;background:none;border:none;color:var(--sub);cursor:pointer;">✕</button>' +
+    '</div></div>';
+}
+
+function seOpenEdit(idx) {
+  var e = idx!==null ? (D.specialEvents||[])[idx] : null;
+  var types    = ['Gala','Golf Tournament','Dinner','Auction','5K / Run','Casino Night','Wine Tasting','Concert','Raffle','Other'];
+  var statuses = ['Planning','Active','Completed','Cancelled'];
+  openMo(
+    '<div class="mt">'+(e?'Edit Event':'New Fundraiser')+'</div>' +
+    '<div class="fg"><label class="fl">Event Name</label><input class="fi" id="se-name" placeholder="e.g. BFFSA Annual Gala 2026" value="'+(e?e.name||'':'')+'"></div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Type</label><select class="fi" id="se-type">' +
+    types.map(function(t){ return '<option'+(e&&e.type===t?' selected':'')+'>'+t+'</option>'; }).join('')+'</select></div>' +
+    '<div class="fg"><label class="fl">Status</label><select class="fi" id="se-status">' +
+    statuses.map(function(s){ return '<option'+(e&&e.status===s?' selected':'')+'>'+s+'</option>'; }).join('')+'</select></div>' +
+    '</div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Date</label><input class="fi" id="se-date" type="date" value="'+(e?e.date||'':'')+'"></div>' +
+    '<div class="fg"><label class="fl">End Date</label><input class="fi" id="se-end" type="date" value="'+(e?e.endDate||'':'')+'"></div>' +
+    '</div>' +
+    '<div class="fg"><label class="fl">Venue</label><input class="fi" id="se-venue" placeholder="Venue name & address" value="'+(e?e.venue||'':'')+'"></div>' +
+    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;margin:12px 0 8px;">Revenue</div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Goal ($)</label><input class="fi" id="se-goal" type="number" placeholder="0" value="'+(e?e.goalRevenue||'':'')+'"></div>' +
+    '<div class="fg"><label class="fl">Actual ($)</label><input class="fi" id="se-actual" type="number" placeholder="0" value="'+(e?e.actualRevenue||'':'')+'"></div>' +
+    '</div>' +
+    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;margin:12px 0 8px;">Tickets / Tables</div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Ticket Price ($)</label><input class="fi" id="se-tprice" type="number" placeholder="0" value="'+(e?e.ticketPrice||'':'')+'"></div>' +
+    '<div class="fg"><label class="fl">Table Price ($)</label><input class="fi" id="se-tbprice" type="number" placeholder="0" value="'+(e?e.tablePrice||'':'')+'"></div>' +
+    '</div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Capacity</label><input class="fi" id="se-tcap" type="number" placeholder="0" value="'+(e?e.ticketCapacity||'':'')+'"></div>' +
+    '<div class="fg"><label class="fl">Tickets Sold</label><input class="fi" id="se-tsold" type="number" placeholder="0" value="'+(e?e.ticketsSold||'':'')+'"></div>' +
+    '</div>' +
+    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;margin:12px 0 8px;">Budget</div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Event Budget ($)</label><input class="fi" id="se-budget" type="number" placeholder="0" value="'+(e?e.budget||'':'')+'"></div>' +
+    '<div class="fg"><label class="fl">Actual Expenses ($)</label><input class="fi" id="se-expenses" type="number" placeholder="0" value="'+(e?e.expenses||'':'')+'"></div>' +
+    '</div>' +
+    '<div class="fg"><label class="fl">Notes</label><textarea class="fi" id="se-notes" rows="2" style="resize:none;">'+(e?e.notes||'':'')+'</textarea></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="seSave('+(idx!==null?idx:'null')+')">Save</button>'
+  );
+}
+
+function seSave(idx) {
+  if (!D.specialEvents) D.specialEvents = [];
+  var name = ((document.getElementById('se-name')||{}).value||'').trim();
+  if (!name) { toast('Event name required'); return; }
+  var existing = idx!==null ? D.specialEvents[idx] : {};
+  var entry = Object.assign({}, existing, {
+    name:           name,
+    type:           (document.getElementById('se-type')||{}).value||'Other',
+    status:         (document.getElementById('se-status')||{}).value||'Planning',
+    date:           (document.getElementById('se-date')||{}).value||'',
+    endDate:        (document.getElementById('se-end')||{}).value||'',
+    venue:          ((document.getElementById('se-venue')||{}).value||'').trim(),
+    goalRevenue:    parseFloat((document.getElementById('se-goal')||{}).value)||0,
+    actualRevenue:  parseFloat((document.getElementById('se-actual')||{}).value)||0,
+    ticketPrice:    parseFloat((document.getElementById('se-tprice')||{}).value)||0,
+    tablePrice:     parseFloat((document.getElementById('se-tbprice')||{}).value)||0,
+    ticketCapacity: parseInt((document.getElementById('se-tcap')||{}).value)||0,
+    ticketsSold:    parseInt((document.getElementById('se-tsold')||{}).value)||0,
+    budget:         parseFloat((document.getElementById('se-budget')||{}).value)||0,
+    expenses:       parseFloat((document.getElementById('se-expenses')||{}).value)||0,
+    notes:          ((document.getElementById('se-notes')||{}).value||'').trim(),
+    sponsors:       existing.sponsors||[],
+    tasks:          existing.tasks||[],
+    guests:         existing.guests||[],
+    vendors:        existing.vendors||[],
+    revenueLines:   existing.revenueLines||[]
+  });
+  if (idx!==null) D.specialEvents[idx]=entry; else D.specialEvents.push(entry);
+
+  // Offer to push actual revenue to ledger
+  var actual = entry.actualRevenue;
+  if (actual > 0 && entry.status === 'Completed') {
+    setTimeout(function(){
+      if (confirm('Push $'+actual.toLocaleString()+' revenue to Accounting ledger?')) {
+        if (!D.acct.ledger) D.acct.ledger=[];
+        var exists = D.acct.ledger.some(function(l){ return l.desc===entry.name&&l.amt===actual; });
+        if (!exists) {
+          D.acct.ledger.unshift({desc:entry.name, cat:'Special Events', date:entry.date||new Date().toISOString().split('T')[0],
+            amt:actual, acct:'Manual', year:parseInt((entry.date||'').split('-')[0])||new Date().getFullYear()});
+          toast('Revenue posted to ledger ✓');
+        } else { toast('Already in ledger'); }
+      }
+    }, 300);
+  }
+
+  saveAppData();
+  closeMo();
+  var b = document.getElementById('sec-body');
+  if (b) b.innerHTML = renderSpecialEvents();
+  toast(idx!==null?'Event updated ✓':'Event created ✓');
+}
+
+function seDelete(idx) {
+  var e=(D.specialEvents||[])[idx]; if (!e) return;
+  if (!confirm('Delete "'+e.name+'"?')) return;
+  D.specialEvents.splice(idx,1);
+  saveAppData();
+  var b=document.getElementById('sec-body');
+  if (b) b.innerHTML=renderSpecialEvents();
+}
+
+function seOpenDetail(idx) {
+  var e=(D.specialEvents||[])[idx]; if (!e) return;
+  if (!e.tasks)       e.tasks=[];
+  if (!e.sponsors)    e.sponsors=[];
+  if (!e.guests)      e.guests=[];
+  if (!e.vendors)     e.vendors=[];
+  if (!e.revenueLines)e.revenueLines=[];
+
+  var actual   = parseFloat(e.actualRevenue)||0;
+  var budget   = parseFloat(e.goalRevenue)||0;
+  var expenses = parseFloat(e.expenses)||0;
+  var net      = actual - expenses;
+  var pct      = budget>0?Math.min(100,Math.round(actual/budget*100)):0;
+  var openTasks= e.tasks.filter(function(t){ return !t.done; }).length;
+  var confirmed= e.guests.filter(function(g){ return g.rsvp==='Confirmed'; }).length;
+  var ticketRev= (e.ticketsSold||0)*(e.ticketPrice||0);
+
+  var html =
+    '<div class="mt">'+e.name+'</div>' +
+    '<div style="font-size:.7rem;color:var(--sub);margin-bottom:14px;">' +
+    (e.date||'No date')+(e.endDate&&e.endDate!==e.date?' – '+e.endDate:'') +
+    (e.venue?' · '+e.venue:'') + ' · ' + (e.status||'Planning') + '</div>' +
+
+    // Financial summary
+    '<div style="background:var(--card2);border-radius:10px;padding:12px;margin-bottom:12px;">' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">' +
+    seDetailStat('Goal','$'+Math.round(budget).toLocaleString(),'var(--tx)') +
+    seDetailStat('Raised','$'+Math.round(actual).toLocaleString(),'var(--grn)') +
+    seDetailStat('Expenses','$'+Math.round(expenses).toLocaleString(),'var(--red2)') +
+    seDetailStat('Net','$'+Math.round(net).toLocaleString(),net>=0?'var(--grn)':'var(--red2)') +
+    '</div>' +
+    (budget>0?'<div style="display:flex;justify-content:space-between;font-size:.7rem;margin-bottom:5px;"><span style="color:var(--sub);">Progress to goal</span><span style="font-weight:700;">'+pct+'%</span></div>' +
+    '<div style="height:5px;background:var(--b1);border-radius:3px;">' +
+    '<div style="height:5px;width:'+pct+'%;background:'+(pct>=100?'var(--grn)':'var(--red)')+';border-radius:3px;"></div></div>':'') +
+    '</div>' +
+
+    // Tickets
+    (e.ticketCapacity||e.ticketsSold ?
+    '<div style="background:var(--card2);border-radius:10px;padding:12px;margin-bottom:12px;">' +
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">' +
+    seDetailStat('Sold',e.ticketsSold||0,'var(--tx)') +
+    seDetailStat('Cap',e.ticketCapacity||'—','var(--tx)') +
+    seDetailStat('$/Ticket','$'+(e.ticketPrice||0),'var(--grn)') +
+    seDetailStat('Ticket Rev','$'+Math.round(ticketRev).toLocaleString(),'var(--grn)') +
+    '</div></div>' : '') +
+
+    // Revenue breakdown
+    '<div style="margin-bottom:12px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;">Revenue Breakdown</div>' +
+    '<button onclick="seAddRevLine('+idx+')" style="font-size:.68rem;padding:3px 8px;background:var(--card2);border:1px solid var(--b1);border-radius:6px;color:var(--tx2);cursor:pointer;">+ Add</button></div>' +
+    (e.revenueLines.length===0?'<div style="font-size:.75rem;color:var(--sub);">No line items yet</div>':
+    e.revenueLines.map(function(rl,rli){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:var(--card2);border-radius:8px;margin-bottom:5px;">' +
+        '<div><div style="font-size:.8rem;font-weight:600;color:var(--tx);">'+rl.source+'</div>' +
+        '<div style="font-size:.68rem;color:var(--sub);">'+rl.cat+'</div></div>' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<span style="font-size:.82rem;font-weight:700;color:var(--grn);">$'+parseFloat(rl.amount).toLocaleString()+'</span>' +
+        '<button onclick="seRemoveRevLine('+idx+','+rli+')" style="font-size:.7rem;color:var(--sub);background:none;border:none;cursor:pointer;">✕</button></div></div>';
+    }).join('')) +
+    '</div>' +
+
+    // Sponsors
+    '<div style="margin-bottom:12px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;">Sponsors ('+e.sponsors.length+')</div>' +
+    '<button onclick="seAddSponsor('+idx+')" style="font-size:.68rem;padding:3px 8px;background:var(--card2);border:1px solid var(--b1);border-radius:6px;color:var(--tx2);cursor:pointer;">+ Add</button></div>' +
+    (e.sponsors.length===0?'<div style="font-size:.75rem;color:var(--sub);">No sponsors yet</div>':
+    e.sponsors.map(function(s,si){
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:var(--card2);border-radius:8px;margin-bottom:5px;">' +
+        '<div><div style="font-size:.8rem;font-weight:600;color:var(--tx);">'+s.name+'</div>' +
+        '<div style="font-size:.68rem;color:var(--sub);">'+(s.level||'')+(s.amount?' · $'+parseFloat(s.amount).toLocaleString():'')+(s.contact?' · '+s.contact:'')+'</div></div>' +
+        '<button onclick="seRemoveSponsor('+idx+','+si+')" style="font-size:.7rem;color:var(--sub);background:none;border:none;cursor:pointer;">✕</button></div>';
+    }).join('')) +
+    '</div>' +
+
+    // Vendors
+    '<div style="margin-bottom:12px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;">Vendors ('+e.vendors.length+')</div>' +
+    '<button onclick="seAddVendor('+idx+')" style="font-size:.68rem;padding:3px 8px;background:var(--card2);border:1px solid var(--b1);border-radius:6px;color:var(--tx2);cursor:pointer;">+ Add</button></div>' +
+    (e.vendors.length===0?'<div style="font-size:.75rem;color:var(--sub);">No vendors yet</div>':
+    e.vendors.map(function(v,vi){
+      var vNet = (parseFloat(v.cost)||0);
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:var(--card2);border-radius:8px;margin-bottom:5px;">' +
+        '<div><div style="font-size:.8rem;font-weight:600;color:var(--tx);">'+v.name+'</div>' +
+        '<div style="font-size:.68rem;color:var(--sub);">'+(v.role||'')+(vNet?' · $'+vNet.toLocaleString():'')+(v.paid?' · <span style="color:var(--grn);">Paid</span>':' · <span style="color:var(--yel);">Unpaid</span>')+'</div></div>' +
+        '<button onclick="seRemoveVendor('+idx+','+vi+')" style="font-size:.7rem;color:var(--sub);background:none;border:none;cursor:pointer;">✕</button></div>';
+    }).join('')) +
+    '</div>' +
+
+    // Guest list
+    '<div style="margin-bottom:12px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;">Guests ('+confirmed+' confirmed / '+e.guests.length+' total)</div>' +
+    '<button onclick="seAddGuest('+idx+')" style="font-size:.68rem;padding:3px 8px;background:var(--card2);border:1px solid var(--b1);border-radius:6px;color:var(--tx2);cursor:pointer;">+ Add</button></div>' +
+    (e.guests.length===0?'<div style="font-size:.75rem;color:var(--sub);">No guests added</div>':
+    e.guests.map(function(g,gi){
+      var rsvpColors={Confirmed:'var(--grn)',Declined:'var(--red2)',Pending:'var(--sub)',Waitlist:'#ff9500'};
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:var(--card2);border-radius:8px;margin-bottom:5px;">' +
+        '<div><div style="font-size:.8rem;font-weight:600;color:var(--tx);">'+g.name+'</div>' +
+        '<div style="font-size:.68rem;color:var(--sub);">'+(g.org||'')+(g.table?' · Table '+g.table:'')+(g.paid?' · <span style="color:var(--grn);">Paid</span>':' · <span style="color:var(--sub);">Unpaid</span>')+'</div></div>' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<span style="font-size:.65rem;font-weight:700;color:'+(rsvpColors[g.rsvp]||'var(--sub)')+';">'+(g.rsvp||'Pending')+'</span>' +
+        '<button onclick="seRemoveGuest('+idx+','+gi+')" style="font-size:.7rem;color:var(--sub);background:none;border:none;cursor:pointer;">✕</button></div></div>';
+    }).join('')) +
+    '</div>' +
+
+    // Tasks
+    '<div style="margin-bottom:12px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;">Tasks ('+openTasks+' open)</div>' +
+    '<button onclick="seAddTask('+idx+')" style="font-size:.68rem;padding:3px 8px;background:var(--card2);border:1px solid var(--b1);border-radius:6px;color:var(--tx2);cursor:pointer;">+ Add</button></div>' +
+    (e.tasks.length===0?'<div style="font-size:.75rem;color:var(--sub);">No tasks yet</div>':
+    e.tasks.map(function(t,ti){
+      return '<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 10px;background:var(--card2);border-radius:8px;margin-bottom:5px;">' +
+        '<button onclick="seToggleTask('+idx+','+ti+')" style="width:18px;height:18px;border-radius:50%;border:2px solid '+(t.done?'var(--grn)':'var(--b2)')+';background:'+(t.done?'var(--grn)':'transparent')+';flex-shrink:0;cursor:pointer;margin-top:2px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.55rem;">'+(t.done?'✓':'')+'</button>' +
+        '<div style="flex:1;">' +
+        '<div style="font-size:.8rem;color:'+(t.done?'var(--sub)':'var(--tx)')+';">'+(t.done?'<s>':'')+t.text+(t.done?'</s>':'')+'</div>' +
+        (t.due||t.assignee?'<div style="font-size:.65rem;color:var(--sub);">'+(t.due?'Due '+t.due:'')+(t.due&&t.assignee?' · ':'')+( t.assignee?'→ '+t.assignee:'')+'</div>':'') +
+        '</div>' +
+        '<button onclick="seRemoveTask('+idx+','+ti+')" style="font-size:.7rem;color:var(--sub);background:none;border:none;cursor:pointer;">✕</button></div>';
+    }).join('')) +
+    '</div>' +
+
+    (e.notes?'<div style="background:var(--card2);border-radius:10px;padding:11px;margin-bottom:12px;">' +
+    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;margin-bottom:5px;">Notes</div>' +
+    '<div style="font-size:.78rem;color:var(--tx2);white-space:pre-wrap;">'+e.notes+'</div></div>':'');
+
+  openMo(html, '<button class="btn br3 bf" style="flex:1;" onclick="seOpenEdit('+idx+');closeMo()">Edit</button>');
+}
+
+function seDetailStat(label, val, color) {
+  return '<div style="text-align:center;padding:6px;background:var(--card);border-radius:8px;">' +
+    '<div style="font-size:.78rem;font-weight:700;color:'+color+';">'+val+'</div>' +
+    '<div style="font-size:.6rem;color:var(--sub);">'+label+'</div></div>';
+}
+
+// ── Revenue Lines ──
+function seAddRevLine(idx) {
+  openMo('<div class="mt">Add Revenue</div>' +
+    '<div class="fg"><label class="fl">Source</label><input class="fi" id="srl-src" placeholder="e.g. Ticket Sales, Auction, Bar"></div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Category</label><select class="fi" id="srl-cat">' +
+    ['Tickets','Tables','Sponsorship','Auction','Donations','Bar/Beverage','Raffle','Other'].map(function(c){ return '<option>'+c+'</option>'; }).join('')+'</select></div>' +
+    '<div class="fg"><label class="fl">Amount ($)</label><input class="fi" id="srl-amt" type="number" placeholder="0"></div>' +
+    '</div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="seSaveRevLine('+idx+')">Add</button>');
+}
+function seSaveRevLine(idx) {
+  var e=(D.specialEvents||[])[idx]; if (!e) return;
+  var src=((document.getElementById('srl-src')||{}).value||'').trim();
+  var amt=parseFloat((document.getElementById('srl-amt')||{}).value)||0;
+  if (!src||!amt) { toast('Fill all fields'); return; }
+  if (!e.revenueLines) e.revenueLines=[];
+  e.revenueLines.push({source:src, cat:(document.getElementById('srl-cat')||{}).value||'Other', amount:amt});
+  // Auto-update actualRevenue
+  e.actualRevenue = e.revenueLines.reduce(function(s,rl){ return s+(parseFloat(rl.amount)||0); },0);
+  saveAppData(); closeMo(); seOpenDetail(idx);
+}
+function seRemoveRevLine(evtIdx, rli) {
+  var e=(D.specialEvents||[])[evtIdx]; if (!e||!e.revenueLines) return;
+  e.revenueLines.splice(rli,1);
+  e.actualRevenue = e.revenueLines.reduce(function(s,rl){ return s+(parseFloat(rl.amount)||0); },0);
+  saveAppData(); closeMo(); seOpenDetail(evtIdx);
+}
+
+// ── Sponsors ──
+function seAddSponsor(idx) {
+  openMo('<div class="mt">Add Sponsor</div>' +
+    '<div class="fg"><label class="fl">Organization</label><input class="fi" id="ssp-name" placeholder="Company or donor name"></div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Level</label><select class="fi" id="ssp-level">' +
+    ['Title','Platinum','Gold','Silver','Bronze','In-Kind','Other'].map(function(l){ return '<option>'+l+'</option>'; }).join('')+'</select></div>' +
+    '<div class="fg"><label class="fl">Amount ($)</label><input class="fi" id="ssp-amt" type="number" placeholder="0"></div>' +
+    '</div>' +
+    '<div class="fg"><label class="fl">Contact</label><input class="fi" id="ssp-contact" placeholder="Contact name"></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="seSaveSponsor('+idx+')">Add</button>');
+}
+function seSaveSponsor(idx) {
+  var e=(D.specialEvents||[])[idx]; if (!e) return;
+  var name=((document.getElementById('ssp-name')||{}).value||'').trim();
+  if (!name) { toast('Name required'); return; }
+  if (!e.sponsors) e.sponsors=[];
+  e.sponsors.push({name:name, level:(document.getElementById('ssp-level')||{}).value||'Other',
+    amount:parseFloat((document.getElementById('ssp-amt')||{}).value)||0,
+    contact:((document.getElementById('ssp-contact')||{}).value||'').trim()});
+  saveAppData(); closeMo(); seOpenDetail(idx);
+}
+function seRemoveSponsor(evtIdx, si) {
+  var e=(D.specialEvents||[])[evtIdx]; if (!e||!e.sponsors) return;
+  e.sponsors.splice(si,1); saveAppData(); closeMo(); seOpenDetail(evtIdx);
+}
+
+// ── Vendors ──
+function seAddVendor(idx) {
+  openMo('<div class="mt">Add Vendor</div>' +
+    '<div class="fg"><label class="fl">Vendor Name</label><input class="fi" id="svd-name" placeholder="e.g. Elegant Catering Co."></div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Role</label><select class="fi" id="svd-role">' +
+    ['Catering','Venue','AV / Sound','Photography','Florist','Entertainment','Printing','Transportation','Other'].map(function(r){ return '<option>'+r+'</option>'; }).join('')+'</select></div>' +
+    '<div class="fg"><label class="fl">Cost ($)</label><input class="fi" id="svd-cost" type="number" placeholder="0"></div>' +
+    '</div>' +
+    '<div class="fg"><label class="fl">Contact</label><input class="fi" id="svd-contact" placeholder="Phone or email"></div>' +
+    '<div class="fg"><label class="fl">Notes</label><input class="fi" id="svd-notes" placeholder="e.g. Deposit paid, balance due day of"></div>' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;">' +
+    '<input type="checkbox" id="svd-paid" style="width:16px;height:16px;cursor:pointer;">' +
+    '<label for="svd-paid" style="font-size:.82rem;color:var(--tx);cursor:pointer;">Paid</label></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="seSaveVendor('+idx+')">Add</button>');
+}
+function seSaveVendor(idx) {
+  var e=(D.specialEvents||[])[idx]; if (!e) return;
+  var name=((document.getElementById('svd-name')||{}).value||'').trim();
+  if (!name) { toast('Vendor name required'); return; }
+  if (!e.vendors) e.vendors=[];
+  e.vendors.push({name:name, role:(document.getElementById('svd-role')||{}).value||'Other',
+    cost:parseFloat((document.getElementById('svd-cost')||{}).value)||0,
+    contact:((document.getElementById('svd-contact')||{}).value||'').trim(),
+    notes:((document.getElementById('svd-notes')||{}).value||'').trim(),
+    paid:!!(document.getElementById('svd-paid')||{}).checked});
+  // Auto-update expenses
+  e.expenses = e.vendors.reduce(function(s,v){ return s+(parseFloat(v.cost)||0); },0);
+  saveAppData(); closeMo(); seOpenDetail(idx);
+}
+function seRemoveVendor(evtIdx, vi) {
+  var e=(D.specialEvents||[])[evtIdx]; if (!e||!e.vendors) return;
+  e.vendors.splice(vi,1);
+  e.expenses = e.vendors.reduce(function(s,v){ return s+(parseFloat(v.cost)||0); },0);
+  saveAppData(); closeMo(); seOpenDetail(evtIdx);
+}
+
+// ── Guests ──
+function seAddGuest(idx) {
+  openMo('<div class="mt">Add Guest</div>' +
+    '<div class="fg"><label class="fl">Name</label><input class="fi" id="sgu-name" placeholder="Full name"></div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Organization</label><input class="fi" id="sgu-org" placeholder="Optional"></div>' +
+    '<div class="fg"><label class="fl">Table #</label><input class="fi" id="sgu-table" placeholder="e.g. 4"></div>' +
+    '</div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">RSVP</label><select class="fi" id="sgu-rsvp">' +
+    ['Pending','Confirmed','Declined','Waitlist'].map(function(r){ return '<option>'+r+'</option>'; }).join('')+'</select></div>' +
+    '<div class="fg"><label class="fl">Tickets</label><input class="fi" id="sgu-tix" type="number" placeholder="1" value="1"></div>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;">' +
+    '<input type="checkbox" id="sgu-paid" style="width:16px;height:16px;cursor:pointer;">' +
+    '<label for="sgu-paid" style="font-size:.82rem;color:var(--tx);cursor:pointer;">Payment received</label></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="seSaveGuest('+idx+')">Add</button>');
+}
+function seSaveGuest(idx) {
+  var e=(D.specialEvents||[])[idx]; if (!e) return;
+  var name=((document.getElementById('sgu-name')||{}).value||'').trim();
+  if (!name) { toast('Name required'); return; }
+  if (!e.guests) e.guests=[];
+  e.guests.push({name:name, org:((document.getElementById('sgu-org')||{}).value||'').trim(),
+    table:((document.getElementById('sgu-table')||{}).value||'').trim(),
+    rsvp:(document.getElementById('sgu-rsvp')||{}).value||'Pending',
+    tickets:parseInt((document.getElementById('sgu-tix')||{}).value)||1,
+    paid:!!(document.getElementById('sgu-paid')||{}).checked});
+  saveAppData(); closeMo(); seOpenDetail(idx);
+}
+function seRemoveGuest(evtIdx, gi) {
+  var e=(D.specialEvents||[])[evtIdx]; if (!e||!e.guests) return;
+  e.guests.splice(gi,1); saveAppData(); closeMo(); seOpenDetail(evtIdx);
+}
+
+// ── Tasks ──
+function seAddTask(idx) {
+  openMo('<div class="mt">Add Task</div>' +
+    '<div class="fg"><label class="fl">Task</label><input class="fi" id="set-text" placeholder="e.g. Confirm catering order"></div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Due Date</label><input class="fi" id="set-due" type="date"></div>' +
+    '<div class="fg"><label class="fl">Assign To</label><input class="fi" id="set-who" placeholder="Name"></div>' +
+    '</div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="seSaveTask('+idx+')">Add</button>');
+}
+function seSaveTask(idx) {
+  var e=(D.specialEvents||[])[idx]; if (!e) return;
+  var text=((document.getElementById('set-text')||{}).value||'').trim();
+  if (!text) { toast('Task required'); return; }
+  if (!e.tasks) e.tasks=[];
+  e.tasks.push({id:Date.now(), text:text,
+    due:(document.getElementById('set-due')||{}).value||'',
+    assignee:((document.getElementById('set-who')||{}).value||'').trim(), done:false});
+  saveAppData(); closeMo(); seOpenDetail(idx);
+}
+function seToggleTask(evtIdx, ti) {
+  var e=(D.specialEvents||[])[evtIdx]; if (!e||!e.tasks) return;
+  e.tasks[ti].done=!e.tasks[ti].done;
+  saveAppData(); closeMo(); seOpenDetail(evtIdx);
+}
+function seRemoveTask(evtIdx, ti) {
+  var e=(D.specialEvents||[])[evtIdx]; if (!e||!e.tasks) return;
+  e.tasks.splice(ti,1); saveAppData(); closeMo(); seOpenDetail(evtIdx);
+}
+
+// Legacy stubs
+function openAddSpecialEvent() { seOpenEdit(null); }
+function openEditSpecialEvent(i) { seOpenEdit(i); }
+function saveSpecialEvent() {}
+function deleteSpecialEvent(i) { seDelete(i); }
+function openRegisterAthletes() {}
+function saveEventRegistration() {}
+
+
 function renderGoals() {
   if (!D.goals.length) return '<div style="padding:40px 16px;text-align:center;color:var(--sub);font-size:.84rem;">No goals yet. Tap + to add one.</div><div style="height:20px;"></div>';
   return D.goals.map(function(g){
@@ -2487,13 +3023,14 @@ function togglePlayerPortal() {
     openMo(
       '<div class="mt">Add to Athlete Portal</div>' +
       '<div style="font-size:.78rem;color:var(--sub);margin-bottom:14px;">' + a.name + ' will be able to log in and access their recruiting hub, college list, tasks, and documents.</div>' +
-      '<div class="fg"><label class="fl">Set PIN <span style="color:var(--red);">*</span></label>' +
+      '<div class="fg"><label class="fl">Set PIN <span style="color:var(--sub);font-weight:400;">(optional — can set later)</span></label>' +
       '<input class="fi" id="pp-pin" type="number" placeholder="Create a 4-6 digit PIN" maxlength="6" ' +
       'onkeydown="if(event.key===\'Enter\')enablePortalWithPIN(' + idx + ')"></div>' +
       '<div class="fg"><label class="fl">Confirm PIN</label>' +
       '<input class="fi" id="pp-pin2" type="number" placeholder="Re-enter PIN" maxlength="6" ' +
       'onkeydown="if(event.key===\'Enter\')enablePortalWithPIN(' + idx + ')"></div>',
-      '<button class="btn br3 bf" style="flex:1;background:var(--grn);" onclick="enablePortalWithPIN(' + idx + ')">&#10003; Enable Portal</button>'
+      '<button class="btn br3 bf" style="flex:1;background:var(--grn);" onclick="enablePortalWithPIN(' + idx + ')">&#10003; Enable Portal</button>' +
+      '<button class="btn" style="margin-left:8px;background:var(--card2);border:1px solid var(--b2);" onclick="enablePortalNoPIN(' + idx + ')">Skip PIN</button>'
     );
     setTimeout(function(){ var el=document.getElementById('pp-pin'); if(el) el.focus(); }, 200);
   }
@@ -2513,6 +3050,16 @@ function enablePortalWithPIN(idx) {
   _refreshPortalBtn(a.init);
   playerTab('info');
   toast(a.name.split(' ')[0] + ' added to portal ✓');
+}
+
+function enablePortalNoPIN(idx) {
+  var a = D.roster[idx]; if (!a) return;
+  D.portalEnabled[a.init] = true;
+  saveAppData();
+  closeMo();
+  _refreshPortalBtn(a.init);
+  playerTab('info');
+  toast(a.name.split(' ')[0] + ' added to portal — set PIN in Security when ready');
 }
 
 function savePortalPIN(idx) {
@@ -4562,8 +5109,9 @@ function genReport(idx) {
     var pl = D.roster.filter(function(a){ return a.status==='Placed'||a.status==='Committed'||a.status==='Graduated'; });
     content = pl.length ? pl.map(function(a){ return a.name+' — '+a.sport+' ('+a.status+')'; }).join('\n') : 'No placements yet.';
   } else if (idx===1) {
-    var inc = D.txns.filter(function(t){ return t.type==='income'; }).reduce(function(s,t){ return s+t.amt; },0);
-    var exp = D.txns.filter(function(t){ return t.type==='expense'; }).reduce(function(s,t){ return s+Math.abs(t.amt); },0);
+    var ledger = D.acct&&D.acct.ledger||[];
+    var inc = ledger.filter(function(t){ return t.amt>0; }).reduce(function(s,t){ return s+t.amt; },0);
+    var exp = ledger.filter(function(t){ return t.amt<0; }).reduce(function(s,t){ return s+Math.abs(t.amt); },0);
     content = 'Income: $'+inc.toLocaleString()+'\nExpenses: $'+exp.toLocaleString()+'\nNet: $'+(inc-exp).toLocaleString();
   } else if (idx===5) {
     content = D.roster.slice().sort(function(a,b){ return b.pts-a.pts; }).map(function(a,i){ return (i+1)+'. '+a.name+' — '+a.pts+' pts'; }).join('\n');
@@ -4590,7 +5138,7 @@ function renderMore() {
 
   return `<div class="shdr"><span class="sti">All Sections</span></div>
   <div class="cl" style="margin:0 16px 16px;">
-    ${[['&#128176;','g','acct','Accounting'],['&#128172;','b','msgs','Message Board'],['&#127919;','r','goals','Goals'],['&#129309;','g','donors','Donor CRM'],['&#128202;','b','reports','Reports'],['&#127909;','b','meetings','Board Meetings'],['&#127891;','b','schools','Schools DB']].map(function(it){
+    ${[['&#128176;','g','acct','Accounting'],['&#128172;','b','msgs','Message Board'],['&#127919;','r','goals','Goals'],['&#129309;','g','donors','Donor CRM'],['&#128202;','b','reports','Reports'],['&#127909;','b','meetings','Board Meetings'],['&#127891;','b','schools','Schools DB'],['&#127775;','b','events','Special Events']].map(function(it){
       return `<button class="cr" onclick="admSec('${it[2]}')">
         <div class="ci ${it[1]}">${it[0]}</div>
         <div style="flex:1;"><div class="cn">${it[3]}</div></div>
@@ -4670,7 +5218,8 @@ function exportAppData() {
       commLog:        D.commLog,
       visits:         D.visits,
       measurables:    D.measurables,
-      eligibility:    D.eligibility
+      eligibility:    D.eligibility,
+      specialEvents:  D.specialEvents
     };
     var json = JSON.stringify(snap, null, 2);
     var blob = new Blob([json], {type: 'application/json'});
@@ -4697,7 +5246,7 @@ function importAppData() {
     reader.onload = function(ev) {
       try {
         var snap = JSON.parse(ev.target.result);
-        var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','acct','athProfile','txns','tasks','donors','contacts','coaches','schoolsDB','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility'];
+        var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','acct','athProfile','txns','tasks','donors','contacts','coaches','schoolsDB','specialEvents','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility'];
         var loaded = 0;
         keys.forEach(function(k) {
           if (snap[k] !== undefined) { D[k] = snap[k]; loaded++; }
@@ -5817,7 +6366,7 @@ async function diRunCmd() {
       '  status(Target|Building List|In Contact|Visit|Offer|Committed|Not Interested), coachName, notes, lastUpdated}]',
       'D.aTasks{init}: [{text, due, pri(high|med|low), done, notes}] — athlete-specific tasks',
       'D.tasks[]: [{text, due, who, pri}] — org-wide tasks',
-      'D.txns[]: [{desc, cat(Academy|Summer Team|Scholarship|Transportation|Donations|Operations|Other),',
+      'D.acct.ledger[]: [{desc, cat, date, amt(+income/-expense), acct(Chase|FSA|Manual), year}]',
       '  date, amt, type(income|expense), notes}]',
       'D.donors[]: [{name, total, last, init, contact, notes}]',
       'D.events[]: [{title, date, mo, time, loc, type(event|meeting|program)}]',
@@ -6280,13 +6829,10 @@ function diConfirmImport(idx) {
     if (!D.acct.ledger) D.acct.ledger = [];
     data.forEach(function(t) {
       if (!t.desc) return;
-      D.txns.unshift({desc:t.desc,cat:t.cat||'Other',date:t.date||'Imported',
-        amt:t.type==='expense'?-Math.abs(t.amt||0):Math.abs(t.amt||0),
-        type:t.type||'expense', notes:t.notes||''});
-      // Also write to ledger
-      D.acct.ledger.unshift({acct:'Imported',date:t.date||new Date().toISOString().split('T')[0],
-        desc:t.desc,amt:t.type==='expense'?-Math.abs(t.amt||0):Math.abs(t.amt||0),
-        cat:t.cat||'Other',year:new Date().getFullYear()});
+      if (!D.acct.ledger) D.acct.ledger = [];
+      D.acct.ledger.unshift({desc:t.desc, cat:t.cat||'Other', date:t.date||new Date().toISOString().split('T')[0],
+        acct:'Import', amt:t.type==='expense'?-Math.abs(t.amt||0):Math.abs(t.amt||0),
+        year:parseInt((t.date||'').split('-')[0])||new Date().getFullYear(), notes:t.notes||''});
       count++;
     });
     DI.routeData.financial = DI.routeData.financial.concat(data.slice(0,count));
@@ -9562,23 +10108,25 @@ function acctImportLedger(input) {
           else if (typeof date === 'string' && date.length > 0) dateStr = date;
           else return;
           // Avoid duplicates
-          var exists = D.txns.some(function(t){
+          if (!D.acct.ledger) D.acct.ledger = [];
+          var exists = D.acct.ledger.some(function(t){
             return t.desc === String(desc) && Math.abs(t.amt) === Math.abs(amt) && t.date === dateStr;
           });
           if (!exists) {
-            D.txns.push({
+            D.acct.ledger.push({
               desc:  String(desc).slice(0,80),
               cat:   cat||'Other',
               date:  dateStr,
               amt:   amt,
-              type:  amt > 0 ? 'income' : 'expense',
+              acct:  'Import',
+              year:  parseInt((dateStr||'').split('-')[0])||new Date().getFullYear(),
               notes: (is2025?'2025':'2026')+' ledger'
             });
             imported++;
           }
         });
         // Sort by date descending
-        D.txns.sort(function(a,b){ return b.date.localeCompare(a.date); });
+        D.acct.ledger.sort(function(a,b){ return b.date.localeCompare(a.date); });
       }
 
       // Also run the existing workbook import logic
