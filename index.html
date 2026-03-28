@@ -294,8 +294,8 @@ body.bffsa-light .scr,body.ios-light .scr{background-image:none;}
 }
 #ov.show{display:flex;}
 #mc{
-  width:100%;max-width:460px;max-height:88vh;overflow-y:auto;
-  background:var(--card);border-radius:20px 20px 0 0;
+  width:100%;max-width:460px;max-height:88vh;overflow:hidden;
+  background:var(--card);border-radius:20px 20px 0 0;display:flex;flex-direction:column;
   padding:20px 16px calc(28px + var(--sb));
   box-shadow:0 -4px 40px rgba(0,0,0,.4);
 }
@@ -1085,8 +1085,8 @@ body.bffsa-light .scr,body.ios-light .scr{background-image:none;}
 }
 #ov.show{display:flex;}
 #mc{
-  width:100%;max-width:460px;max-height:88vh;overflow-y:auto;
-  background:var(--card);border-radius:20px 20px 0 0;
+  width:100%;max-width:460px;max-height:88vh;overflow:hidden;
+  background:var(--card);border-radius:20px 20px 0 0;display:flex;flex-direction:column;
   padding:20px 16px calc(28px + var(--sb));
   box-shadow:0 -4px 40px rgba(0,0,0,.4);
 }
@@ -1828,9 +1828,17 @@ function toast(msg) {
 }
 
 // ── MODAL ──
-function openMo(html) {
+function openMo(html, footer) {
   var mc = document.getElementById('mc');
-  if (mc) mc.innerHTML = html;
+  if (!mc) return;
+  if (footer) {
+    // Sticky footer structure
+    mc.innerHTML =
+      '<div style="overflow-y:auto;max-height:calc(88vh - 80px);padding-bottom:4px;">' + html + '</div>' +
+      '<div style="padding:12px 16px;border-top:1px solid var(--b1);background:var(--card);display:flex;gap:8px;">' + footer + '</div>';
+  } else {
+    mc.innerHTML = html;
+  }
   var ov = document.getElementById('ov');
   if (ov) ov.classList.add('show');
 }
