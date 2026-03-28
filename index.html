@@ -822,7 +822,8 @@ function saveAppData() {
         offers:         D.offers,
         scholarships:   D.scholarships,
         athleteFiles:   D.athleteFiles,
-        specialEvents:  D.specialEvents
+        specialEvents:  D.specialEvents,
+        devBoard:       D.devBoard
       };
       localStorage.setItem('bffsa-data', JSON.stringify(snap));
     } catch(e) { console.warn('Save failed', e); }
@@ -836,7 +837,7 @@ function loadAppData() {
     var snap = JSON.parse(raw);
 
     // Restore all data EXCEPT roster — hardcoded roster is always source of truth
-    var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents'];
+    var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents','devBoard'];
     keys.forEach(function(k) {
       if (snap[k] !== undefined) D[k] = snap[k];
     });
@@ -891,6 +892,7 @@ var D = {
   goals: [],
   events: [],
   specialEvents: [],
+  devBoard: [],  // [{name, title, email, phone, notes}]
   roster: [
     // ── ACTIVE ──
     {name:'Angel Valerio',         init:'AV', sport:'Baseball', school:'IADIS',               grad:2026, status:'Active',    program:'Bridge', gpa:3.4,  contact:'valeriorebretonangelamin@gmail.com', guardian:'', joined:'2025-09-25', english:'No',  recruitStage:'In Contact',   saplan:'Academy - Team', notes:'', pin:''},
@@ -1127,7 +1129,7 @@ function admSec(sec) {
   }
   curSec = sec;
   goV('vSEC');
-  var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',files:'File Storage',contacts:'Coaches Database',schools:'Schools Database',more:'More Settings',events:'Special Events'};
+  var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',files:'File Storage',contacts:'Coaches Database',schools:'Schools Database',more:'More Settings',events:'Special Events',devboard:'Development Board'};
   var ttl = document.getElementById('sec-ttl');
   if (ttl) ttl.textContent = titles[sec] || sec;
   var addb = document.getElementById('sec-add-btn');
@@ -1140,6 +1142,7 @@ function admSec(sec) {
   else if (sec === 'tasks') body.innerHTML = renderTasks();
   else if (sec === 'cal') body.innerHTML = renderCal();
   else if (sec === 'events') body.innerHTML = renderSpecialEvents();
+  else if (sec === 'devboard') body.innerHTML = renderDevBoard();
   else if (sec === 'goals') body.innerHTML = renderGoals();
   else if (sec === 'roster') body.innerHTML = renderRoster();
   else if (sec === 'donors') body.innerHTML = renderDonors();
@@ -2584,20 +2587,23 @@ function seDelete(idx) {
 
 function seOpenDetail(idx) {
   var e=(D.specialEvents||[])[idx]; if (!e) return;
-  if (!e.tasks)       e.tasks=[];
-  if (!e.sponsors)    e.sponsors=[];
-  if (!e.guests)      e.guests=[];
-  if (!e.vendors)     e.vendors=[];
-  if (!e.revenueLines)e.revenueLines=[];
+  if (!e.tasks)        e.tasks=[];
+  if (!e.sponsors)     e.sponsors=[];
+  if (!e.guests)       e.guests=[];
+  if (!e.vendors)      e.vendors=[];
+  if (!e.revenueLines) e.revenueLines=[];
+  if (!e.boardMembers) e.boardMembers=[];
 
-  var actual   = parseFloat(e.actualRevenue)||0;
-  var budget   = parseFloat(e.goalRevenue)||0;
-  var expenses = parseFloat(e.expenses)||0;
-  var net      = actual - expenses;
-  var pct      = budget>0?Math.min(100,Math.round(actual/budget*100)):0;
-  var openTasks= e.tasks.filter(function(t){ return !t.done; }).length;
-  var confirmed= e.guests.filter(function(g){ return g.rsvp==='Confirmed'; }).length;
-  var ticketRev= (e.ticketsSold||0)*(e.ticketPrice||0);
+  var actual        = parseFloat(e.actualRevenue)||0;
+  var budget        = parseFloat(e.goalRevenue)||0;
+  var expenses      = parseFloat(e.expenses)||0;
+  var net           = actual - expenses;
+  var pct           = budget>0?Math.min(100,Math.round(actual/budget*100)):0;
+  var openTasks     = e.tasks.filter(function(t){ return !t.done; }).length;
+  var confirmed     = e.guests.filter(function(g){ return g.rsvp==='Confirmed'; }).length;
+  var ticketRev     = (e.ticketsSold||0)*(e.ticketPrice||0);
+  var totalPledged  = e.boardMembers.reduce(function(s,m){ return s+(parseFloat(m.pledge)||0); },0);
+  var totalBdRaised = e.boardMembers.reduce(function(s,m){ return s+(parseFloat(m.raised)||0); },0);
 
   var html =
     '<div class="mt">'+e.name+'</div>' +
@@ -2687,6 +2693,38 @@ function seOpenDetail(idx) {
         '<div style="display:flex;align-items:center;gap:8px;">' +
         '<span style="font-size:.65rem;font-weight:700;color:'+(rsvpColors[g.rsvp]||'var(--sub)')+';">'+(g.rsvp||'Pending')+'</span>' +
         '<button onclick="seRemoveGuest('+idx+','+gi+')" style="font-size:.7rem;color:var(--sub);background:none;border:none;cursor:pointer;">✕</button></div></div>';
+    }).join('')) +
+    '</div>' +
+
+    // Development Board Members
+    '<div style="margin-bottom:12px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+    '<div>' +
+    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;">Development Board ('+e.boardMembers.length+')</div>' +
+    (e.boardMembers.length>0?'<div style="font-size:.65rem;color:var(--sub);">Pledged: $'+Math.round(totalPledged).toLocaleString()+' · Raised: $'+Math.round(totalBdRaised).toLocaleString()+'</div>':'') +
+    '</div>' +
+    '<button onclick="seAssignBoardMember('+idx+')" style="font-size:.68rem;padding:3px 8px;background:var(--card2);border:1px solid var(--b1);border-radius:6px;color:var(--tx2);cursor:pointer;">+ Assign</button></div>' +
+    (e.boardMembers.length===0?'<div style="font-size:.75rem;color:var(--sub);">No board members assigned to this event</div>':
+    e.boardMembers.map(function(m,mi){
+      var mpct = (parseFloat(m.pledge)||0)>0 ? Math.min(100,Math.round((parseFloat(m.raised)||0)/(parseFloat(m.pledge)||1)*100)) : 0;
+      var roleColors = {Chair:'var(--red)','Co-Chair':'var(--blu)',Committee:'var(--sub)',Advisor:'#ff9500'};
+      return '<div style="background:var(--card2);border-radius:8px;padding:9px 11px;margin-bottom:6px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+        '<div style="flex:1;">' +
+        '<div style="font-size:.82rem;font-weight:700;color:var(--tx);">'+m.name+'</div>' +
+        '<div style="font-size:.68rem;color:'+(roleColors[m.eventRole]||'var(--sub)')+';">'+( m.eventRole||'Committee')+(m.title?' · '+m.title:'')+'</div>' +
+        '</div>' +
+        (m.pledge?'<div style="text-align:right;">' +
+        '<div style="font-size:.75rem;font-weight:700;color:var(--tx);">$'+(parseFloat(m.raised)||0).toLocaleString()+' / $'+(parseFloat(m.pledge)||0).toLocaleString()+'</div>' +
+        '<div style="font-size:.6rem;color:var(--sub);">raised / pledged</div></div>':'') +
+        '</div>' +
+        (m.pledge?'<div style="margin-top:6px;height:4px;background:var(--b1);border-radius:2px;">' +
+        '<div style="height:4px;width:'+mpct+'%;background:'+(mpct>=100?'var(--grn)':'var(--red)')+';border-radius:2px;"></div></div>':'') +
+        (m.tasks&&m.tasks.length?'<div style="margin-top:5px;font-size:.65rem;color:var(--sub);">'+m.tasks.filter(function(t){return !t.done;}).length+' task(s) open</div>':'') +
+        '<div style="display:flex;gap:6px;margin-top:7px;">' +
+        '<button onclick="seEditBoardMember('+idx+','+mi+')" style="font-size:.65rem;padding:2px 7px;background:var(--card);border:1px solid var(--b1);border-radius:5px;color:var(--tx2);cursor:pointer;">Edit</button>' +
+        '<button onclick="seRemoveBoardMember('+idx+','+mi+')" style="font-size:.65rem;padding:2px 7px;background:none;border:none;color:var(--sub);cursor:pointer;">Remove</button>' +
+        '</div></div>';
     }).join('')) +
     '</div>' +
 
@@ -2886,6 +2924,187 @@ function deleteSpecialEvent(i) { seDelete(i); }
 function openRegisterAthletes() {}
 function saveEventRegistration() {}
 
+
+// ── Dev Board Event Assignment ──
+function seAssignBoardMember(evtIdx) {
+  var e = (D.specialEvents||[])[evtIdx]; if (!e) return;
+  if (!e.boardMembers) e.boardMembers=[];
+  var board = D.devBoard||[];
+  if (board.length===0) {
+    toast('No board members yet — add them in Dev Board section first');
+    return;
+  }
+  var assigned = e.boardMembers.map(function(m){ return m.name; });
+  var available = board.filter(function(m){ return assigned.indexOf(m.name)<0; });
+  if (available.length===0) { toast('All board members already assigned'); return; }
+
+  openMo(
+    '<div class="mt">Assign Board Member</div>' +
+    '<div class="fg"><label class="fl">Member</label><select class="fi" id="sbm-name">' +
+    available.map(function(m){ return '<option value="'+m.name+'">'+m.name+(m.title?' — '+m.title:'')+'</option>'; }).join('') +
+    '</select></div>' +
+    '<div class="fg"><label class="fl">Event Role</label><select class="fi" id="sbm-role">' +
+    ['Committee','Chair','Co-Chair','Advisor'].map(function(r){ return '<option>'+r+'</option>'; }).join('') +
+    '</select></div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Fundraising Goal ($)</label><input class="fi" id="sbm-goal" type="number" placeholder="0"></div>' +
+    '<div class="fg"><label class="fl">Amount Raised ($)</label><input class="fi" id="sbm-raised" type="number" placeholder="0"></div>' +
+    '</div>' +
+    '<div class="fg"><label class="fl">Pledge Amount ($)</label><input class="fi" id="sbm-pledge" type="number" placeholder="Personal pledge"></div>' +
+    '<div class="fg"><label class="fl">Notes</label><input class="fi" id="sbm-notes" placeholder="e.g. Leading table sales outreach"></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="seSaveBoardMember('+evtIdx+',null)">Assign</button>'
+  );
+}
+
+function seEditBoardMember(evtIdx, mi) {
+  var e = (D.specialEvents||[])[evtIdx]; if (!e||!e.boardMembers) return;
+  var m = e.boardMembers[mi]; if (!m) return;
+  openMo(
+    '<div class="mt">'+m.name+'</div>' +
+    '<div class="fg"><label class="fl">Event Role</label><select class="fi" id="sbm-role">' +
+    ['Committee','Chair','Co-Chair','Advisor'].map(function(r){ return '<option'+(m.eventRole===r?' selected':'')+'>'+r+'</option>'; }).join('') +
+    '</select></div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Fundraising Goal ($)</label><input class="fi" id="sbm-goal" type="number" value="'+(m.goal||'')+'"></div>' +
+    '<div class="fg"><label class="fl">Amount Raised ($)</label><input class="fi" id="sbm-raised" type="number" value="'+(m.raised||'')+'"></div>' +
+    '</div>' +
+    '<div class="fg"><label class="fl">Pledge ($)</label><input class="fi" id="sbm-pledge" type="number" value="'+(m.pledge||'')+'"></div>' +
+    '<div class="fg"><label class="fl">Notes</label><input class="fi" id="sbm-notes" value="'+(m.notes||'')+'"></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="seSaveBoardMember('+evtIdx+','+mi+')">Save</button>'
+  );
+}
+
+function seSaveBoardMember(evtIdx, mi) {
+  var e = (D.specialEvents||[])[evtIdx]; if (!e) return;
+  if (!e.boardMembers) e.boardMembers=[];
+  var name = mi===null ? ((document.getElementById('sbm-name')||{}).value||'') : e.boardMembers[mi].name;
+  if (!name) { toast('Select a member'); return; }
+  // Pull title from global devBoard
+  var globalMember = (D.devBoard||[]).find(function(m){ return m.name===name; })||{};
+  var entry = Object.assign(mi!==null?e.boardMembers[mi]:{}, {
+    name:      name,
+    title:     globalMember.title||'',
+    eventRole: (document.getElementById('sbm-role')||{}).value||'Committee',
+    goal:      parseFloat((document.getElementById('sbm-goal')||{}).value)||0,
+    raised:    parseFloat((document.getElementById('sbm-raised')||{}).value)||0,
+    pledge:    parseFloat((document.getElementById('sbm-pledge')||{}).value)||0,
+    notes:     ((document.getElementById('sbm-notes')||{}).value||'').trim(),
+    tasks:     mi!==null ? e.boardMembers[mi].tasks||[] : []
+  });
+  if (mi===null) e.boardMembers.push(entry);
+  else e.boardMembers[mi]=entry;
+  saveAppData(); closeMo(); seOpenDetail(evtIdx);
+  toast(mi===null?name+' assigned ✓':'Updated ✓');
+}
+
+function seRemoveBoardMember(evtIdx, mi) {
+  var e = (D.specialEvents||[])[evtIdx]; if (!e||!e.boardMembers) return;
+  e.boardMembers.splice(mi,1);
+  saveAppData(); closeMo(); seOpenDetail(evtIdx);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// DEVELOPMENT BOARD — Global member management
+// ══════════════════════════════════════════════════════════════════
+
+function renderDevBoard() {
+  if (!D.devBoard) D.devBoard=[];
+  var members = D.devBoard;
+
+  var out = '<div style="padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between;">' +
+    '<div>' +
+    '<div style="font-size:.95rem;font-weight:800;color:var(--tx);">Development Board</div>' +
+    '<div style="font-size:.72rem;color:var(--sub);margin-top:2px;">'+members.length+' member'+(members.length!==1?'s':'')+' · Manages special event fundraising</div>' +
+    '</div>' +
+    '<button class="btn br3 bf bsm" onclick="dbOpenEdit(null)">+ Add Member</button>' +
+    '</div>';
+
+  if (members.length===0) {
+    out += '<div style="padding:40px 16px;text-align:center;">' +
+      '<div style="font-size:2.5rem;margin-bottom:10px;">🤝</div>' +
+      '<div style="font-size:.92rem;font-weight:700;color:var(--tx);margin-bottom:6px;">No members yet</div>' +
+      '<div style="font-size:.78rem;color:var(--sub);">Add your development board members, then assign them to events.</div></div>';
+  } else {
+    members.forEach(function(m, mi) {
+      // How many events is this member assigned to
+      var evtCount = (D.specialEvents||[]).filter(function(e){
+        return (e.boardMembers||[]).some(function(bm){ return bm.name===m.name; });
+      }).length;
+      out += '<div style="background:var(--card);border:1px solid var(--b1);border-radius:11px;margin:0 16px 8px;overflow:hidden;">' +
+        '<div style="padding:12px 13px;">' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<div style="width:40px;height:40px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;color:#fff;flex-shrink:0;">' +
+        m.name.split(' ').map(function(w){ return w[0]||''; }).join('').slice(0,2).toUpperCase()+'</div>' +
+        '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:.88rem;font-weight:700;color:var(--tx);">'+m.name+'</div>' +
+        '<div style="font-size:.7rem;color:var(--sub);">'+(m.title||'Board Member')+(m.email?' · '+m.email:'')+'</div>' +
+        '</div>' +
+        '<div style="text-align:right;flex-shrink:0;">' +
+        '<div style="font-size:.75rem;font-weight:700;color:var(--blu);">'+evtCount+'</div>' +
+        '<div style="font-size:.6rem;color:var(--sub);">event'+(evtCount!==1?'s':'')+'</div>' +
+        '</div></div>' +
+        (m.notes?'<div style="font-size:.7rem;color:var(--sub);margin-top:6px;font-style:italic;">'+m.notes+'</div>':'') +
+        '</div>' +
+        '<div style="display:flex;border-top:1px solid var(--b1);">' +
+        '<button onclick="dbOpenEdit('+mi+')" style="flex:1;padding:9px;font-size:.72rem;font-weight:600;background:none;border:none;border-right:1px solid var(--b1);color:var(--tx2);cursor:pointer;">Edit</button>' +
+        '<button onclick="dbDelete('+mi+')" style="padding:9px 14px;font-size:.8rem;background:none;border:none;color:var(--sub);cursor:pointer;">✕</button>' +
+        '</div></div>';
+    });
+  }
+  return out + '<div style="height:28px;"></div>';
+}
+
+function dbOpenEdit(mi) {
+  var m = mi!==null ? (D.devBoard||[])[mi] : null;
+  openMo(
+    '<div class="mt">'+(m?'Edit Member':'Add Board Member')+'</div>' +
+    '<div class="fg"><label class="fl">Full Name</label><input class="fi" id="db-name" placeholder="First Last" value="'+(m?m.name||'':'')+'"></div>' +
+    '<div class="fg"><label class="fl">Title / Role</label><input class="fi" id="db-title" placeholder="e.g. Board Chair, Development Director" value="'+(m?m.title||'':'')+'"></div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Email</label><input class="fi" id="db-email" type="email" placeholder="email@example.com" value="'+(m?m.email||'':'')+'"></div>' +
+    '<div class="fg"><label class="fl">Phone</label><input class="fi" id="db-phone" type="tel" placeholder="(555) 555-5555" value="'+(m?m.phone||'':'')+'"></div>' +
+    '</div>' +
+    '<div class="fg"><label class="fl">Notes</label><textarea class="fi" id="db-notes" rows="2" style="resize:none;">'+(m?m.notes||'':'')+'</textarea></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="dbSave('+(mi!==null?mi:'null')+')">Save</button>'
+  );
+  setTimeout(function(){ var el=document.getElementById('db-name'); if(el)el.focus(); },200);
+}
+
+function dbSave(mi) {
+  if (!D.devBoard) D.devBoard=[];
+  var name = ((document.getElementById('db-name')||{}).value||'').trim();
+  if (!name) { toast('Name required'); return; }
+  var entry = {
+    name:  name,
+    title: ((document.getElementById('db-title')||{}).value||'').trim(),
+    email: ((document.getElementById('db-email')||{}).value||'').trim(),
+    phone: ((document.getElementById('db-phone')||{}).value||'').trim(),
+    notes: ((document.getElementById('db-notes')||{}).value||'').trim()
+  };
+  if (mi!==null) D.devBoard[mi]=entry;
+  else D.devBoard.push(entry);
+  // Sync name/title changes to any event assignments
+  if (mi!==null) {
+    (D.specialEvents||[]).forEach(function(e){
+      (e.boardMembers||[]).forEach(function(bm){
+        if (bm.name===(D.devBoard[mi]||{}).name) { bm.title=entry.title; }
+      });
+    });
+  }
+  saveAppData(); closeMo();
+  var b=document.getElementById('sec-body');
+  if (b) b.innerHTML=renderDevBoard();
+  toast(mi!==null?'Updated ✓':'Member added ✓');
+}
+
+function dbDelete(mi) {
+  var m=(D.devBoard||[])[mi]; if (!m) return;
+  if (!confirm('Remove '+m.name+' from the development board?')) return;
+  D.devBoard.splice(mi,1);
+  saveAppData();
+  var b=document.getElementById('sec-body');
+  if (b) b.innerHTML=renderDevBoard();
+}
 
 function renderGoals() {
   if (!D.goals.length) return '<div style="padding:40px 16px;text-align:center;color:var(--sub);font-size:.84rem;">No goals yet. Tap + to add one.</div><div style="height:20px;"></div>';
@@ -5138,7 +5357,7 @@ function renderMore() {
 
   return `<div class="shdr"><span class="sti">All Sections</span></div>
   <div class="cl" style="margin:0 16px 16px;">
-    ${[['&#128176;','g','acct','Accounting'],['&#128172;','b','msgs','Message Board'],['&#127919;','r','goals','Goals'],['&#129309;','g','donors','Donor CRM'],['&#128202;','b','reports','Reports'],['&#127909;','b','meetings','Board Meetings'],['&#127891;','b','schools','Schools DB'],['&#127775;','b','events','Special Events']].map(function(it){
+    ${[['&#128176;','g','acct','Accounting'],['&#128172;','b','msgs','Message Board'],['&#127919;','r','goals','Goals'],['&#129309;','g','donors','Donor CRM'],['&#128202;','b','reports','Reports'],['&#127909;','b','meetings','Board Meetings'],['&#127891;','b','schools','Schools DB'],['&#127775;','b','events','Special Events'],['&#128101;','r','devboard','Dev Board']].map(function(it){
       return `<button class="cr" onclick="admSec('${it[2]}')">
         <div class="ci ${it[1]}">${it[0]}</div>
         <div style="flex:1;"><div class="cn">${it[3]}</div></div>
@@ -5219,7 +5438,8 @@ function exportAppData() {
       visits:         D.visits,
       measurables:    D.measurables,
       eligibility:    D.eligibility,
-      specialEvents:  D.specialEvents
+      specialEvents:  D.specialEvents,
+      devBoard:       D.devBoard
     };
     var json = JSON.stringify(snap, null, 2);
     var blob = new Blob([json], {type: 'application/json'});
@@ -5246,7 +5466,7 @@ function importAppData() {
     reader.onload = function(ev) {
       try {
         var snap = JSON.parse(ev.target.result);
-        var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','acct','athProfile','txns','tasks','donors','contacts','coaches','schoolsDB','specialEvents','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility'];
+        var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','acct','athProfile','txns','tasks','donors','contacts','coaches','schoolsDB','specialEvents','devBoard','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility'];
         var loaded = 0;
         keys.forEach(function(k) {
           if (snap[k] !== undefined) { D[k] = snap[k]; loaded++; }
