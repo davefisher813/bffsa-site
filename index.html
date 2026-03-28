@@ -3148,6 +3148,8 @@ function saveGoal() {
 
 function renderRoster(filter) {
   var statusFilter = D.rosterStatusFilter || 'Active';
+  var selectMode   = D._rosterSelectMode || false;
+  var selected     = D._rosterSelected  || [];
   var list = D.roster.filter(function(a){
     if (filter && a.sport !== filter) return false;
     if (statusFilter === 'All') return true;
@@ -3159,7 +3161,7 @@ function renderRoster(filter) {
 
   return '<div style="padding:10px 16px 0;">' +
     // Status filter tabs
-    '<div style="display:flex;gap:5px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none;">' +
+    '<div style="display:flex;gap:5px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none;">' +
     ['Active','Committed','Graduated','Exited','All'].map(function(s){
       var on = statusFilter === s;
       var colors = {Active:'var(--grn)',Committed:'var(--blu)',Graduated:'var(--sub)',Exited:'var(--red2)',All:'var(--tx)'};
@@ -3167,12 +3169,143 @@ function renderRoster(filter) {
         (on?'background:var(--red);color:#fff;':'background:var(--card2);color:'+colors[s]+';') + '">' +
         s + ' (' + statusCounts[s] + ')</button>';
     }).join('') + '</div>' +
-    // Search
+    // Search + Select toggle
+    '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
     '<input placeholder="Search athletes..." oninput="rosterSearch(this.value)" ' +
-    'style="width:100%;padding:9px 12px;background:var(--card2);border:1px solid var(--b2);color:var(--tx);border-radius:10px;font-size:.84rem;outline:none;margin-bottom:10px;">' +
+    'style="flex:1;padding:9px 12px;background:var(--card2);border:1px solid var(--b2);color:var(--tx);border-radius:10px;font-size:.84rem;outline:none;">' +
+    '<button onclick="rosterToggleSelect()" style="padding:9px 12px;font-size:.72rem;font-weight:700;border-radius:10px;border:none;cursor:pointer;flex-shrink:0;' +
+    (selectMode?'background:var(--red);color:#fff;':'background:var(--card2);color:var(--sub);')+'">' +
+    (selectMode?'✓ Selecting':'Select') + '</button>' +
+    '</div>' +
+    // Select all bar (shown in select mode)
+    (selectMode?'<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--card2);border-radius:8px;margin-bottom:10px;">' +
+    '<button onclick="rosterSelectAll()" style="font-size:.72rem;padding:4px 10px;background:var(--card);border:1px solid var(--b2);border-radius:6px;color:var(--tx2);cursor:pointer;">All</button>' +
+    '<button onclick="rosterSelectNone()" style="font-size:.72rem;padding:4px 10px;background:var(--card);border:1px solid var(--b2);border-radius:6px;color:var(--tx2);cursor:pointer;">None</button>' +
+    '<span style="font-size:.72rem;color:var(--sub);margin-left:4px;" id="roster-sel-count">'+selected.length+' selected</span>' +
+    '</div>':'') +
     // List
-    '<div id="roster-list">' + rosterRows(list) + '</div>' +
+    '<div id="roster-list">' + rosterRows(list, selectMode, selected) + '</div>' +
+    // Bulk action bar
+    (selectMode?'<div style="position:sticky;bottom:0;padding:10px 0;background:var(--bg);">' +
+    '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;padding:10px 12px;">' +
+    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;margin-bottom:8px;">Bulk Actions</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
+    '<button onclick="rosterBulkPortal(true)"  style="font-size:.72rem;padding:7px 12px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:8px;cursor:pointer;font-weight:700;">+ Add to Portal</button>' +
+    '<button onclick="rosterBulkPortal(false)" style="font-size:.72rem;padding:7px 12px;background:var(--rm);border:1px solid rgba(204,0,0,.2);color:var(--red2);border-radius:8px;cursor:pointer;font-weight:700;">− Remove Portal</button>' +
+    '<button onclick="rosterBulkStatus()"      style="font-size:.72rem;padding:7px 12px;background:var(--card2);border:1px solid var(--b2);color:var(--tx2);border-radius:8px;cursor:pointer;font-weight:700;">Change Status</button>' +
+    '<button onclick="rosterBulkCoord()"       style="font-size:.72rem;padding:7px 12px;background:var(--card2);border:1px solid var(--b2);color:var(--tx2);border-radius:8px;cursor:pointer;font-weight:700;">Assign Coordinator</button>' +
+    '</div></div></div>':'') +
     '<div style="height:80px;"></div></div>';
+}
+
+function rosterToggleSelect() {
+  D._rosterSelectMode = !D._rosterSelectMode;
+  D._rosterSelected   = [];
+  rosterRefresh();
+}
+
+function rosterSelectAll() {
+  var statusFilter = D.rosterStatusFilter || 'Active';
+  D._rosterSelected = D.roster
+    .filter(function(a){ return statusFilter==='All' || a.status===statusFilter; })
+    .map(function(a){ return a.init; });
+  rosterRefresh();
+}
+
+function rosterSelectNone() {
+  D._rosterSelected = [];
+  rosterRefresh();
+}
+
+function rosterToggleOne(init) {
+  if (!D._rosterSelected) D._rosterSelected=[];
+  var idx = D._rosterSelected.indexOf(init);
+  if (idx>=0) D._rosterSelected.splice(idx,1);
+  else D._rosterSelected.push(init);
+  // Update count without full re-render
+  var cnt = document.getElementById('roster-sel-count');
+  if (cnt) cnt.textContent = D._rosterSelected.length+' selected';
+  // Update checkbox visual
+  var cb = document.getElementById('rcb-'+init);
+  if (cb) {
+    cb.style.background  = idx<0 ? 'var(--red)' : 'var(--card2)';
+    cb.style.borderColor = idx<0 ? 'var(--red)' : 'var(--b2)';
+    cb.textContent       = idx<0 ? '✓' : '';
+  }
+}
+
+function rosterBulkPortal(enable) {
+  var sel = D._rosterSelected||[];
+  if (!sel.length) { toast('Select at least one athlete'); return; }
+  var count = 0;
+  sel.forEach(function(init){
+    var a = D.roster.find(function(r){ return r.init===init; });
+    if (!a) return;
+    D.portalEnabled[a.init] = enable;
+    if (!enable) a.pin='';
+    count++;
+  });
+  saveAppData();
+  toast((enable?'Added '+count+' to portal':'Removed '+count+' from portal')+' ✓');
+  D._rosterSelectMode=false; D._rosterSelected=[];
+  rosterRefresh();
+}
+
+function rosterBulkStatus() {
+  var sel = D._rosterSelected||[];
+  if (!sel.length) { toast('Select at least one athlete'); return; }
+  openMo(
+    '<div class="mt">Change Status</div>' +
+    '<div style="font-size:.78rem;color:var(--sub);margin-bottom:14px;">Applying to '+sel.length+' athlete'+(sel.length>1?'s':'')+'</div>' +
+    '<div class="fg"><label class="fl">New Status</label><select class="fi" id="bulk-status">' +
+    ['Active','Committed','Graduated','Exited'].map(function(s){ return '<option>'+s+'</option>'; }).join('') +
+    '</select></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="rosterBulkStatusSave()">Apply</button>'
+  );
+}
+
+function rosterBulkStatusSave() {
+  var sel = D._rosterSelected||[];
+  var status = (document.getElementById('bulk-status')||{}).value||'Active';
+  sel.forEach(function(init){
+    var a = D.roster.find(function(r){ return r.init===init; });
+    if (a) a.status=status;
+  });
+  saveAppData(); closeMo();
+  toast('Status updated for '+sel.length+' athlete'+(sel.length>1?'s':'')+' ✓');
+  D._rosterSelectMode=false; D._rosterSelected=[];
+  rosterRefresh();
+}
+
+function rosterBulkCoord() {
+  var sel = D._rosterSelected||[];
+  if (!sel.length) { toast('Select at least one athlete'); return; }
+  var coords = (D.coordinators||[]).filter(function(c){ return c.role==='Recruiting Coordinator'; });
+  if (!coords.length) { toast('No coordinators found'); return; }
+  openMo(
+    '<div class="mt">Assign Coordinator</div>' +
+    '<div style="font-size:.78rem;color:var(--sub);margin-bottom:14px;">Applying to '+sel.length+' athlete'+(sel.length>1?'s':'')+'</div>' +
+    '<div class="fg"><label class="fl">Coordinator</label><select class="fi" id="bulk-coord">' +
+    '<option value="">— Unassign —</option>' +
+    coords.map(function(c){ return '<option value="'+c.init+'">'+c.name+'</option>'; }).join('') +
+    '</select></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="rosterBulkCoordSave()">Apply</button>'
+  );
+}
+
+function rosterBulkCoordSave() {
+  var sel   = D._rosterSelected||[];
+  var cInit = (document.getElementById('bulk-coord')||{}).value||'';
+  if (!D.assignments) D.assignments={};
+  sel.forEach(function(init){
+    if (!D.assignments[init]) D.assignments[init]={coordInit:'',tasks:[]};
+    D.assignments[init].coordInit=cInit;
+  });
+  saveAppData(); closeMo();
+  var coord = cInit ? (D.coordinators||[]).find(function(c){ return c.init===cInit; }) : null;
+  toast((coord?coord.name:'Coordinator removed')+' — '+sel.length+' athlete'+(sel.length>1?'s':'')+' updated ✓');
+  D._rosterSelectMode=false; D._rosterSelected=[];
+  rosterRefresh();
 }
 
 function rosterRefresh() {
@@ -3182,35 +3315,52 @@ function rosterRefresh() {
 
 function rosterSearch(q) {
   var statusFilter = D.rosterStatusFilter || 'Active';
+  var selectMode   = D._rosterSelectMode || false;
+  var selected     = D._rosterSelected  || [];
   var list = D.roster.filter(function(a){
     if (statusFilter !== 'All' && a.status !== statusFilter) return false;
     if (!q) return true;
     return (a.name + a.school + a.sport + (a.contact||'')).toLowerCase().includes(q.toLowerCase());
   });
   var el = document.getElementById('roster-list');
-  if (el) el.innerHTML = rosterRows(list);
+  if (el) el.innerHTML = rosterRows(list, selectMode, selected);
 }
 
-function rosterRows(list) {
+function rosterRows(list, selectMode, selected) {
+  if (!selected) selected=[];
   if (list.length === 0) return '<div style="text-align:center;padding:30px;color:var(--sub);font-size:.84rem;">No athletes found</div>';
   return list.map(function(a) {
+    var idx = D.roster.indexOf(a);
     var statusColors = {Active:'var(--grn)',Committed:'var(--blu)',Graduated:'var(--sub)',Exited:'var(--red2)'};
-    var statusBgs = {Active:'var(--gm)',Committed:'rgba(52,152,219,.15)',Graduated:'var(--card2)',Exited:'var(--rm)'};
-    var sc = statusColors[a.status]||'var(--sub)';
-    var sb = statusBgs[a.status]||'var(--card2)';
-    return '<button onclick="openAthleteProfile('+D.roster.indexOf(a)+',\'vADM\')" style="width:100%;display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--card);border:1px solid var(--b1);border-radius:10px;margin-bottom:7px;cursor:pointer;text-align:left;">' +
+    var statusBgs    = {Active:'var(--gm)',Committed:'rgba(52,152,219,.15)',Graduated:'var(--card2)',Exited:'var(--rm)'};
+    var sc  = statusColors[a.status]||'var(--sub)';
+    var sb  = statusBgs[a.status]||'var(--card2)';
+    var sel = selected.indexOf(a.init)>=0;
+
+    if (selectMode) {
+      return '<div onclick="rosterToggleOne(\''+a.init+'\')" style="display:flex;align-items:center;gap:10px;padding:11px 12px;background:'+(sel?'rgba(204,0,0,.06)':'var(--card)')+';border:1px solid '+(sel?'var(--red)':'var(--b1)')+';border-radius:10px;margin-bottom:7px;cursor:pointer;">' +
+        '<div id="rcb-'+a.init+'" style="width:22px;height:22px;border-radius:50%;border:2px solid '+(sel?'var(--red)':'var(--b2)')+';background:'+(sel?'var(--red)':'var(--card2)')+';display:flex;align-items:center;justify-content:center;font-size:.6rem;color:#fff;flex-shrink:0;font-weight:800;">'+(sel?'✓':'')+'</div>' +
+        '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:.87rem;font-weight:700;color:var(--tx);">'+a.name+'</div>' +
+        '<div style="font-size:.69rem;color:var(--sub);margin-top:2px;">'+a.sport+(a.school?' · '+a.school:'')+'</div>' +
+        '</div>' +
+        '<div style="flex-shrink:0;text-align:right;">' +
+        '<div style="font-size:.68rem;padding:3px 8px;border-radius:20px;background:'+sb+';color:'+sc+';font-weight:700;">'+a.status+'</div>' +
+        (D.portalEnabled[a.init]?'<div style="margin-top:3px;font-size:.6rem;padding:1px 6px;border-radius:20px;background:var(--gm);color:var(--grn);font-weight:700;">Portal ✓</div>':'') +
+        '</div></div>';
+    }
+
+    return '<button onclick="openAthleteProfile('+idx+',\'vADM\')" style="width:100%;display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--card);border:1px solid var(--b1);border-radius:10px;margin-bottom:7px;cursor:pointer;text-align:left;">' +
       '<div style="width:38px;height:38px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;color:#fff;flex-shrink:0;">'+a.init+'</div>' +
       '<div style="flex:1;min-width:0;">' +
       '<div style="font-size:.87rem;font-weight:700;color:var(--tx);">'+a.name+'</div>' +
-      '<div style="font-size:.69rem;color:var(--sub);margin-top:2px;">' +
-        a.sport + (a.school?' · '+a.school:'') + ' · Class of '+a.grad +
-      '</div>' +
-      (a.gpa ? '<div style="font-size:.65rem;color:var(--tx3);margin-top:1px;">GPA '+a.gpa+'</div>' : '') +
+      '<div style="font-size:.69rem;color:var(--sub);margin-top:2px;">'+a.sport+(a.school?' · '+a.school:'')+ ' · Class of '+a.grad+'</div>' +
+      (a.gpa?'<div style="font-size:.65rem;color:var(--tx3);margin-top:1px;">GPA '+a.gpa+'</div>':'') +
       '</div>' +
       '<div style="flex-shrink:0;text-align:right;">' +
       '<div style="font-size:.68rem;padding:3px 8px;border-radius:20px;background:'+sb+';color:'+sc+';font-weight:700;">'+a.status+'</div>' +
-      (D.portalEnabled[a.init] ? '<div style="margin-top:3px;font-size:.6rem;padding:1px 6px;border-radius:20px;background:var(--gm);color:var(--grn);font-weight:700;">&#9711; Portal</div>' : '') +
-      (a.recruitStage ? '<div style="font-size:.63rem;color:var(--sub);margin-top:4px;">'+a.recruitStage+'</div>' : '') +
+      (D.portalEnabled[a.init]?'<div style="margin-top:3px;font-size:.6rem;padding:1px 6px;border-radius:20px;background:var(--gm);color:var(--grn);font-weight:700;">&#9711; Portal</div>':'') +
+      (a.recruitStage?'<div style="font-size:.63rem;color:var(--sub);margin-top:4px;">'+a.recruitStage+'</div>':'') +
       '</div></button>';
   }).join('');
 }
