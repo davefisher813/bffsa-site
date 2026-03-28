@@ -1670,34 +1670,46 @@ var D = {
   events: [],
   roster: [
     // ── ACTIVE ──
-    {name:'Angel Valerio',    init:'AV', sport:'Baseball', school:'IADIS',                    grad:2026, status:'Active',    program:'Bridge', gpa:3.4,  contact:'valeriorebretonangelamin@gmail.com', guardian:'',  joined:'2025-09-25', english:'No',  recruitStage:'In Contact',   saplan:'Academy - Team', notes:'', pin:''},
-    {name:'Anthony Basilio',  init:'AB', sport:'Baseball', school:'',                          grad:2028, status:'Active',    program:'Bridge', gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'',             saplan:'Academy - Team', notes:'', pin:''},
-    {name:'Brandon Jimenez',  init:'BJ', sport:'Baseball', school:'West 50th',                 grad:2026, status:'Active',    program:'Bridge', gpa:2.8,  contact:'brandonjimenez236@gmail.com',       guardian:'',  joined:'2024-09-01', english:'Yes', recruitStage:'In Contact',   saplan:'Academy - Team', notes:'', pin:''},
-    {name:'Darwins Branche',  init:'DB', sport:'Baseball', school:'Monroe (Comp Sci HS)',      grad:2027, status:'Active',    program:'Bridge', gpa:3.9,  contact:'darwinssantosb@gmail.com',          guardian:'',  joined:'2024-09-01', english:'Yes', recruitStage:'In Contact',   saplan:'Academy - Team', notes:'Hamilton College Camp Jan 2026', pin:''},
-    {name:'Derek Soria',      init:'DS', sport:'Baseball', school:'',                          grad:2027, status:'Active',    program:'Bridge', gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'In Contact',   saplan:'Academy - Team', notes:'', pin:''},
-    {name:'Jayden (JJ) Batista',init:'JB',sport:'Baseball',school:'Elite Squad Academy',       grad:2025, status:'Active',    program:'Bridge', gpa:2.8,  contact:'batistajayden5@gmail.com',          guardian:'',  joined:'2024-09-01', english:'Yes', recruitStage:'In Contact',   saplan:'Academy - Team', notes:'', pin:''},
-    {name:'Johan Diaz',       init:'JD', sport:'Baseball', school:'James Monroe',              grad:2027, status:'Active',    program:'Bridge', gpa:null, contact:'',                                  guardian:'',  joined:'',           english:'No',  recruitStage:'In Contact',   saplan:'Academy - Team', notes:'', pin:''},
-    {name:'Junior Pena',      init:'JP', sport:'Baseball', school:'Elite Squad Academy',       grad:2027, status:'Active',    program:'Bridge', gpa:null, contact:'',                                  guardian:'',  joined:'2024-09-24', english:'Yes', recruitStage:'',             saplan:'Academy - Team', notes:'DOB: Oct 24 2008', pin:''},
-    {name:'Xavier Izquierdo', init:'XI', sport:'Baseball', school:'Westminister',              grad:2027, status:'Active',    program:'Bridge', gpa:3.9,  contact:'',                                  guardian:'',  joined:'',           english:'Yes', recruitStage:'',             saplan:'Academy - Team', notes:'', pin:''},
+    {name:'Angel Valerio',         init:'AV', sport:'Baseball', school:'IADIS',               grad:2026, status:'Active',    program:'Bridge', gpa:3.4,  contact:'valeriorebretonangelamin@gmail.com', guardian:'', joined:'2025-09-25', english:'No',  recruitStage:'In Contact',   saplan:'Academy - Team', notes:'', pin:''},
+    {name:'Anthony Basilio',       init:'AB', sport:'Baseball', school:'',                    grad:2028, status:'Active',    program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'Academy - Team', notes:'', pin:''},
+    {name:'Darwins Branche',       init:'DB', sport:'Baseball', school:'Monroe (Comp Sci HS)',grad:2027, status:'Active',    program:'Bridge', gpa:3.9,  contact:'darwinssantosb@gmail.com',          guardian:'', joined:'2024-09-01', english:'Yes', recruitStage:'In Contact',   saplan:'Academy - Team', notes:'Hamilton College Camp Jan 2026', pin:''},
+    {name:'Derek Soria',           init:'DS', sport:'Baseball', school:'',                    grad:2027, status:'Active',    program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'In Contact',   saplan:'Academy - Team', notes:'', pin:''},
+    {name:'Jayden (JJ) Batista',   init:'JB', sport:'Baseball', school:'Elite Squad Academy', grad:2025, status:'Active',    program:'Bridge', gpa:2.8,  contact:'batistajayden5@gmail.com',          guardian:'', joined:'2024-09-01', english:'Yes', recruitStage:'In Contact',   saplan:'Academy - Team', notes:'', pin:''},
+    {name:'Johan Diaz',            init:'JD', sport:'Baseball', school:'James Monroe',        grad:2027, status:'Active',    program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:'No',  recruitStage:'In Contact',   saplan:'Academy - Team', notes:'', pin:''},
+    {name:'Junior Pena',           init:'JP', sport:'Baseball', school:'Elite Squad Academy', grad:2027, status:'Active',    program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'2024-09-24', english:'Yes', recruitStage:'',             saplan:'Academy - Team', notes:'DOB: Oct 24 2008', pin:''},
+    {name:'Xavier Izquierdo',      init:'XI', sport:'Baseball', school:'Westminister',        grad:2027, status:'Active',    program:'Bridge', gpa:3.9,  contact:'',                                  guardian:'', joined:'',           english:'Yes', recruitStage:'',             saplan:'Academy - Team', notes:'', pin:''},
     // ── COMMITTED ──
-    {name:'Angel Castillo',   init:'AC', sport:'Baseball', school:'Cardinal Hayes',            grad:2026, status:'Committed', program:'Bridge', gpa:3.1,  contact:'a.castillocedano34',                guardian:'',  joined:'',           english:'Yes', recruitStage:'Offer/Commit', saplan:'Academy - Team', notes:'DOB: Feb 28 2008', pin:''},
-    // ── GRADUATED ──
-    {name:'Angel Perez',      init:'AP', sport:'',         school:'N/A (DR)',                  grad:2023, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'2025-05-24', english:null,  recruitStage:'',             saplan:'', notes:'DOB: Aug 16 2005', pin:''},
-    {name:'Brian Valdovinos', init:'BV', sport:'',         school:'Port Chester HS',           grad:2023, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'', pin:''},
-    {name:'Carlos Carmona',   init:'CC', sport:'',         school:'',                          grad:2022, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'', pin:''},
-    {name:'Erwins Branche',   init:'EB', sport:'',         school:'James Monroe',              grad:2022, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'', pin:''},
-    {name:'Gialdri Gomez',    init:'GG', sport:'',         school:'Acellus (Online Program)',  grad:2022, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'', pin:''},
-    {name:'Harby Valera',     init:'HV', sport:'',         school:'Inwood',                   grad:2022, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'2026 Scholarship recipient', pin:''},
-    {name:'Henry Tolentino',  init:'HT', sport:'',         school:'Inwood',                   grad:2023, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'2025-05-24', english:null,  recruitStage:'',             saplan:'', notes:'DOB: Sep 22 2005. 2026 Scholarship – $300 Mar, $500 Apr', pin:''},
-    {name:'Jeremy Recio',     init:'JR', sport:'',         school:'',                          grad:2023, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'2025-05-24', english:null,  recruitStage:'',             saplan:'', notes:'DOB: Mar 4 2006', pin:''},
-    {name:'Jon Legrande',     init:'JL', sport:'',         school:'George Washington',         grad:2022, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'', pin:''},
-    {name:'Jose Ulloa',       init:'JU', sport:'',         school:'Inwood',                   grad:2024, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'2026 Scholarship – $300 Jan + $500 May. Mercy Travel Trip Jan 2026', pin:''},
-    {name:'Kengri De Los Santos',init:'KD',sport:'',       school:'N/A (DR)',                  grad:2023, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'2025-05-24', english:null,  recruitStage:'',             saplan:'', notes:'DOB: Sep 11 2004', pin:''},
-    {name:'Richie Bonomolo',  init:'RB', sport:'',         school:'Cardinal Hayes',            grad:2022, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'DOB: Oct 30 2003', pin:''},
+    {name:'Angel Castillo',        init:'AC', sport:'Baseball', school:'Cardinal Hayes',      grad:2026, status:'Committed', program:'Bridge', gpa:3.1,  contact:'a.castillocedano34',                guardian:'', joined:'',           english:'Yes', recruitStage:'Offer/Commit', saplan:'Academy - Team', notes:'DOB: Feb 28 2008. Committed: Cayuga College', pin:'', commitment:'Cayuga College'},
+    {name:'Brandon Jimenez',       init:'BJ', sport:'Baseball', school:'West 50th',           grad:2026, status:'Committed', program:'Bridge', gpa:2.8,  contact:'brandonjimenez236@gmail.com',       guardian:'', joined:'2024-09-01', english:'Yes', recruitStage:'Offer/Commit', saplan:'Academy - Team', notes:'Committed: Kingsborough Community College', pin:'', commitment:'Kingsborough Community College'},
+    // ── GRADUATED / PLACED ──
+    {name:'Aidan Rosario',         init:'AR', sport:'Baseball', school:'',                    grad:2023, status:'Graduated', program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Franklin Pierce University', pin:'', commitment:'Franklin Pierce University'},
+    {name:'Alviere Delacruz',      init:'AD', sport:'Baseball', school:'',                    grad:2023, status:'Graduated', program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Lackawanna Community College', pin:'', commitment:'Lackawanna Community College'},
+    {name:'Angel Perez',           init:'AP', sport:'',         school:'N/A (DR)',             grad:2023, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'2025-05-24', english:null,  recruitStage:'',             saplan:'', notes:'DOB: Aug 16 2005', pin:''},
+    {name:'Brian Valdovinos',      init:'BV', sport:'Soccer',   school:'Port Chester HS',     grad:2023, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Herkimer College → University of New Haven', pin:'', commitment:'University of New Haven'},
+    {name:'Carlos Carmona',        init:'CC', sport:'Baseball', school:'',                    grad:2022, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Calhoun CC → Georgia State → University of North Alabama', pin:'', commitment:'University of North Alabama'},
+    {name:'Christopher Villavicencio',init:'CV',sport:'Baseball',school:'',                   grad:2022, status:'Graduated', program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Calhoun Community College', pin:'', commitment:'Calhoun Community College'},
+    {name:'Cristian Berroa',       init:'CB', sport:'Baseball', school:'',                    grad:2023, status:'Graduated', program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Western Oklahoma State College', pin:'', commitment:'Western Oklahoma State College'},
+    {name:'Dylan O\'Brien',        init:'DO', sport:'Baseball', school:'',                    grad:2023, status:'Graduated', program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'SUNY Brockport', pin:'', commitment:'SUNY Brockport'},
+    {name:'Erick Ballenilla',      init:'EB2',sport:'Baseball', school:'',                    grad:2023, status:'Graduated', program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'New Mexico Junior College', pin:'', commitment:'New Mexico Junior College'},
+    {name:'Erwins Branche',        init:'EB', sport:'Baseball', school:'James Monroe',        grad:2022, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Herkimer College → Jackson State University', pin:'', commitment:'Jackson State University'},
+    {name:'Gialdri Gomez',         init:'GG', sport:'Baseball', school:'Acellus (Online)',    grad:2022, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Seminole State College → University of North Florida', pin:'', commitment:'University of North Florida'},
+    {name:'Guillermo Zabala',      init:'GZ', sport:'Basketball',school:'',                   grad:2023, status:'Graduated', program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Arizona Western College → Purchase College', pin:'', commitment:'Purchase College'},
+    {name:'Harby Valera',          init:'HV', sport:'Baseball', school:'Inwood',              grad:2022, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Calhoun CC → North Alabama → Post University. 2026 Scholarship recipient', pin:'', commitment:'Post University'},
+    {name:'Henry Tolentino',       init:'HT', sport:'Baseball', school:'Inwood',              grad:2023, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'2025-05-24', english:null,  recruitStage:'',             saplan:'', notes:'DOB: Sep 22 2005. Herkimer College → Queens College. 2026 Scholarship – $300 Mar, $500 Apr', pin:'', commitment:'Queens College'},
+    {name:'Jeremy Recio',          init:'JR', sport:'Baseball', school:'',                    grad:2023, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'2025-05-24', english:null,  recruitStage:'',             saplan:'', notes:'DOB: Mar 4 2006. Cayuga College', pin:'', commitment:'Cayuga College'},
+    {name:'Jon Legrande',          init:'JL', sport:'Baseball', school:'George Washington',   grad:2022, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Wabash Valley College → St. John\'s University', pin:'', commitment:'St. John\'s University'},
+    {name:'Jose Taveras',          init:'JT', sport:'Baseball', school:'',                    grad:2023, status:'Graduated', program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Dominican College', pin:'', commitment:'Dominican College'},
+    {name:'Jose Ulloa',            init:'JU', sport:'Baseball', school:'Inwood',              grad:2024, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Mercy College. 2026 Scholarship – $300 Jan + $500 May. Mercy Travel Trip Jan 2026', pin:'', commitment:'Mercy College'},
+    {name:'Kengri De Los Santos',  init:'KD', sport:'Baseball', school:'N/A (DR)',            grad:2023, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'2025-05-24', english:null,  recruitStage:'',             saplan:'', notes:'DOB: Sep 11 2004. Western Oklahoma State College', pin:'', commitment:'Western Oklahoma State College'},
+    {name:'Kevin Valdovinos',      init:'KV2',sport:'Soccer',   school:'',                    grad:2023, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Herkimer College → Pfeiffer University', pin:'', commitment:'Pfeiffer University'},
+    {name:'Luis Mario',            init:'LM', sport:'Baseball', school:'',                    grad:2023, status:'Graduated', program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Monroe College', pin:'', commitment:'Monroe College'},
+    {name:'Player Crosby',         init:'PC', sport:'Baseball', school:'',                    grad:2023, status:'Graduated', program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Coastal Carolina (Commit) → University at Albany', pin:'', commitment:'University at Albany'},
+    {name:'Rabel Badia',           init:'RA', sport:'Baseball', school:'',                    grad:2023, status:'Graduated', program:'Bridge', gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'Eastern Nazarene College', pin:'', commitment:'Eastern Nazarene College'},
+    {name:'Richie Bonomolo Jr.',   init:'RB', sport:'Baseball', school:'Cardinal Hayes',      grad:2022, status:'Graduated', program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'MLB Draft – NY Yankees. Wabash Valley College → University of Alabama. DOB: Oct 30 2003', pin:'', commitment:'University of Alabama'},
     // ── EXITED ──
-    {name:'Denzel Mieja',     init:'DM', sport:'',         school:'',                          grad:2025, status:'Exited',    program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'', pin:''},
-    {name:'Fausto Dominguez', init:'FD', sport:'',         school:'',                          grad:2025, status:'Exited',    program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'', pin:''},
-    {name:'Jariel Martinez',  init:'JM', sport:'',         school:'',                          grad:2025, status:'Exited',    program:'',       gpa:null, contact:'',                                  guardian:'',  joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'', pin:''}
+    {name:'Denzel Mieja',          init:'DM', sport:'',         school:'',                    grad:2025, status:'Exited',    program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'', pin:''},
+    {name:'Fausto Dominguez',      init:'FD', sport:'',         school:'',                    grad:2025, status:'Exited',    program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'', pin:''},
+    {name:'Jariel Martinez',       init:'JM', sport:'',         school:'',                    grad:2025, status:'Exited',    program:'',       gpa:null, contact:'',                                  guardian:'', joined:'',           english:null,  recruitStage:'',             saplan:'', notes:'', pin:''}
   ],
   donors: [],
   colleges: [],
@@ -1875,8 +1887,8 @@ function renderAdmHome() {
   // Athletes
   document.querySelectorAll('#stat-athletes').forEach(function(el){ el.textContent = D.roster.length; });
 
-  // Placed = Committed athletes
-  var placedCount = D.roster.filter(function(r){ return r.status === 'Committed'; }).length;
+  // Placed = Committed + Graduated (everyone in college or placed)
+  var placedCount = D.roster.filter(function(r){ return r.status === 'Committed' || r.status === 'Graduated'; }).length;
   document.querySelectorAll('#stat-placed').forEach(function(el){ el.textContent = placedCount; });
 
   // Raised = income transactions + donor gifts
@@ -3830,22 +3842,21 @@ async function loadSchoolProfile(playerIdx, collegeIdx) {
   // Remove division suffixes from school name for cleaner search
   searchName = searchName.replace(/\s*(juco\s*(d[123])?|d[123]|division\s*[123iii]+)\s*/gi, ' ').trim();
 
-  var prompt = 'Search for the current program profile for ' + searchName + divHint + ' for a student athlete. ' +
-    'Return ONLY valid JSON, no markdown. Fields: division(D1|D2|D3|NAIA|JUCO), conference, ' +
-    'academics:{gpa_min, gpa_avg, sat_range, act_range, acceptance_rate, ncaa_clearinghouse(bool), core_courses}, ' +
-    'financials:{instate_tuition, outstate_tuition, room_board, instate_total, outstate_total, athletic_scholarship(full|partial|none), avg_athletic_aid, avg_need_aid, avg_merit_aid}, ' +
-    'athletics:{sport_program(1 sentence for ' + athSport + '), level_of_play, roster_size, playing_time_outlook(realistic|competitive|difficult)}, ' +
-    'conflicts:[{type(academic|financial|athletic), severity(conflict|warning), message}]. ' +
-    'Athlete profile: GPA=' + (athGpa||'unknown') + ', Stage=' + athStage + ', Sport=' + athSport + ', Grad=' + athGrad + '. ' +
-    'Populate conflicts with ACTUAL issues based on athlete profile vs school requirements. Be specific.';
+  var prompt = 'Find current data for ' + searchName + divHint + ' athletic program. ' +
+    'Return ONLY valid JSON. Fields: division(D1|D2|D3|NAIA|JUCO), conference, ' +
+    'academics:{gpa_min,gpa_avg,sat_range,act_range,acceptance_rate,ncaa_clearinghouse}, ' +
+    'financials:{instate_total,outstate_total,athletic_scholarship(full|partial|none),avg_athletic_aid}, ' +
+    'athletics:{sport_program,playing_time_outlook(realistic|competitive|difficult)}, ' +
+    'conflicts:[{type,severity(conflict|warning),message}]. ' +
+    'Athlete: GPA=' + (athGpa||'?') + ' Sport=' + athSport + '. Flag real conflicts only.';
 
   try {
     var res = await fetch('/.netlify/functions/claude', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1200,
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 800,
         tools: [{type: 'web_search_20250305', name: 'web_search'}],
         system: 'You are a college recruiting data analyst. Search for actual current data. Return only valid JSON, no markdown.',
         messages: [{role: 'user', content: prompt}]
@@ -5663,7 +5674,7 @@ function genReport(idx) {
   var title = reportTitles[idx];
   var content = '';
   if (idx===0) {
-    var pl = D.roster.filter(function(a){ return a.status==='Placed'||a.status==='Committed'; });
+    var pl = D.roster.filter(function(a){ return a.status==='Placed'||a.status==='Committed'||a.status==='Graduated'; });
     content = pl.length ? pl.map(function(a){ return a.name+' — '+a.sport+' ('+a.status+')'; }).join('\n') : 'No placements yet.';
   } else if (idx===1) {
     var inc = D.txns.filter(function(t){ return t.type==='income'; }).reduce(function(s,t){ return s+t.amt; },0);
@@ -8827,12 +8838,14 @@ function renderColleges() {
   var colleges = D.playerColleges[athInit] || [];
   var rosterIdx = D.roster.findIndex(function(r){ return r.init === athInit; });
 
-  // Auto-load profiles for schools with no profile and no active load/error
+  // Auto-load profiles for schools with no profile and no active load/error — staggered to avoid rate limits
   if (rosterIdx >= 0) {
+    var loadDelay = 0;
     colleges.forEach(function(c, ci) {
       if (!c.profile && !c.profileLoading && !c.profileError) {
         c.profileLoading = true;
-        loadSchoolProfile(rosterIdx, ci);
+        setTimeout(function(){ loadSchoolProfile(rosterIdx, ci); }, loadDelay);
+        loadDelay += 3000; // 3s between each to stay under 30k TPM
       }
     });
   }
