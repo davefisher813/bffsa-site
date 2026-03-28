@@ -1606,6 +1606,7 @@ function saveAppData() {
         tasks:          D.tasks,
         donors:         D.donors,
         contacts:       D.contacts,
+        coaches:        D.coaches,
         goals:          D.goals,
         events:         D.events,
         profiles:       D.profiles,
@@ -1624,7 +1625,7 @@ function loadAppData() {
     var raw = localStorage.getItem('bffsa-data');
     if (!raw) return;
     var snap = JSON.parse(raw);
-    var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','profiles','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility'];
+    var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','profiles','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches'];
     keys.forEach(function(k) {
       if (snap[k] !== undefined) D[k] = snap[k];
     });
@@ -1642,6 +1643,7 @@ function clearAppData() {
 var D = {
   tasks: [],
   aTasks: [],
+  coaches: [],   // master coaches DB: [{name, school, role, email, phone, sport, addedBy, addedAt, source}]
   commLog: {},       // keyed by player init: [{date, type, school, contact, notes, createdAt}]
   visits: {},        // keyed by player init: [{date, school, type, impression, notes, nextStep, createdAt}]
   measurables: {},   // keyed by player init: {height, weight, position, bat, throw, ...sport-specific stats}
@@ -1887,7 +1889,7 @@ function admSec(sec) {
   }
   curSec = sec;
   goV('vSEC');
-  var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',profiles:'Player Profiles',files:'File Storage',more:'More Settings'};
+  var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',profiles:'Player Profiles',files:'File Storage',contacts:'Coaches Database',more:'More Settings'};
   var ttl = document.getElementById('sec-ttl');
   if (ttl) ttl.textContent = titles[sec] || sec;
   var addb = document.getElementById('sec-add-btn');
@@ -1908,6 +1910,7 @@ function admSec(sec) {
   else if (sec === 'recruiting') body.innerHTML = renderCoordDashboard();
   else if (sec === 'security') body.innerHTML = renderSecuritySettings();
   else if (sec === 'files') body.innerHTML = renderFiles();
+  else if (sec === 'contacts') body.innerHTML = renderAdminCoachesDB();
   else body.innerHTML = renderMore();
 }
 function secAddAction() {
@@ -3556,7 +3559,18 @@ async function loadSchoolProfile(playerIdx, collegeIdx) {
   var athSport = a.sport || 'Baseball';
   var athGrad = a.grad || '';
 
-  var prompt = 'Search for the current program profile for ' + college.school + ' for a student athlete. ' +
+  // Clean school name for better search results
+  var searchName = (college.school || '').trim();
+  // If division info embedded in name, extract it
+  var divHint = '';
+  if (/juco/i.test(searchName)) divHint = ' JUCO community college baseball';
+  else if (/d1|division 1|division i/i.test(searchName)) divHint = ' Division 1';
+  else if (/d2|division 2|division ii/i.test(searchName)) divHint = ' Division 2';
+  else if (/d3|division 3|division iii/i.test(searchName)) divHint = ' Division 3';
+  // Remove division suffixes from school name for cleaner search
+  searchName = searchName.replace(/\s*(juco|d1|d2|d3|division\s*[123iii]+)\s*/gi, ' ').trim();
+
+  var prompt = 'Search for the current program profile for ' + searchName + divHint + ' for a student athlete. ' +
     'Return ONLY valid JSON, no markdown. Fields: division(D1|D2|D3|NAIA|JUCO), conference, ' +
     'academics:{gpa_min, gpa_avg, sat_range, act_range, acceptance_rate, ncaa_clearinghouse(bool), core_courses}, ' +
     'financials:{instate_tuition, outstate_tuition, room_board, instate_total, outstate_total, athletic_scholarship(full|partial|none), avg_athletic_aid, avg_need_aid, avg_merit_aid}, ' +
@@ -3611,7 +3625,12 @@ async function loadSchoolProfile(playerIdx, collegeIdx) {
       colleges[collegeIdx].profileDate = new Date().toISOString().split('T')[0];
     }
     saveAppData();
-    playerTab('colleges');
+    // Refresh whichever portal is currently showing
+    if (document.getElementById('vp-body')) playerTab('colleges');
+    var athBody = document.getElementById('asec-body');
+    if (athBody && athBody.innerHTML.indexOf('College List') >= 0) {
+      athBody.innerHTML = renderColleges();
+    }
 
   } catch(e) {
     if (colleges[collegeIdx]) {
@@ -3619,7 +3638,11 @@ async function loadSchoolProfile(playerIdx, collegeIdx) {
       colleges[collegeIdx].profileError = e.message || 'Could not load profile';
     }
     saveAppData();
-    playerTab('colleges');
+    if (document.getElementById('vp-body')) playerTab('colleges');
+    var athBody2 = document.getElementById('asec-body');
+    if (athBody2 && athBody2.innerHTML.indexOf('College List') >= 0) {
+      athBody2.innerHTML = renderColleges();
+    }
   }
 }
 
@@ -4146,8 +4169,10 @@ function calcCollegeFit(a, college) {
   var currentYear = new Date().getFullYear();
   var yearsOut = gradYear - currentYear;
   if (gradYear > 0) {
-    if (yearsOut <= 0) { warnings.push('Already graduated — eligibility window critical'); score -= 10; }
-    else if (yearsOut === 1 && stageVal < 3) { warnings.push('Graduating in ' + gradYear + ' — limited time to build D1 interest'); }
+    var currentYear = new Date().getFullYear();
+    var yearsOut2 = gradYear - currentYear;
+    // Note: gap year athletes may have graduated but still be actively recruiting - don't penalize
+    if (yearsOut2 === 1 && stageVal < 3) { warnings.push('Graduating in ' + gradYear + ' — step up D1 contact now'); }
   }
 
   // ── Final tag ──
@@ -4205,6 +4230,14 @@ function getFitSummary(a, colleges) {
 
 function renderPlayerColleges(idx, a) {
   var colleges = (D.playerColleges[a.init] || []);
+
+  // Auto-load profiles for any school that doesn't have one yet
+  colleges.forEach(function(c, ci) {
+    if (!c.profile && !c.profileLoading && !c.profileError) {
+      c.profileLoading = true;
+      loadSchoolProfile(idx, ci);
+    }
+  });
   var statusColors = {
     'Target':    'var(--blu)',
     'Applied':   'var(--yel)',
@@ -4374,6 +4407,9 @@ function saveAddCollege(idx) {
   };
   D.playerColleges[a.init].push(entry);
   var newIdx = D.playerColleges[a.init].length - 1;
+  // If coach name provided, add to master coaches DB
+  var coachName = (document.getElementById('nc-coach')||{}).value||'';
+  if (coachName) upsertCoach({name:coachName, school:school}, 'college-list');
   closeMo();
   saveAppData();
   toast(school + ' added — loading profile...');
@@ -4762,6 +4798,10 @@ function saveCommLog(idx) {
   if (!a.recruitStage || a.recruitStage === 'Early' || a.recruitStage === 'Building List') {
     a.recruitStage = 'In Contact';
   }
+  // Upsert coach into master DB
+  var clContact = document.getElementById('cl-contact') ? document.getElementById('cl-contact').value : '';
+  var clSchool = document.getElementById('cl-school') ? document.getElementById('cl-school').value : '';
+  if (clContact || clSchool) upsertCoach({name:clContact, school:clSchool}, 'comm-log');
   closeMo(); saveAppData();
   toast('Contact logged ✓');
   playerTab('comm');
@@ -5478,7 +5518,7 @@ function importAppData() {
     reader.onload = function(ev) {
       try {
         var snap = JSON.parse(ev.target.result);
-        var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','profiles','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility'];
+        var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','profiles','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches'];
         var loaded = 0;
         keys.forEach(function(k) {
           if (snap[k] !== undefined) { D[k] = snap[k]; loaded++; }
@@ -7093,6 +7133,8 @@ function diConfirmImport(idx) {
       var entry = {name:c.name, school:c.school||'', role:c.role||'', email:c.email||''};
       if (exists >= 0) D.contacts[exists] = entry;
       else D.contacts.push(entry);
+      // Also upsert into master coaches DB
+      upsertCoach(entry, 'doc-ai');
       count++;
     });
 
@@ -8472,120 +8514,501 @@ function renderTimeline() {
   }).join('') + '</div><div style="height:20px;"></div>';
 }
 function renderColleges() {
-  // Get current athlete profile for fit engine
-  var athInit = D.currentAthInit || '';
+  // Use D.playerColleges (same rich data as admin) not the old D.colleges
+  var athInit = D._currentAthInit || D.currentAthInit || '';
+  var colleges = D.playerColleges[athInit] || [];
+
+  // Auto-load profiles for any school without one
+  var rosterIdx = D.roster.findIndex(function(r){ return r.init === athInit; });
+  if (rosterIdx >= 0) {
+    colleges.forEach(function(c, ci) {
+      if (!c.profile && !c.profileLoading && !c.profileError) {
+        c.profileLoading = true;
+        loadSchoolProfile(rosterIdx, ci);
+      }
+    });
+  }
+
+  // Fallback to legacy D.colleges if no playerColleges data
+  if (colleges.length === 0 && D.colleges && D.colleges.length > 0) {
+    colleges = D.colleges.map(function(c){
+      return {school:c.name||c.school||'', division:c.div||c.division||'', status:c.status||'Target', coachName:'', notes:''};
+    });
+  }
+
   var athRoster = D.roster.find(function(r){ return r.init === athInit; }) || {};
-  // Merge D.athProfile into a profile object for fit calc
   var athFitProfile = {
-    name: athRoster.name || D.athProfile && D.athProfile.name || 'Athlete',
-    gpa: (D.athProfile && D.athProfile.gpa) || athRoster.gpa || 0,
-    recruitStage: (D.athProfile && D.athProfile.recruitStage) || athRoster.recruitStage || '',
-    grad: (D.athProfile && D.athProfile.grad) || athRoster.grad || 0,
-    init: athInit
+    name:         athRoster.name || (D.athProfile&&D.athProfile.name) || 'Athlete',
+    gpa:          parseFloat((D.athProfile&&D.athProfile.gpa) || athRoster.gpa) || 0,
+    recruitStage: (D.athProfile&&D.athProfile.recruitStage) || athRoster.recruitStage || '',
+    grad:         parseInt((D.athProfile&&D.athProfile.grad) || athRoster.grad) || 0,
+    sport:        athRoster.sport || '',
+    init:         athInit
   };
 
-  // Normalize D.colleges entries for fit engine (map name->school, div->division)
-  var normalizedColleges = D.colleges.map(function(c){
-    return {school: c.name||c.school||'', division: c.div||c.division||'', status: c.status||'Target', coachName:'', notes:''};
-  });
-
-  var offers = D.colleges.filter(function(c){ return c.status==='Offer Received'||c.status==='Committed'; }).length;
-  var contact = D.colleges.filter(function(c){ return c.status==='In Contact'; }).length;
-  var applied = D.colleges.filter(function(c){ return c.status==='Application Sent'; }).length;
+  var tagColors = {Conflict:'#e74c3c', Reach:'#ff9500', Fit:'var(--blu)', Safety:'var(--grn)', Unknown:'var(--sub)', Loading:'var(--sub)'};
+  var tagBgs    = {Conflict:'rgba(231,76,60,.1)', Reach:'rgba(255,149,0,.1)', Fit:'rgba(52,152,219,.1)', Safety:'rgba(39,174,96,.1)', Unknown:'var(--card2)', Loading:'var(--card2)'};
 
   var out = '';
 
-  // Fit summary banner
-  if (normalizedColleges.length > 0) {
-    var fitSum = getFitSummary(athFitProfile, normalizedColleges);
+  // Fit summary banner using profile-based fit
+  if (colleges.length > 0) {
+    var fitSum = getFitSummary(athFitProfile, colleges);
     if (fitSum) {
-      var bannerBg = fitSum.alerts.length > 0 ? 'rgba(255,149,0,.08)' : 'rgba(39,174,96,.08)';
-      var bannerBorder = fitSum.alerts.length > 0 ? 'rgba(255,149,0,.3)' : 'rgba(39,174,96,.3)';
-      out += '<div style="background:'+bannerBg+';border:1px solid '+bannerBorder+';border-radius:10px;padding:11px 13px;margin:12px 16px 10px;">' +
+      var hasBad = fitSum.alerts.length > 0;
+      out += '<div style="background:'+(hasBad?'rgba(255,149,0,.08)':'rgba(39,174,96,.08)')+';border:1px solid '+(hasBad?'rgba(255,149,0,.3)':'rgba(39,174,96,.3)')+';border-radius:10px;padding:11px 13px;margin:12px 16px 10px;">' +
         '<div style="font-size:.7rem;font-weight:800;color:var(--tx);margin-bottom:4px;">My Fit Assessment</div>' +
         '<div style="font-size:.75rem;color:var(--tx2);line-height:1.5;margin-bottom:6px;">'+fitSum.summary+'</div>' +
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:'+(fitSum.alerts.length>0?'8':'0')+'px;">' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:'+(hasBad?'8':'0')+'px;">' +
         '<span style="font-size:.65rem;padding:2px 8px;border-radius:12px;background:rgba(231,76,60,.15);color:#e74c3c;font-weight:700;">'+fitSum.reaches+' Reach</span>' +
         '<span style="font-size:.65rem;padding:2px 8px;border-radius:12px;background:rgba(52,152,219,.15);color:var(--blu);font-weight:700;">'+fitSum.fits+' Fit</span>' +
         '<span style="font-size:.65rem;padding:2px 8px;border-radius:12px;background:rgba(39,174,96,.15);color:var(--grn);font-weight:700;">'+fitSum.safetys+' Safety</span>' +
         '</div>' +
-        (fitSum.alerts.length > 0 ? fitSum.alerts.map(function(al){
+        (hasBad ? fitSum.alerts.map(function(al){
           return '<div style="font-size:.7rem;color:#ff9500;display:flex;align-items:flex-start;gap:5px;margin-top:3px;"><span>⚠️</span><span>'+al+'</span></div>';
         }).join('') : '') +
         '</div>';
     }
   }
 
-  var statsBar = (offers||contact||applied) ?
-    '<div style="padding:4px 16px 10px;display:flex;gap:8px;flex-wrap:wrap;">' +
-    (offers?'<span class="bd bg">'+offers+' Offer'+(offers>1?'s':'')+'</span>':'') +
-    (contact?'<span class="bd bb2">'+contact+' In Contact</span>':'') +
-    (applied?'<span class="bd by">'+applied+' Applied</span>':'') +
-    '</div>' : '';
-
-  var fitColors = {Reach:'#e74c3c', Fit:'var(--blu)', Safety:'var(--grn)'};
-  var fitBgs = {Reach:'rgba(231,76,60,.12)', Fit:'rgba(52,152,219,.12)', Safety:'rgba(39,174,96,.12)'};
-
-  var rows = D.colleges.length ? D.colleges.map(function(c,i){
-    var normC = normalizedColleges[i];
-    var fit = calcCollegeFit(athFitProfile, normC);
-    var fitCol = fitColors[fit.tag]||'var(--sub)';
-    var fitBg = fitBgs[fit.tag]||'var(--card2)';
-    return '<div style="background:var(--card);border:1px solid var(--b1);border-radius:10px;padding:11px 13px;margin:0 16px 7px;">' +
-      '<div style="display:flex;align-items:center;gap:10px;">' +
-      '<div class="clno">' + (i+1) + '</div>' +
-      '<div style="flex:1;"><div class="clnm">' + c.name + '</div><div class="cldv">' + (c.div||'') + '</div></div>' +
-      '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">' +
-      '<span class="bd ' + (c.cl||'bgr') + '">' + c.status + '</span>' +
-      '<span style="font-size:.63rem;padding:2px 8px;border-radius:12px;background:'+fitBg+';color:'+fitCol+';font-weight:800;">'+fit.tag+'</span>' +
-      '</div></div>' +
-      (fit.warnings.length > 0 ?
-        '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--b1);">' +
-        fit.warnings.map(function(w){
-          return '<div style="font-size:.68rem;color:#ff9500;display:flex;gap:4px;"><span>⚠</span><span>'+w+'</span></div>';
-        }).join('') + '</div>' : '') +
+  // Status summary bar
+  var offers  = colleges.filter(function(c){ return c.status==='Offer'||c.status==='Committed'||c.status==='Offer Received'; }).length;
+  var contact = colleges.filter(function(c){ return c.status==='In Contact'||c.status==='Visit'; }).length;
+  if (offers||contact) {
+    out += '<div style="padding:4px 16px 10px;display:flex;gap:8px;flex-wrap:wrap;">' +
+      (offers?'<span class="bd bg">'+offers+' Offer'+(offers>1?'s':'')+'</span>':'') +
+      (contact?'<span class="bd bb2">'+contact+' Active</span>':'') +
       '</div>';
-  }).join('') : '<div style="padding:24px 16px;text-align:center;color:var(--sub);font-size:.83rem;">No colleges added yet. Tap + Add Program to start your list.</div>';
+  }
 
-  return out + statsBar + rows +
-    '<div class="pad" style="margin-top:11px;margin-bottom:11px;"><button class="btn bo bf bsm" onclick="openAddCollege()">+ Add Program</button></div>' +
+  if (colleges.length === 0) {
+    out += '<div style="padding:24px 16px;text-align:center;color:var(--sub);font-size:.83rem;"><div style="font-size:2rem;margin-bottom:8px;">🎓</div>No colleges added yet.<br>Tap + Add Program to start your list.</div>';
+  } else {
+    colleges.forEach(function(c, i) {
+      var statusColors = {'Target':'var(--sub)','In Contact':'var(--blu)','Visit':'var(--pur)','Offer':'#ff9500','Committed':'var(--grn)','Not Interested':'var(--sub)'};
+      var statusCol = statusColors[c.status]||'var(--sub)';
+
+      // Profile-based fit if available, else basic fit
+      var acFit = c.profile ? calcAcademicFitTag(athFitProfile, c.profile) : {tag:'Unknown', reasons:[]};
+      var athFit = c.profile ? calcAthleticFitTag(athFitProfile, c.profile) : {tag:'Unknown', reasons:[]};
+      var combined = c.profile ? calcCombinedTag(acFit.tag, athFit.tag) : calcCollegeFit(athFitProfile, c).tag;
+      var combinedColor = tagColors[combined]||'var(--sub)';
+      var combinedBg = tagBgs[combined]||'var(--card2)';
+
+      var conflicts = c.profile ? (c.profile.conflicts||[]).filter(function(cf){return cf.severity==='conflict';}) : [];
+      var cardBorder = combined==='Conflict' ? '1px solid rgba(231,76,60,.3)' : combined==='Reach' ? '1px solid rgba(255,149,0,.2)' : '1px solid var(--b1)';
+
+      var isClickable = !!c.profile;
+      var clickAttr = isClickable ? 'onclick="openAthSchoolProfile('+i+')" style="cursor:pointer;"' : '';
+
+      out += '<div style="background:var(--card);'+cardBorder.replace('border:','border:') +';border-radius:10px;padding:11px 13px;margin:0 16px 7px;" ' + (isClickable ? 'onclick="openAthSchoolProfile('+i+')"' : '') + '>' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:.9rem;font-weight:700;color:var(--tx);">' + (c.school||c.name||'Unknown') + '</div>' +
+        '<div style="font-size:.68rem;color:var(--sub);">' + (c.division||c.div||'') + (c.profile&&c.profile.conference?' · '+c.profile.conference:'') + '</div>' +
+        (c.coachName?'<div style="font-size:.7rem;color:var(--tx2);">Coach: '+c.coachName+'</div>':'') +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">' +
+        '<div style="font-size:.68rem;padding:3px 9px;border-radius:20px;background:var(--card2);color:'+statusCol+';font-weight:700;">'+(c.status||'Target')+'</div>' +
+        '<div style="font-size:.68rem;padding:2px 10px;border-radius:10px;background:'+combinedBg+';color:'+combinedColor+';font-weight:800;">'+combined+'</div>' +
+        '</div></div>' +
+        // Conflict flags
+        (conflicts.length > 0 ?
+          '<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--b1);">' +
+          conflicts.slice(0,2).map(function(cf){
+            return '<div style="display:flex;gap:5px;align-items:flex-start;"><span style="font-size:.75rem;">🚫</span><span style="font-size:.7rem;color:#e74c3c;">'+cf.message+'</span></div>';
+          }).join('') + '</div>' : '') +
+        // Loading state
+        (c.profileLoading ?
+          '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--b1);display:flex;align-items:center;gap:6px;">' +
+          '<div class="sp2" style="width:10px;height:10px;"></div>' +
+          '<span style="font-size:.7rem;color:var(--sub);">Loading school profile...</span></div>' : '') +
+        // Tap hint
+        (isClickable ? '<div style="margin-top:4px;font-size:.65rem;color:var(--sub);text-align:right;">Tap for full profile →</div>' : '') +
+        '</div>';
+    });
+  }
+
+  out += '<div class="pad" style="margin-top:11px;margin-bottom:11px;"><button class="btn bo bf bsm" onclick="openAddCollege()">+ Add Program</button></div>' +
     '<div style="height:20px;"></div>';
+  return out;
+}
+
+function openAthSchoolProfile(collegeIdx) {
+  // Find the admin roster index for current athlete, then open profile modal
+  var athInit = D._currentAthInit || D.currentAthInit || '';
+  var rosterIdx = D.roster.findIndex(function(r){ return r.init === athInit; });
+  if (rosterIdx < 0) return;
+  openSchoolProfile(rosterIdx, collegeIdx);
 }
 function openAddCollege() {
-  openMo(`<div class="mt">Add Program</div>
-    <div class="fg"><label class="fl">School Name</label><input class="fi" id="cl-n" placeholder="e.g. SUNY Brockport"></div>
-    <div class="fg"><label class="fl">Division</label><input class="fi" id="cl-d" placeholder="e.g. Division III"></div>
-    <div class="fg"><label class="fl">Status</label>
-      <select class="fi" id="cl-s">
-        <option>Researching</option><option>In Contact</option><option>Application Sent</option>
-        <option>Visit Scheduled</option><option>Offer Received</option><option>Committed</option><option>No Response</option>
-      </select>
-    </div>
-    <button class="btn br3 bf" onclick="saveCollege()">Add</button>`);
+  openMo(
+    '<div class="mt">Add Program</div>' +
+    '<div style="font-size:.72rem;color:var(--sub);margin-bottom:14px;">School profile & fit data loads automatically via web search</div>' +
+    '<div class="fg"><label class="fl">School Name</label><input class="fi" id="cl-n" placeholder="e.g. Florida State University" onkeydown="if(event.key==\'Enter\')saveCollege()"></div>' +
+    '<div class="fg"><label class="fl">Status</label>' +
+    '<select class="fi" id="cl-s">' +
+    '<option>Target</option><option>In Contact</option><option>Visit</option><option>Offer</option><option>Committed</option><option>Not Interested</option>' +
+    '</select></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="saveCollege()">Add + Load Profile</button>'
+  );
+  setTimeout(function(){ var el=document.getElementById('cl-n'); if(el) el.focus(); }, 200);
 }
+
 function saveCollege() {
-  var name = (document.getElementById('cl-n')||{}).value||'';
+  var name = (document.getElementById('cl-n')||{}).value.trim();
   if (!name) { toast('Enter school name'); return; }
-  var status = (document.getElementById('cl-s')||{}).value||'Researching';
-  var clMap = {'Offer Received':'bg','Committed':'bg','Visit Scheduled':'bg','In Contact':'bb2','Application Sent':'by','Researching':'bgr','No Response':'br2'};
-  D.colleges.push({name:name,div:(document.getElementById('cl-d')||{}).value||'',status:status,cl:clMap[status]||'bgr'});
+  var status = (document.getElementById('cl-s')||{}).value || 'Target';
+
+  // Get current athlete init
+  var athInit = D._currentAthInit || D.currentAthInit || '';
+  if (!athInit) { toast('Could not identify athlete'); return; }
+
+  if (!D.playerColleges[athInit]) D.playerColleges[athInit] = [];
+
+  // Check for duplicate
+  var exists = D.playerColleges[athInit].some(function(c){
+    return (c.school||'').toLowerCase() === name.toLowerCase();
+  });
+  if (exists) { toast(name + ' already on your list'); closeMo(); return; }
+
+  var entry = {
+    school:         name,
+    division:       '',
+    status:         status,
+    coachName:      '',
+    notes:          '',
+    lastUpdated:    new Date().toISOString().split('T')[0],
+    profileLoading: true,
+    profile:        null
+  };
+
+  D.playerColleges[athInit].push(entry);
+  var newIdx = D.playerColleges[athInit].length - 1;
+
+  // Also add to legacy D.colleges for backward compat
+  var clMap = {'Offer':'bg','Committed':'bg','Visit':'bg','In Contact':'bb2','Target':'bgr','Not Interested':'br2'};
+  D.colleges.push({name:name, div:'', status:status, cl:clMap[status]||'bgr'});
+
   closeMo();
+  saveAppData();
+  toast(name + ' added — loading profile...');
+
+  // Re-render to show loading state
   var body = document.getElementById('asec-body');
   if (body) body.innerHTML = renderColleges();
-  toast(name + ' added');
+
+  // Find the roster index for this athlete
+  var rosterIdx = D.roster.findIndex(function(r){ return r.init === athInit; });
+  if (rosterIdx >= 0) {
+    loadSchoolProfile(rosterIdx, newIdx);
+  }
 }
+
+// ══════════════════════════════════════════════════════════════════
+// MASTER COACHES DATABASE
+// ══════════════════════════════════════════════════════════════════
+function upsertCoach(entry, source) {
+  // Merge into master D.coaches — dedup by school+name or email
+  if (!D.coaches) D.coaches = [];
+  if (!entry.name && !entry.email) return;
+  source = source || 'manual';
+
+  var key = ((entry.name||'').toLowerCase().trim() + '|' + (entry.school||'').toLowerCase().trim());
+  var emailKey = (entry.email||'').toLowerCase().trim();
+
+  var existing = D.coaches.findIndex(function(c) {
+    var cKey = ((c.name||'').toLowerCase().trim() + '|' + (c.school||'').toLowerCase().trim());
+    var cEmail = (c.email||'').toLowerCase().trim();
+    return cKey === key || (emailKey && cEmail && cEmail === emailKey);
+  });
+
+  var now = new Date().toISOString().split('T')[0];
+  if (existing >= 0) {
+    // Merge — fill in any missing fields
+    var c = D.coaches[existing];
+    if (!c.name && entry.name) c.name = entry.name;
+    if (!c.school && entry.school) c.school = entry.school;
+    if (!c.role && entry.role) c.role = entry.role;
+    if (!c.email && entry.email) c.email = entry.email;
+    if (!c.phone && entry.phone) c.phone = entry.phone;
+    if (!c.sport && entry.sport) c.sport = entry.sport;
+    c.updatedAt = now;
+  } else {
+    D.coaches.push({
+      name:      entry.name || '',
+      school:    entry.school || '',
+      role:      entry.role || '',
+      email:     entry.email || '',
+      phone:     entry.phone || '',
+      sport:     entry.sport || '',
+      source:    source,
+      addedAt:   now,
+      updatedAt: now
+    });
+  }
+}
+
+
+function filterCoachSearch(val) {
+  D._coachSearch = val || '';
+  var b = document.getElementById('coaches-list');
+  if (!b) return;
+  var f = (val||'').toLowerCase();
+  var rows = Array.from(b.querySelectorAll('.coach-row'));
+  rows.forEach(function(r) {
+    r.style.display = (r.dataset.search||'').indexOf(f) >= 0 ? 'flex' : 'none';
+  });
+  // Also hide/show school headers
+  var headers = Array.from(b.querySelectorAll('.coach-school-hdr'));
+  headers.forEach(function(hdr) {
+    var next = hdr.nextElementSibling;
+    var hasVisible = false;
+    while (next && next.classList.contains('coach-row')) {
+      if (next.style.display !== 'none') hasVisible = true;
+      next = next.nextElementSibling;
+    }
+    hdr.style.display = hasVisible ? 'block' : 'none';
+  });
+}
+
+
+function renderAdminCoachesDB() {
+  var coaches = D.coaches || [];
+  var search = (D._coachSearch || '').toLowerCase();
+  var filtered = search ? coaches.filter(function(c) {
+    return (c.name+c.school+c.role+c.email).toLowerCase().indexOf(search) >= 0;
+  }) : coaches;
+
+  var out = '<div style="padding:14px 16px 6px;display:flex;justify-content:space-between;align-items:center;">' +
+    '<div><div style="font-size:.95rem;font-weight:800;color:var(--tx);">Coaches Database</div>' +
+    '<div style="font-size:.72rem;color:var(--sub);">' + coaches.length + ' coaches · updated from all sources</div></div>' +
+    '<div style="display:flex;gap:6px;">' +
+    '<button class="btn br3 bsm" onclick="exportCoachesDB()">Export</button>' +
+    '<button class="btn br3 bsm bf" onclick="openAddCoachToMaster()">+ Add</button>' +
+    '</div></div>' +
+    '<div style="padding:0 16px 10px;">' +
+    '<input class="fi" placeholder="Search coaches, schools, roles..." value="' + (D._coachSearch||'') + '" ' +
+    'oninput="filterCoachSearch(this.value)"></div>';
+
+  if (filtered.length === 0) {
+    out += '<div style="text-align:center;padding:30px 20px;color:var(--sub);font-size:.84rem;">' +
+      '<div style="font-size:2rem;margin-bottom:8px;">📋</div>' +
+      'No coaches yet. Coaches are added automatically when you import contacts via Doc AI or add them manually.</div>';
+  } else {
+    out += '<div id="coaches-list">';
+    // Group by school
+    var bySchool = {};
+    filtered.forEach(function(c) {
+      var s = c.school || 'Unknown School';
+      if (!bySchool[s]) bySchool[s] = [];
+      bySchool[s].push(c);
+    });
+    Object.keys(bySchool).sort().forEach(function(school) {
+      out += '<div style="padding:4px 16px 2px;font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;">' + school + '</div>';
+      bySchool[school].forEach(function(c, ci) {
+        var globalIdx = D.coaches.indexOf(c);
+        var init = (c.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2)||'?';
+        var searchStr = (c.name+c.school+c.role+c.email).toLowerCase();
+        out += '<div class="coach-row cr" data-search="' + searchStr + '" style="cursor:pointer;" onclick="openCoachDetail(' + globalIdx + ')">' +
+          '<div class="av" style="width:36px;height:36px;background:var(--bm);color:var(--blu);font-size:.72rem;flex-shrink:0;">' + init + '</div>' +
+          '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:.86rem;font-weight:700;color:var(--tx);">' + (c.name||'Unknown') + '</div>' +
+          '<div style="font-size:.72rem;color:var(--sub);">' + (c.role||'') + (c.sport?' · '+c.sport:'') + '</div>' +
+          (c.email?'<div style="font-size:.68rem;color:var(--blu);">'+c.email+'</div>':'') +
+          '</div>' +
+          '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">' +
+          (c.email?'<a href="mailto:'+c.email+'" onclick="event.stopPropagation()" style="font-size:1.1rem;color:var(--sub);">📧</a>':'') +
+          '<div style="font-size:.6rem;color:var(--tx3);">' + (c.source||'') + '</div>' +
+          '</div></div>';
+      });
+    });
+    out += '</div>';
+  }
+  out += '<div style="height:60px;"></div>';
+  return out;
+}
+
+function openCoachDetail(idx) {
+  var c = D.coaches[idx]; if (!c) return;
+  openMo(
+    '<div class="mt">' + (c.name||'Coach') + '</div>' +
+    '<div style="background:var(--card2);border-radius:10px;margin-bottom:14px;overflow:hidden;">' +
+    [['School', c.school],['Role', c.role],['Sport', c.sport],['Email', c.email],['Phone', c.phone],['Source', c.source],['Added', c.addedAt]].filter(function(r){return r[1];}).map(function(r, i) {
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 13px;' + (i>0?'border-top:1px solid var(--b1);':'') + '">' +
+        '<span style="font-size:.75rem;color:var(--sub);">' + r[0] + '</span>' +
+        '<span style="font-size:.78rem;font-weight:600;color:' + (r[0]==='Email'?'var(--blu)':'var(--tx)') + ';">' + r[1] + '</span></div>';
+    }).join('') + '</div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="openEditCoach(' + idx + ');closeMo()">Edit</button>' +
+    '<button class="btn br2" style="margin-left:8px;" onclick="removeCoachFromDB('+idx+')">Remove</button>'
+  );
+}
+
+function openAddCoachToMaster() {
+  openMo(
+    '<div class="mt">Add Coach</div>' +
+    '<div class="fr"><div class="fg"><label class="fl">Name</label><input class="fi" id="mc-name" placeholder="Coach Johnson"></div>' +
+    '<div class="fg"><label class="fl">School</label><input class="fi" id="mc-school" placeholder="Florida State"></div></div>' +
+    '<div class="fr"><div class="fg"><label class="fl">Role</label><input class="fi" id="mc-role" placeholder="Head Coach"></div>' +
+    '<div class="fg"><label class="fl">Sport</label><input class="fi" id="mc-sport" placeholder="Baseball"></div></div>' +
+    '<div class="fr"><div class="fg"><label class="fl">Email</label><input class="fi" id="mc-email" type="email" placeholder="coach@school.edu"></div>' +
+    '<div class="fg"><label class="fl">Phone</label><input class="fi" id="mc-phone" placeholder="Optional"></div></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="saveCoachToMaster()">Add</button>'
+  );
+  setTimeout(function(){ var el=document.getElementById('mc-name'); if(el) el.focus(); }, 200);
+}
+
+function saveCoachToMaster() {
+  var name = (document.getElementById('mc-name').value||'').trim();
+  var school = (document.getElementById('mc-school').value||'').trim();
+  if (!name && !school) { toast('Enter at least a name or school'); return; }
+  upsertCoach({
+    name:   name,
+    school: school,
+    role:   document.getElementById('mc-role').value||'',
+    sport:  document.getElementById('mc-sport').value||'',
+    email:  document.getElementById('mc-email').value||'',
+    phone:  document.getElementById('mc-phone').value||''
+  }, 'manual');
+  closeMo(); saveAppData();
+  toast((name||school) + ' added ✓');
+  admSec('contacts');
+}
+
+function openEditCoach(idx) {
+  var c = D.coaches[idx]; if (!c) return;
+  openMo(
+    '<div class="mt">Edit Coach</div>' +
+    '<div class="fr"><div class="fg"><label class="fl">Name</label><input class="fi" id="ec-name" value="'+(c.name||'')+'"></div>' +
+    '<div class="fg"><label class="fl">School</label><input class="fi" id="ec-school" value="'+(c.school||'')+'"></div></div>' +
+    '<div class="fr"><div class="fg"><label class="fl">Role</label><input class="fi" id="ec-role" value="'+(c.role||'')+'"></div>' +
+    '<div class="fg"><label class="fl">Sport</label><input class="fi" id="ec-sport" value="'+(c.sport||'')+'"></div></div>' +
+    '<div class="fr"><div class="fg"><label class="fl">Email</label><input class="fi" id="ec-email" type="email" value="'+(c.email||'')+'"></div>' +
+    '<div class="fg"><label class="fl">Phone</label><input class="fi" id="ec-phone" value="'+(c.phone||'')+'"></div></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="saveEditCoach('+idx+')">Save</button>'
+  );
+}
+
+function saveEditCoach(idx) {
+  var c = D.coaches[idx]; if (!c) return;
+  c.name   = document.getElementById('ec-name').value||'';
+  c.school = document.getElementById('ec-school').value||'';
+  c.role   = document.getElementById('ec-role').value||'';
+  c.sport  = document.getElementById('ec-sport').value||'';
+  c.email  = document.getElementById('ec-email').value||'';
+  c.phone  = document.getElementById('ec-phone').value||'';
+  c.updatedAt = new Date().toISOString().split('T')[0];
+  closeMo(); saveAppData();
+  toast('Saved ✓');
+  admSec('contacts');
+}
+
+function removeCoachFromDB(idx) {
+  var c = D.coaches[idx];
+  if (!c) return;
+  if (!confirm('Remove ' + (c.name||c.school||'this coach') + ' from the database?')) return;
+  D.coaches.splice(idx, 1);
+  saveAppData();
+  closeMo();
+  admSec('contacts');
+}
+
+function exportCoachesDB() {
+  var coaches = D.coaches || [];
+  if (!coaches.length) { toast('No coaches to export'); return; }
+  var csv = 'Name,School,Role,Sport,Email,Phone,Source,Added\n';
+
+  coaches.forEach(function(c) {
+    csv += [c.name,c.school,c.role,c.sport,c.email,c.phone,c.source,c.addedAt].map(function(v){
+      return '"'+(v||'').replace(/"/g,'""')+'"';
+    }).join(',') + '\n';
+
+  });
+  var blob = new Blob([csv], {type:'text/csv'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'coaches-database-' + new Date().toISOString().split('T')[0] + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Exported ' + coaches.length + ' coaches ✓');
+}
+
+
 function renderContacts() {
-  var rows = D.contacts.length ? D.contacts.map(function(c){
-    var init = c.name.split(' ').map(function(w){ return w[0]||''; }).join('').toUpperCase().slice(0,2);
-    return '<div class="cr" style="cursor:default;">' +
-      '<div class="av" style="width:36px;height:36px;background:var(--bm);color:var(--blu);font-size:.72rem;">' + init + '</div>' +
-      '<div style="flex:1;"><div class="cn">' + c.name + '</div><div class="cs">' + (c.school||'') + (c.role?' &middot; '+c.role:'') + '</div></div>' +
-      (c.email?'<a href="mailto:'+c.email+'" style="font-size:1.1rem;color:var(--sub);">&#128222;</a>':'<span style="font-size:1.1rem;color:var(--sub);">&#128222;</span>') +
-      '</div>';
-  }).join('') : '<div style="padding:24px 16px;text-align:center;color:var(--sub);font-size:.83rem;">No coaches yet. Tap + Add Coach to start your contact list.</div>';
-  return rows +
-    '<div class="pad" style="margin-top:11px;margin-bottom:11px;"><button class="btn br3 bf bsm" onclick="openAddContact()">+ Add Coach</button></div>' +
-    '<div style="height:20px;"></div>';
+  // Show coaches from this athlete's college list, cross-referenced with master DB
+  var init = D._currentAthInit || D.currentAthInit || '';
+  var colleges = (D.playerColleges[init] || []);
+  var commLog = (D.commLog[init] || []);
+
+  // Pull coaches from master DB that match this athlete's schools
+  var mySchools = colleges.map(function(c){ return (c.school||'').toLowerCase(); });
+  var myCoaches = (D.coaches||[]).filter(function(c){
+    return mySchools.indexOf((c.school||'').toLowerCase()) >= 0;
+  });
+
+  // Also get coaches from comm log that aren't in master DB
+  var logSchools = commLog.map(function(l){ return (l.school||'').toLowerCase(); });
+  var extraSchools = logSchools.filter(function(s){ return mySchools.indexOf(s) < 0; });
+  var logCoaches = (D.coaches||[]).filter(function(c){
+    return extraSchools.indexOf((c.school||'').toLowerCase()) >= 0;
+  });
+
+  var allCoaches = myCoaches.concat(logCoaches);
+
+  // Also include manually added contacts for this athlete (from old D.contacts)
+  var legacyContacts = (D.contacts||[]).filter(function(c){
+    return mySchools.indexOf((c.school||'').toLowerCase()) >= 0;
+  });
+
+  // Merge legacy contacts not already in allCoaches
+  legacyContacts.forEach(function(lc) {
+    var exists = allCoaches.some(function(c){ return (c.school||'').toLowerCase() === (lc.school||'').toLowerCase() && (c.name||'').toLowerCase() === (lc.name||'').toLowerCase(); });
+    if (!exists && lc.name) allCoaches.push(lc);
+  });
+
+  var out = '<div style="padding:14px 16px 8px;display:flex;justify-content:space-between;align-items:center;">' +
+    '<div><div style="font-size:.95rem;font-weight:800;color:var(--tx);">Coach Contacts</div>' +
+    '<div style="font-size:.72rem;color:var(--sub);">'+allCoaches.length+' coach'+(allCoaches.length===1?'':'es')+' from your school list</div></div>' +
+    '<button class="btn br3 bsm" onclick="openAddContact()">+ Add</button></div>';
+
+  if (allCoaches.length === 0) {
+    out += '<div style="text-align:center;padding:30px 20px;color:var(--sub);font-size:.84rem;">' +
+      '<div style="font-size:2rem;margin-bottom:8px;">📞</div>' +
+      'No coaches yet for your schools.<br>Add schools to your college list to see coaches here, or tap + Add.</div>';
+  } else {
+    // Group by school
+    var bySchool = {};
+    allCoaches.forEach(function(c) {
+      var s = c.school || 'Other';
+      if (!bySchool[s]) bySchool[s] = [];
+      bySchool[s].push(c);
+    });
+    Object.keys(bySchool).sort().forEach(function(school) {
+      // Find college list status for this school
+      var college = colleges.find(function(c){ return (c.school||'').toLowerCase() === school.toLowerCase(); });
+      var statusColors = {'Offer':'var(--grn)','Committed':'var(--grn)','Visit':'var(--pur)','In Contact':'var(--blu)','Target':'var(--sub)'};
+      var statusDot = college ? '<span style="font-size:.65rem;font-weight:700;color:'+(statusColors[college.status]||'var(--sub)')+';">'+college.status+'</span>' : '';
+      out += '<div style="padding:6px 16px 3px;display:flex;justify-content:space-between;align-items:center;">' +
+        '<div style="font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;color:var(--sub);font-weight:700;">'+school+'</div>' +
+        statusDot + '</div>';
+      bySchool[school].forEach(function(c) {
+        var cInit = (c.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2)||'?';
+        out += '<div class="cr">' +
+          '<div class="av" style="width:36px;height:36px;background:var(--bm);color:var(--blu);font-size:.72rem;flex-shrink:0;">' + cInit + '</div>' +
+          '<div style="flex:1;min-width:0;">' +
+          '<div class="cn">' + (c.name||'Unknown Coach') + '</div>' +
+          '<div class="cs">' + (c.role||'Coach') + (c.sport?' · '+c.sport:'') + '</div>' +
+          (c.email?'<div style="font-size:.68rem;color:var(--blu);">'+c.email+'</div>':'') +
+          '</div>' +
+          (c.email?'<a href="mailto:'+c.email+'" style="font-size:1.3rem;color:var(--blu);">📧</a>':'') +
+          (c.phone?'<a href="tel:'+c.phone+'" style="font-size:1.3rem;color:var(--grn);margin-left:6px;">📞</a>':'') +
+          '</div>';
+      });
+    });
+  }
+  out += '<div style="height:20px;"></div>';
+  return out;
 }
 function openAddContact() {
   openMo(`<div class="mt">Add Coach</div>
@@ -8598,13 +9021,17 @@ function openAddContact() {
 function saveContact() {
   var name = (document.getElementById('ct-n')||{}).value||'';
   if (!name) { toast('Enter coach name'); return; }
-  D.contacts.push({
-    name:name,
-    school:(document.getElementById('ct-s')||{}).value||'',
-    role:(document.getElementById('ct-r')||{}).value||'',
-    email:(document.getElementById('ct-e')||{}).value||''
-  });
-  closeMo();
+  var entry = {
+    name:   name,
+    school: (document.getElementById('ct-s')||{}).value||'',
+    role:   (document.getElementById('ct-r')||{}).value||'',
+    email:  (document.getElementById('ct-e')||{}).value||''
+  };
+  // Add to legacy contacts
+  D.contacts.push(entry);
+  // Also upsert into master coaches DB
+  upsertCoach(entry, 'athlete-added');
+  closeMo(); saveAppData();
   var body = document.getElementById('asec-body');
   if (body) body.innerHTML = renderContacts();
   toast(name + ' added');
