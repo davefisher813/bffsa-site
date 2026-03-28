@@ -2511,6 +2511,7 @@ function enablePortalWithPIN(idx) {
   saveAppData();
   closeMo();
   _refreshPortalBtn(a.init);
+  playerTab('info');
   toast(a.name.split(' ')[0] + ' added to portal ✓');
 }
 
@@ -2533,6 +2534,7 @@ function disablePortal(idx) {
   saveAppData();
   closeMo();
   _refreshPortalBtn(a.init);
+  playerTab('info');
   toast(a.name.split(' ')[0] + ' removed from portal');
 }
 
@@ -2661,7 +2663,7 @@ function renderPlayerInfo(idx, a) {
     '<div class="fg"><label class="fl">Commitment</label><input class="fi" id="ap-commit" placeholder="Committed college name" value="'+(a.commitment||'')+'"></div>' +
     '<div class="fg"><label class="fl">Notes</label><textarea class="fi" id="ap-notes" rows="2" style="resize:none;">'+(a.notes||'')+'</textarea></div>' +
     '<button class="btn br3 bf" style="width:100%;margin-top:6px;" onclick="savePlayerInfo('+idx+')">Save Changes</button>' +
-    '<button class="btn br3" style="width:100%;margin-top:8px;background:var(--card2);" onclick="autoGenerateProfile('+idx+')">✨ Auto-Generate Full Profile with AI</button>' +
+    '<button class="btn br3" style="width:100%;margin-top:8px;background:var(--card2);color:var(--tx);" onclick="togglePlayerPortal()">&#9711; ' + (D.portalEnabled[a.init] ? 'Manage Athlete Portal' : 'Add to Athlete Portal') + '</button>' +
     (a.status !== 'Graduated' && a.status !== 'Committed' && a.status !== 'Exited' ?
       '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--b1);">' +
       _renderCoordAssignBlock(idx, a) +
@@ -2671,48 +2673,6 @@ function renderPlayerInfo(idx, a) {
   return out;
 }
 
-async function autoGenerateProfile(idx) {
-  var a = D.roster[idx]; if (!a) return;
-  toast('Generating profile for ' + a.name.split(' ')[0] + '...');
-  var colleges = (D.playerColleges[a.init]||[]).map(function(c){return c.school+' ('+c.division+')';}).join(', ') || 'None yet';
-  var tasks = (D.aTasks[a.init]||[]).slice(0,5).map(function(t){return t.text;}).join(', ') || 'None';
-  var prompt = 'Generate a professional recruiting profile for this student athlete:\n' +
-    'Name: ' + a.name + '\n' +
-    'School: ' + (a.school||'—') + '\n' +
-    'Sport: ' + (a.sport||'Baseball') + '\n' +
-    'Grad Year: ' + (a.grad||'—') + '\n' +
-    'GPA: ' + (a.gpa||'—') + '\n' +
-    'Status: ' + (a.status||'Active') + '\n' +
-    'Recruiting Stage: ' + (a.recruitStage||'—') + '\n' +
-    'SA Plan: ' + (a.saplan||'—') + '\n' +
-    'Commitment: ' + (a.commitment||'None') + '\n' +
-    'College Targets: ' + colleges + '\n' +
-    'Notes: ' + (a.notes||'—') + '\n\n' +
-    'Write a 3-4 sentence recruiting profile summary suitable for coaches. Then list 3-5 key strengths based on available info. Keep it professional and motivating.';
-  try {
-    var res = await fetch('/.netlify/functions/claude', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({model:'claude-haiku-4-5-20251001', max_tokens:600,
-        system:'You are a college recruiting coordinator writing athlete profiles. Be professional, specific, and positive.',
-        messages:[{role:'user', content:prompt}]})
-    });
-    if (!res.ok) throw new Error('API error ' + res.status);
-    var data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    var text = (data.content||[]).filter(function(c){return c.type==='text';}).map(function(c){return c.text;}).join('');
-    // Save generated bio to athlete's notes on their roster entry
-    var rIdx = D.roster.findIndex(function(r){ return r.init === a.init; });
-    if (rIdx >= 0) { D.roster[rIdx].generatedBio = text; D.roster[rIdx].bioDate = new Date().toISOString().split('T')[0]; }
-    saveAppData();
-    openMo('<div class="mt">'+a.name.split(' ')[0]+' Profile</div>' +
-      '<div style="font-size:.82rem;color:var(--tx2);line-height:1.7;white-space:pre-wrap;padding:4px 0 12px;">'+text+'</div>' +
-      '<div style="display:flex;gap:8px;">' +
-      '<button class="btn br3 bf" style="flex:1;" onclick="navigator.clipboard&&navigator.clipboard.writeText('+JSON.stringify(text)+');toast(\'Copied ✓\');closeMo();">Copy</button>' +
-      '<button class="btn bgh" onclick="closeMo()">Done</button></div>');
-  } catch(e) {
-    toast('Could not generate profile: ' + (e.message||'error'));
-  }
-}
 
 function savePlayerInfo(idx) {
   var a = D.roster[idx]; if (!a) return;
