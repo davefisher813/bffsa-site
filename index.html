@@ -712,7 +712,7 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
       </div>
     </div>
     <div style="display:flex;gap:6px;align-items:center;">
-      <button id="vp-portal-btn" onclick="togglePlayerPortal()" style="font-size:.7rem;font-weight:700;padding:5px 11px;border-radius:8px;border:1px solid var(--b2);background:var(--card2);color:var(--sub);cursor:pointer;">+ Portal</button>
+      <button id="vp-portal-btn" onclick="togglePlayerPortal()" style="font-size:.7rem;font-weight:700;padding:5px 11px;border-radius:8px;border:1px solid var(--b2);background:var(--card2);color:var(--sub);cursor:pointer;">+ Create Portal</button>
       <button class="ta" id="vp-edit-btn" onclick="openPlayerEdit()">Edit</button>
     </div>
   </div>
@@ -2475,25 +2475,81 @@ function togglePlayerPortal() {
   var idx = D._playerIdx;
   var a = D.roster[idx]; if (!a) return;
   var isEnabled = !!D.portalEnabled[a.init];
-  var label = a.status === 'Graduated' ? 'college athlete portal' : 'athlete portal';
+
   if (isEnabled) {
-    if (!confirm('Remove ' + a.name + ' from the ' + label + '?')) return;
-    D.portalEnabled[a.init] = false;
-    saveAppData();
-    toast(a.name.split(' ')[0] + ' removed from portal');
+    // Already enabled — show manage modal
+    var hasPIN = !!(a.pin && a.pin.length >= 4);
+    openMo(
+      '<div class="mt">' + a.name.split(' ')[0] + '\'s Portal</div>' +
+      '<div style="background:var(--gm);border-radius:10px;padding:11px 13px;margin-bottom:14px;display:flex;align-items:center;gap:8px;">' +
+      '<span style="font-size:1.1rem;">✓</span>' +
+      '<div><div style="font-size:.82rem;font-weight:700;color:var(--grn);">Portal Active</div>' +
+      '<div style="font-size:.72rem;color:var(--tx2);">PIN: ' + (hasPIN ? a.pin : '⚠ Not set') + '</div></div></div>' +
+      '<div class="fg"><label class="fl">Change PIN</label>' +
+      '<input class="fi" id="pp-pin" type="number" placeholder="4-digit PIN" maxlength="6" value="' + (a.pin||'') + '"></div>',
+      '<button class="btn br3 bf" style="flex:1;" onclick="savePortalPIN(' + idx + ')">Save PIN</button>' +
+      '<button class="btn" style="margin-left:8px;background:var(--rm);color:var(--red2);border:1px solid var(--red2);" onclick="disablePortal(' + idx + ')">Remove</button>'
+    );
+    setTimeout(function(){ var el=document.getElementById('pp-pin'); if(el) el.focus(); }, 200);
   } else {
-    D.portalEnabled[a.init] = true;
-    saveAppData();
-    toast(a.name.split(' ')[0] + ' added to ' + label + ' ✓');
+    // Not enabled — open setup modal
+    openMo(
+      '<div class="mt">Add to Athlete Portal</div>' +
+      '<div style="font-size:.78rem;color:var(--sub);margin-bottom:14px;">' + a.name + ' will be able to log in and access their recruiting hub, college list, tasks, and documents.</div>' +
+      '<div class="fg"><label class="fl">Set PIN <span style="color:var(--red);">*</span></label>' +
+      '<input class="fi" id="pp-pin" type="number" placeholder="Create a 4-6 digit PIN" maxlength="6" ' +
+      'onkeydown="if(event.key===\'Enter\')enablePortalWithPIN(' + idx + ')"></div>' +
+      '<div class="fg"><label class="fl">Confirm PIN</label>' +
+      '<input class="fi" id="pp-pin2" type="number" placeholder="Re-enter PIN" maxlength="6" ' +
+      'onkeydown="if(event.key===\'Enter\')enablePortalWithPIN(' + idx + ')"></div>',
+      '<button class="btn br3 bf" style="flex:1;background:var(--grn);" onclick="enablePortalWithPIN(' + idx + ')">&#10003; Enable Portal</button>'
+    );
+    setTimeout(function(){ var el=document.getElementById('pp-pin'); if(el) el.focus(); }, 200);
   }
+}
+
+function enablePortalWithPIN(idx) {
+  var a = D.roster[idx]; if (!a) return;
+  var pin  = ((document.getElementById('pp-pin')||{}).value||'').trim();
+  var pin2 = ((document.getElementById('pp-pin2')||{}).value||'').trim();
+  if (!pin || pin.length < 4) { toast('PIN must be at least 4 digits'); return; }
+  if (!/^\d+$/.test(pin))     { toast('PIN must be numbers only'); return; }
+  if (pin !== pin2)            { toast('PINs do not match'); return; }
+  a.pin = pin;
+  D.portalEnabled[a.init] = true;
+  saveAppData();
+  closeMo();
   _refreshPortalBtn(a.init);
+  toast(a.name.split(' ')[0] + ' added to portal ✓');
+}
+
+function savePortalPIN(idx) {
+  var a = D.roster[idx]; if (!a) return;
+  var pin = ((document.getElementById('pp-pin')||{}).value||'').trim();
+  if (!pin || pin.length < 4) { toast('PIN must be at least 4 digits'); return; }
+  if (!/^\d+$/.test(pin))     { toast('PIN must be numbers only'); return; }
+  a.pin = pin;
+  saveAppData();
+  closeMo();
+  toast('PIN updated ✓');
+}
+
+function disablePortal(idx) {
+  var a = D.roster[idx]; if (!a) return;
+  if (!confirm('Remove ' + a.name.split(' ')[0] + ' from the portal?')) return;
+  D.portalEnabled[a.init] = false;
+  a.pin = '';
+  saveAppData();
+  closeMo();
+  _refreshPortalBtn(a.init);
+  toast(a.name.split(' ')[0] + ' removed from portal');
 }
 
 function _refreshPortalBtn(init) {
   var btn = document.getElementById('vp-portal-btn');
   if (!btn) return;
   var enabled = !!D.portalEnabled[init];
-  btn.textContent = enabled ? '✓ In Portal' : '+ Portal';
+  btn.textContent = enabled ? '✓ Portal Active' : '+ Create Portal';
   btn.style.background  = enabled ? 'var(--gm)'    : 'var(--card2)';
   btn.style.color       = enabled ? 'var(--grn)'   : 'var(--sub)';
   btn.style.borderColor = enabled ? 'var(--grn)'   : 'var(--b2)';
