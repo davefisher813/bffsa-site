@@ -542,12 +542,6 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
         </div>
         <span class="ql">Meetings</span>
       </button>
-      <button class="qa" data-sec="profiles" onclick="admSec('profiles')">
-        <div style="width:42px;height:42px;border-radius:11px;background:#3498db22;display:flex;align-items:center;justify-content:center;color:#3498db;">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        </div>
-        <span class="ql">Profiles</span>
-      </button>
       <button class="qa" data-sec="files" onclick="admSec('files')">
         <div style="width:42px;height:42px;border-radius:11px;background:#f39c1222;display:flex;align-items:center;justify-content:center;color:#f39c12;">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
@@ -818,8 +812,7 @@ function saveAppData() {
         schoolsDB:      D.schoolsDB,
         goals:          D.goals,
         events:         D.events,
-        profiles:       D.profiles,
-        acct:           D.acct,
+          acct:           D.acct,
         offers:         D.offers,
         scholarships:   D.scholarships,
         athleteFiles:   D.athleteFiles
@@ -836,7 +829,7 @@ function loadAppData() {
     var snap = JSON.parse(raw);
 
     // Restore all data EXCEPT roster — hardcoded roster is always source of truth
-    var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','coordinators','profiles','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches','schoolsDB'];
+    var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','coordinators','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches','schoolsDB'];
     keys.forEach(function(k) {
       if (snap[k] !== undefined) D[k] = snap[k];
     });
@@ -866,7 +859,6 @@ var D = {
   visits: {},        // keyed by player init: [{date, school, type, impression, notes, nextStep, createdAt}]
   measurables: {},   // keyed by player init: {height, weight, position, bat, throw, ...sport-specific stats}
   eligibility: {},   // keyed by player init: {clearinghouse, gpa_req, core_courses, sat, act, status, notes}
-  profiles: [],
   acct: {ledger:[],txFilter:'all',txSearch:'',ledgerYear:'all',ledgerCat:'',ledgerSrc:'all',ledgerSearch:''},
   playerColleges: {},  // keyed by player init: [{school, division, status, notes, lastUpdated}]
   portalEnabled: {},   // keyed by player init: true/false
@@ -1062,7 +1054,7 @@ function renderAdmHome() {
 
   // Show/hide QA tiles based on role
   var isCoord = D._currentUser && D._currentUser.role === 'coordinator';
-  var coordAllowed = ['roster','recruiting','tasks','calendar','security'];
+  var coordAllowed = ['roster','recruiting','tasks','cal','security'];
   document.querySelectorAll('.qa[data-sec]').forEach(function(btn) {
     var sec = btn.getAttribute('data-sec');
     btn.style.display = (isCoord && coordAllowed.indexOf(sec) < 0) ? 'none' : '';
@@ -1118,7 +1110,7 @@ function admSec(sec) {
   }
   curSec = sec;
   goV('vSEC');
-  var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',profiles:'Player Profiles',files:'File Storage',contacts:'Coaches Database',schools:'Schools Database',more:'More Settings'};
+  var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',files:'File Storage',contacts:'Coaches Database',schools:'Schools Database',more:'More Settings'};
   var ttl = document.getElementById('sec-ttl');
   if (ttl) ttl.textContent = titles[sec] || sec;
   var addb = document.getElementById('sec-add-btn');
@@ -1135,7 +1127,6 @@ function admSec(sec) {
   else if (sec === 'donors') body.innerHTML = renderDonors();
   else if (sec === 'reports') body.innerHTML = renderReports();
   else if (sec === 'meetings') body.innerHTML = renderMeetings();
-  else if (sec === 'profiles') body.innerHTML = renderProfiles();
   else if (sec === 'recruiting') body.innerHTML = renderCoordDashboard();
   else if (sec === 'security') body.innerHTML = renderSecuritySettings();
   else if (sec === 'files') body.innerHTML = renderFiles();
@@ -2709,11 +2700,9 @@ async function autoGenerateProfile(idx) {
     var data = await res.json();
     if (data.error) throw new Error(data.error.message);
     var text = (data.content||[]).filter(function(c){return c.type==='text';}).map(function(c){return c.text;}).join('');
-    // Save to athlete notes/profile
-    if (!D.profiles) D.profiles = [];
-    var existing = D.profiles.findIndex(function(p){ return p.init === a.init; });
-    var prof = {init: a.init, name: a.name, generated: new Date().toISOString().split('T')[0], text: text};
-    if (existing >= 0) D.profiles[existing] = prof; else D.profiles.push(prof);
+    // Save generated bio to athlete's notes on their roster entry
+    var rIdx = D.roster.findIndex(function(r){ return r.init === a.init; });
+    if (rIdx >= 0) { D.roster[rIdx].generatedBio = text; D.roster[rIdx].bioDate = new Date().toISOString().split('T')[0]; }
     saveAppData();
     openMo('<div class="mt">'+a.name.split(' ')[0]+' Profile</div>' +
       '<div style="font-size:.82rem;color:var(--tx2);line-height:1.7;white-space:pre-wrap;padding:4px 0 12px;">'+text+'</div>' +
@@ -4371,7 +4360,7 @@ function saveMeasurables(idx) {
   m.highlightUrl = document.getElementById('ms-hl').value || '';
   closeMo(); saveAppData();
   toast('Measurables saved ✓');
-  playerTab('measur');
+  playerTab('info');
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -4393,7 +4382,7 @@ function saveEligibility(idx) {
   e.notes        = document.getElementById('el-notes').value;
   closeMo(); saveAppData();
   toast('Eligibility saved ✓');
-  playerTab('elig');
+  playerTab('info');
 }
 
 
@@ -4641,7 +4630,7 @@ function renderMore() {
 
   return `<div class="shdr"><span class="sti">All Sections</span></div>
   <div class="cl" style="margin:0 16px 16px;">
-    ${[['&#128176;','g','acct','Accounting'],['&#128172;','b','msgs','Message Board'],['&#127919;','r','goals','Goals'],['&#129309;','g','donors','Donor CRM'],['&#128202;','b','reports','Reports'],['&#127909;','b','meetings','Board Meetings']].map(function(it){
+    ${[['&#128176;','g','acct','Accounting'],['&#128172;','b','msgs','Message Board'],['&#127919;','r','goals','Goals'],['&#129309;','g','donors','Donor CRM'],['&#128202;','b','reports','Reports'],['&#127909;','b','meetings','Board Meetings'],['&#127891;','b','schools','Schools DB']].map(function(it){
       return `<button class="cr" onclick="admSec('${it[2]}')">
         <div class="ci ${it[1]}">${it[0]}</div>
         <div style="flex:1;"><div class="cn">${it[3]}</div></div>
@@ -4714,7 +4703,6 @@ function exportAppData() {
       schoolsDB:      D.schoolsDB,
       goals:          D.goals,
       events:         D.events,
-      profiles:       D.profiles,
       acct:           D.acct,
       offers:         D.offers,
       scholarships:   D.scholarships,
@@ -4749,7 +4737,7 @@ function importAppData() {
     reader.onload = function(ev) {
       try {
         var snap = JSON.parse(ev.target.result);
-        var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','profiles','acct','athProfile','txns','tasks','donors','contacts','coaches','schoolsDB','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility'];
+        var keys = ['playerColleges','portalEnabled','collegeInfo','roster','aTasks','config','coordinators','acct','athProfile','txns','tasks','donors','contacts','coaches','schoolsDB','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility'];
         var loaded = 0;
         keys.forEach(function(k) {
           if (snap[k] !== undefined) { D[k] = snap[k]; loaded++; }
@@ -5876,28 +5864,8 @@ async function diRunCmd() {
       'D.contacts[]: [{name, school, role, email}] — college coaches',
       'D.coordinators[]: [{name, init, role, contact, pin}]',
       'D.assignments{}: {playerInit: {coordInit, tasks:[{id,text,due,notes,priority,done}]}}',
-      'D.goals[]: org goals',
-      'D.profiles[]: full recruiting bios',
-      'D.msgs[]: message board',
-      '',
-      '=== CURRENT STAFF ===',
-      coordCtx,
-      '',
-      '=== FULL ROSTER ===',
-      rosterCtx,
-      '',
-      '=== YOUR CAPABILITIES ===',
-      'Analyze ANY document: spreadsheets, PDFs, Word docs, images, emails, letters, contracts, stats sheets.',
-      'Commands you excel at: summarize, extract data, compare players, draft emails/letters to coaches,',
-      '  analyze financials, build recruiting reports, identify red flags, suggest next steps, format tables.',
-      'When importing data, append IMPORT_JSON at end:',
-      'IMPORT_JSON:{"import_type":"profile|roster|financial|donor|tasks|events|contacts|college_list|null","athlete_name":"player name if college_list, else null","import_data":[...]}',
-      'college_list items: {school, division, status, coachName, notes}',
-      'profile items: {name, sport, school, gradYear, status, gpa, email, guardian, notes}',
-      'financial items: {desc, cat, date, amt, type, notes}',
-      'roster items: {name, sport, school, grad, status, gpa, contact, notes}',
+      'D.goals[]: org goals'
     ].join('\n');
-
     var fullCmd = cmd + '\n\nAnswer thoroughly and helpfully. If the response includes structured data to import into the app, append IMPORT_JSON at the very end of your response.';
     var isImg = f.raw && f.raw.startsWith('__IMG__');
     var isPdf = f.raw && f.raw.startsWith('__PDF__');
@@ -6292,36 +6260,16 @@ function diConfirmImport(idx) {
   try {
 
   if (type==='profile') {
-    if (!D.profiles) D.profiles = [];
-    // Write to BOTH D.profiles (full) AND D.roster (thin) — keeping both in sync
+    // Import directly to roster — profiles array is deprecated
     data.forEach(function(a) {
       if (!a.name) return;
       var rawInit = a.name.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2);
       var init = rawInit;
-      // Collision check — if init taken by a different person, append a number
       var suffix = 2;
       while (D.roster.find(function(r){ return r.init===init && r.name.toLowerCase()!==a.name.toLowerCase(); })) {
         init = rawInit + suffix++;
       }
-      // Check for existing by name
-      var existsProfile = D.profiles.findIndex(function(p){ return p.name && p.name.toLowerCase()===a.name.toLowerCase(); });
-      var existsRoster  = D.roster.findIndex(function(r){ return r.name && r.name.toLowerCase()===a.name.toLowerCase(); });
-
-      var profileEntry = {
-        name:a.name, sport:a.sport||'Baseball', school:a.school||'',
-        gradYear:parseInt(a.gradYear||a.grad)||2027,
-        status:a.status||'Active', program:a.program||'Bridge',
-        gpa:a.gpa!=null?parseFloat(a.gpa):null,
-        email:a.email||a.contact||'', guardian:a.guardian||'',
-        joined:a.joined||'', english:a.english||'',
-        saplan:a.saplan||'Academy - Team',
-        recruitStage:a.recruitStage||'',
-        colleges:a.colleges||'', commitment:a.commitment||a.currentCollege||'',
-        currentCollege:a.currentCollege||'', currentYear:a.currentYear||'', currentAid:a.currentAid||'',
-        college1:a.college1||'', years1:a.years1||'', aid1:a.aid1||'',
-        college2:a.college2||'', years2:a.years2||'', aid2:a.aid2||'',
-        dob:a.dob||'', notes:a.notes||''
-      };
+      var existsRoster = D.roster.findIndex(function(r){ return r.name && r.name.toLowerCase()===a.name.toLowerCase(); });
       var rosterEntry = {
         name:a.name, init:init, sport:a.sport||'Baseball',
         school:a.school||'', grad:parseInt(a.gradYear||a.grad)||2027,
@@ -6330,11 +6278,8 @@ function diConfirmImport(idx) {
         contact:a.email||a.contact||'', guardian:a.guardian||'',
         joined:a.joined||'', english:a.english||null,
         recruitStage:a.recruitStage||'', saplan:a.saplan||'Academy - Team',
-        notes:a.notes||'', pin:''
+        notes:a.notes||'', pin:'', commitment:a.commitment||a.currentCollege||''
       };
-
-      if (existsProfile >= 0) D.profiles[existsProfile] = profileEntry;
-      else D.profiles.push(profileEntry);
       if (existsRoster >= 0) D.roster[existsRoster] = rosterEntry;
       else D.roster.push(rosterEntry);
       count++;
@@ -9348,413 +9293,6 @@ function exportMinutes(idx) {
   toast('Minutes exported');
 }
 
-// ══════════════════════════════════════════════════
-// PLAYER PROFILES — Full athlete profile system
-// ══════════════════════════════════════════════════
-
-if (!D.profileView) D.profileView = {mode:'list', selected:-1, filter:'all', search:''};
-
-function renderProfiles() {
-  var pv = D.profileView;
-  if (pv.mode === 'detail' && pv.selected >= 0) return renderProfileDetail(pv.selected);
-  return renderProfileList();
-}
-
-function renderProfileList() {
-  var pv = D.profileView;
-  // Status definitions — In College is its own category
-  var statusColors = {
-    'Active':     'var(--grn)',
-    'Committed':  'var(--blu)',
-    'In College': '#9b59b6',
-    'Graduated':  'var(--sub)',
-    'Exited':     'var(--red2)'
-  };
-  var statusBgs = {
-    'Active':     'var(--gm)',
-    'Committed':  'rgba(52,152,219,.12)',
-    'In College': 'rgba(155,89,182,.12)',
-    'Graduated':  'var(--card2)',
-    'Exited':     'var(--rm)'
-  };
-
-  var counts = {all:D.profiles.length};
-  ['Active','Committed','In College','Graduated','Exited'].forEach(function(s){
-    counts[s] = D.profiles.filter(function(p){return p.status===s;}).length;
-  });
-  var inCollege = counts['In College'];
-  var committed = counts['Committed'];
-
-  var filtered = D.profiles.filter(function(p) {
-    if (pv.filter !== 'all' && p.status !== pv.filter) return false;
-    if (pv.search && !(p.name+' '+(p.school||'')+' '+(p.sport||'')+' '+(p.college1||'')+' '+(p.currentCollege||'')).toLowerCase().includes(pv.search.toLowerCase())) return false;
-    return true;
-  });
-
-  return '<div style="padding:12px 16px 0;">' +
-
-  // Stats — 5 tiles
-  '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:12px;">' +
-  '<div style="background:var(--card);border:1px solid var(--b1);border-radius:9px;padding:8px;text-align:center;">' +
-  '<div style="font-size:1.1rem;font-weight:800;color:var(--tx);">'+D.profiles.length+'</div>' +
-  '<div style="font-size:.55rem;color:var(--sub);text-transform:uppercase;letter-spacing:.06em;">Total</div></div>' +
-
-  '<div style="background:var(--gm);border:1px solid rgba(46,204,113,.3);border-radius:9px;padding:8px;text-align:center;">' +
-  '<div style="font-size:1.1rem;font-weight:800;color:var(--grn);">'+counts['Active']+'</div>' +
-  '<div style="font-size:.55rem;color:var(--grn);text-transform:uppercase;letter-spacing:.06em;">Active</div></div>' +
-
-  '<div style="background:rgba(52,152,219,.1);border:1px solid rgba(52,152,219,.3);border-radius:9px;padding:8px;text-align:center;">' +
-  '<div style="font-size:1.1rem;font-weight:800;color:var(--blu);">'+(committed+inCollege)+'</div>' +
-  '<div style="font-size:.55rem;color:var(--blu);text-transform:uppercase;letter-spacing:.06em;">Placed</div></div>' +
-
-  '<div style="background:rgba(155,89,182,.1);border:1px solid rgba(155,89,182,.3);border-radius:9px;padding:8px;text-align:center;">' +
-  '<div style="font-size:1.1rem;font-weight:800;color:#9b59b6;">'+inCollege+'</div>' +
-  '<div style="font-size:.55rem;color:#9b59b6;text-transform:uppercase;letter-spacing:.06em;">College</div></div>' +
-
-  '<div style="background:var(--card);border:1px solid var(--b1);border-radius:9px;padding:8px;text-align:center;">' +
-  '<div style="font-size:1.1rem;font-weight:800;color:var(--sub);">'+counts['Graduated']+'</div>' +
-  '<div style="font-size:.55rem;color:var(--sub);text-transform:uppercase;letter-spacing:.06em;">Grad</div></div>' +
-  '</div>' +
-
-  // Search
-  '<input placeholder="Search athletes, school, college..." value="'+(pv.search||'')+'" ' +
-  'oninput="D.profileView.search=this.value;var b=document.getElementById(\'sec-body\');if(b)b.innerHTML=renderProfiles();" ' +
-  'style="width:100%;padding:9px 12px;background:var(--card2);border:1px solid var(--b2);color:var(--tx);border-radius:10px;font-size:.84rem;outline:none;margin-bottom:10px;">' +
-
-  // Filter tabs
-  '<div style="display:flex;gap:5px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none;">' +
-  ['all','Active','Committed','In College','Graduated','Exited'].map(function(f){
-    var label = f === 'all' ? 'All ('+D.profiles.length+')' : f+(counts[f]?' ('+counts[f]+')':'');
-    return '<button onclick="D.profileView.filter=\''+f+'\';var b=document.getElementById(\'sec-body\');if(b)b.innerHTML=renderProfiles();" ' +
-      'style="flex-shrink:0;padding:6px 13px;font-size:.71rem;font-weight:600;border-radius:20px;border:none;cursor:pointer;' +
-      (pv.filter===f?'background:var(--red);color:#fff;':'background:var(--card2);color:var(--sub);')+'">'+label+'</button>';
-  }).join('') +
-  '<button onclick="openAddProfile()" style="flex-shrink:0;margin-left:auto;padding:6px 12px;font-size:.71rem;font-weight:700;border-radius:20px;border:none;cursor:pointer;background:var(--red);color:#fff;">+ Add</button>' +
-  '</div>' +
-
-  // Profile cards
-  (filtered.length === 0 ? '<div style="text-align:center;padding:30px;color:var(--sub);">No athletes found</div>' :
-    filtered.map(function(p) {
-      var ri = D.profiles.indexOf(p);
-      var initials = p.name.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2);
-      var sc  = statusColors[p.status]  || 'var(--sub)';
-      var sbg = statusBgs[p.status]     || 'var(--card2)';
-      var isInCollege = p.status === 'In College';
-      var isCommitted = p.status === 'Committed';
-      var collegeDisplay = p.currentCollege || p.college1 || p.commitment || '';
-      return '<div onclick="D.profileView.mode=\'detail\';D.profileView.selected='+ri+';var b=document.getElementById(\'sec-body\');if(b)b.innerHTML=renderProfiles();" ' +
-        'style="display:flex;align-items:center;gap:11px;padding:12px;background:var(--card);border:1px solid var(--b1);' +
-        (isInCollege?'border-left:3px solid #9b59b6;':isCommitted?'border-left:3px solid var(--blu)':'') +
-        'border-radius:11px;margin-bottom:7px;cursor:pointer;">' +
-        '<div style="width:42px;height:42px;border-radius:50%;background:'+(isInCollege?'#9b59b6':isCommitted?'var(--blu)':'var(--red)')+';display:flex;align-items:center;justify-content:center;font-size:.84rem;font-weight:800;color:#fff;flex-shrink:0;">'+initials+'</div>' +
-        '<div style="flex:1;min-width:0;">' +
-        '<div style="font-size:.88rem;font-weight:700;color:var(--tx);">'+p.name+'</div>' +
-        '<div style="font-size:.71rem;color:var(--sub);margin-top:2px;">'+(p.sport||'—')+' · '+(p.school||'—')+(p.gradYear?' · \''+String(p.gradYear).slice(-2):'')+'</div>' +
-        (collegeDisplay?'<div style="font-size:.68rem;color:'+(isInCollege?'#9b59b6':'var(--blu)')+';margin-top:2px;font-weight:600;">🎓 '+collegeDisplay+'</div>':'') +
-        (p.colleges && !collegeDisplay?'<div style="font-size:.68rem;color:var(--sub);margin-top:2px;">'+p.colleges+'</div>':'') +
-        '</div>' +
-        '<div style="text-align:right;flex-shrink:0;">' +
-        '<div style="font-size:.64rem;padding:2px 8px;border-radius:20px;background:'+sbg+';color:'+sc+';font-weight:700;margin-bottom:4px;">'+p.status+'</div>' +
-        (p.gpa?'<div style="font-size:.72rem;font-weight:700;color:var(--tx);">GPA '+p.gpa+'</div>':'') +
-        '</div>' +
-        '<div style="font-size:.8rem;color:var(--tx3);">›</div></div>';
-    }).join('')) +
-  '</div><div style="height:80px;"></div>';
-}
-
-function renderProfileDetail(idx) {
-  var p = D.profiles[idx]; if (!p) return '';
-  var statusColors = {
-    'Active':     'var(--grn)',
-    'Committed':  'var(--blu)',
-    'In College': '#9b59b6',
-    'Graduated':  'var(--sub)',
-    'Exited':     'var(--red2)'
-  };
-  var sc = statusColors[p.status] || 'var(--sub)';
-  var initials = p.name.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2);
-  var isPlaced = p.status === 'Committed' || p.status === 'In College';
-  var avBg = p.status === 'In College' ? '#9b59b6' : p.status === 'Committed' ? 'var(--blu)' : 'var(--red)';
-
-  function field(label, val) {
-    if (!val) return '';
-    return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--b1);">' +
-      '<span style="font-size:.76rem;color:var(--sub);">'+label+'</span>' +
-      '<span style="font-size:.8rem;font-weight:600;color:var(--tx);text-align:right;max-width:60%;">'+val+'</span></div>';
-  }
-
-  // Build college history — supports currentCollege + college1 + college2 (legacy)
-  var collegeEntries = [];
-  if (p.currentCollege) {
-    collegeEntries.push({
-      school: p.currentCollege,
-      years:  p.currentYear  || 'Present',
-      aid:    p.currentAid   || '',
-      status: 'In College',
-      color:  '#9b59b6'
-    });
-  }
-  if (p.college1) {
-    collegeEntries.push({
-      school: p.college1,
-      years:  p.years1 || '',
-      aid:    p.aid1   || '',
-      status: collegeEntries.length === 0 ? 'Current' : 'Attended',
-      color:  collegeEntries.length === 0 ? 'var(--blu)' : 'var(--sub)'
-    });
-  }
-  if (p.college2) {
-    collegeEntries.push({
-      school: p.college2,
-      years:  p.years2 || '',
-      aid:    p.aid2   || '',
-      status: 'Attended',
-      color:  'var(--sub)'
-    });
-  }
-  // If commitment is set but no college entries yet, show it as committed
-  if (collegeEntries.length === 0 && p.commitment) {
-    collegeEntries.push({
-      school: p.commitment,
-      years:  '',
-      aid:    '',
-      status: 'Committed',
-      color:  'var(--blu)'
-    });
-  }
-
-  var collegeSection = '';
-  if (collegeEntries.length > 0) {
-    var sectionColor = isPlaced ? (p.status === 'In College' ? '#9b59b6' : 'var(--blu)') : 'var(--grn)';
-    var sectionBg    = p.status === 'In College' ? 'rgba(155,89,182,.08)' :
-                       p.status === 'Committed'  ? 'rgba(52,152,219,.08)' : 'var(--gm)';
-    var sectionBdr   = p.status === 'In College' ? 'rgba(155,89,182,.25)' :
-                       p.status === 'Committed'  ? 'rgba(52,152,219,.25)' : 'rgba(46,204,113,.25)';
-
-    collegeSection = '<div style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:'+sectionColor+';font-weight:700;margin-bottom:8px;">🎓 College '+(p.status==='In College'?'— Currently Attending':'History')+'</div>' +
-      '<div style="background:'+sectionBg+';border:1px solid '+sectionBdr+';border-radius:10px;overflow:hidden;margin-bottom:14px;">' +
-      collegeEntries.map(function(c, ci) {
-        return '<div style="padding:12px 14px;'+(ci>0?'border-top:1px solid var(--b1);':'')+'">' +
-          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
-          '<div style="font-size:.87rem;font-weight:700;color:var(--tx);">'+c.school+'</div>' +
-          '<span style="font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;background:'+c.color+'22;color:'+c.color+';">'+c.status+'</span>' +
-          '</div>' +
-          (c.years?'<div style="font-size:.72rem;color:var(--sub);">'+c.years+'</div>':'') +
-          (c.aid?'<div style="font-size:.74rem;font-weight:600;color:var(--grn);margin-top:2px;">'+c.aid+'</div>':'') +
-          '</div>';
-      }).join('') +
-      '</div>';
-  }
-
-  return '<div style="padding:0;">' +
-
-  // Header
-  '<div style="background:linear-gradient(135deg,var(--card2),var(--card));border-bottom:1px solid var(--b1);padding:16px;">' +
-  '<button onclick="D.profileView.mode=\'list\';var b=document.getElementById(\'sec-body\');if(b)b.innerHTML=renderProfiles();" ' +
-  'style="background:none;border:none;color:var(--sub);cursor:pointer;font-size:.8rem;padding:0;margin-bottom:10px;">← All Athletes</button>' +
-  '<div style="display:flex;align-items:center;gap:13px;">' +
-  '<div style="width:54px;height:54px;border-radius:50%;background:'+avBg+';display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:800;color:#fff;">'+initials+'</div>' +
-  '<div style="flex:1;">' +
-  '<div style="font-size:1.1rem;font-weight:800;color:var(--tx);">'+p.name+'</div>' +
-  '<div style="font-size:.74rem;color:var(--sub);margin-top:2px;">'+(p.sport||'—')+' · Class of '+(p.gradYear||'—')+'</div>' +
-  (collegeEntries[0]?'<div style="font-size:.72rem;color:'+sc+';font-weight:600;margin-top:3px;">🎓 '+collegeEntries[0].school+'</div>':'') +
-  '</div>' +
-  '<div style="font-size:.69rem;padding:4px 10px;border-radius:20px;background:'+sc+'22;color:'+sc+';font-weight:700;">'+p.status+'</div>' +
-  '</div>' +
-  '<div style="display:flex;gap:7px;margin-top:12px;">' +
-  '<button onclick="openEditProfile('+idx+')" style="flex:1;padding:8px;background:var(--red);color:#fff;border:none;border-radius:9px;font-size:.77rem;font-weight:700;cursor:pointer;">Edit Profile</button>' +
-  (p.email?'<a href="mailto:'+p.email+'" style="padding:8px 12px;background:var(--card3);color:var(--sub);border-radius:9px;font-size:.77rem;font-weight:700;text-decoration:none;display:flex;align-items:center;">✉️</a>':'') +
-  '</div></div>' +
-
-  '<div style="padding:14px 16px;">' +
-
-  // College section — shown at top for committed/in college athletes
-  (isPlaced ? collegeSection : '') +
-
-  // Core Profile
-  '<div style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:8px;">Core Profile</div>' +
-  '<div style="background:var(--card);border:1px solid var(--b1);border-radius:10px;padding:0 12px;margin-bottom:14px;">' +
-  field('High School', p.school) +
-  field('Grad Year', p.gradYear) +
-  field('Birthdate', p.dob) +
-  field('Program', p.program) +
-  field('Joined Bridge', p.joined) +
-  field('Bridge GPA', p.gpa) +
-  field('Email', p.email) +
-  '</div>' +
-
-  // Academic + Support
-  (p.english || p.saplan || p.testScores || p.counseling ?
-  '<div style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:8px;">Academic + Support</div>' +
-  '<div style="background:var(--card);border:1px solid var(--b1);border-radius:10px;padding:0 12px;margin-bottom:14px;">' +
-  field('Speaks English', p.english) +
-  field('SA Plan', p.saplan) +
-  field('Test Scores', p.testScores) +
-  field('Academic Counseling', p.counseling) +
-  '</div>' : '') +
-
-  // Recruiting + Exposure
-  (p.recruitStage || p.colleges || p.headfirst || p.showball ?
-  '<div style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:8px;">Recruiting + Exposure</div>' +
-  '<div style="background:var(--card);border:1px solid var(--b1);border-radius:10px;padding:0 12px;margin-bottom:14px;">' +
-  field('Recruiting Stage', p.recruitStage) +
-  field('Schools in Communication', p.colleges) +
-  field('Headfirst', p.headfirst) +
-  field('Showball', p.showball) +
-  '</div>' : '') +
-
-  // College section — shown at bottom for non-placed athletes who have college history
-  (!isPlaced ? collegeSection : '') +
-
-  // Notes
-  (p.notes?
-  '<div style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:6px;">Notes</div>' +
-  '<div style="background:var(--card);border:1px solid var(--b1);border-radius:10px;padding:12px;font-size:.81rem;color:var(--tx2);line-height:1.6;margin-bottom:14px;">'+p.notes+'</div>':'') +
-
-  '</div><div style="height:80px;"></div>';
-}
-
-function openAddProfile() {
-  openMo('<div class="mt">Add Athlete</div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">Full Name</label><input class="fi" id="np-name" placeholder="First Last"></div>' +
-    '<div class="fg"><label class="fl">Sport</label><select class="fi" id="np-sport"><option>Baseball</option><option>Soccer</option><option>Basketball</option><option>Softball</option><option>Other</option></select></div>' +
-    '</div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">High School</label><input class="fi" id="np-school" placeholder="School name"></div>' +
-    '<div class="fg"><label class="fl">HS Grad Year</label><input class="fi" id="np-grad" type="number" placeholder="2027"></div>' +
-    '</div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">Status</label><select class="fi" id="np-status">' +
-    ['Active','Committed','In College','Graduated','Exited'].map(function(s){return '<option>'+s+'</option>';}).join('') +
-    '</select></div>' +
-    '<div class="fg"><label class="fl">Program</label><select class="fi" id="np-prog"><option>Bridge</option><option>Elite Squad</option><option>Soccer ID</option><option>Basketball ID</option><option>Youth Development</option></select></div>' +
-    '</div>' +
-    '<div class="fg"><label class="fl">Email</label><input class="fi" id="np-email" type="email" placeholder="athlete@email.com"></div>' +
-    '<div class="fg"><label class="fl">Currently Attending College</label><input class="fi" id="np-curcol" placeholder="e.g. Mercy University"></div>' +
-    '<button class="btn br3 bf" onclick="saveNewProfile()">Add Athlete</button>');
-}
-
-function saveNewProfile() {
-  var name = (document.getElementById('np-name')||{}).value||'';
-  if (!name) { toast('Name required'); return; }
-  var status = (document.getElementById('np-status')||{}).value||'Active';
-  var curCol = (document.getElementById('np-curcol')||{}).value||'';
-  D.profiles.push({
-    name:name,
-    sport:(document.getElementById('np-sport')||{}).value||'',
-    school:(document.getElementById('np-school')||{}).value||'',
-    gradYear:parseInt((document.getElementById('np-grad')||{}).value)||null,
-    status:status,
-    program:(document.getElementById('np-prog')||{}).value||'Bridge',
-    email:(document.getElementById('np-email')||{}).value||'',
-    currentCollege:curCol,
-    currentYear:'', currentAid:'',
-    college1:'', years1:'', aid1:'',
-    college2:'', years2:'', aid2:'',
-    commitment:curCol||'',
-    gpa:null, joined:'', english:'', saplan:'', recruitStage:'', colleges:'', notes:''
-  });
-  // Mirror to roster
-  var init = name.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2);
-  D.roster.push({name:name,init:init,sport:(document.getElementById('np-sport')||{}).value||'',
-    school:(document.getElementById('np-school')||{}).value||'',
-    grad:parseInt((document.getElementById('np-grad')||{}).value)||null,
-    status:status,program:(document.getElementById('np-prog')||{}).value||'Bridge',
-    gpa:null,contact:(document.getElementById('np-email')||{}).value||'',
-    guardian:'',joined:'',english:null,recruitStage:'',saplan:'',notes:'', pin:''});
-  closeMo();
-  var b = document.getElementById('sec-body'); if(b) b.innerHTML = renderProfiles();
-  toast(name + ' added');
-}
-
-function openEditProfile(idx) {
-  var p = D.profiles[idx]; if (!p) return;
-  var statuses = ['Active','Committed','In College','Graduated','Exited'];
-  openMo('<div class="mt">Edit — '+p.name+'</div>' +
-
-    // Core
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">High School</label><input class="fi" id="ep-school" value="'+(p.school||'')+'"></div>' +
-    '<div class="fg"><label class="fl">Bridge GPA</label><input class="fi" id="ep-gpa" type="number" step="0.1" value="'+(p.gpa||'')+'"></div>' +
-    '</div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">Status</label><select class="fi" id="ep-status">' +
-    statuses.map(function(s){return '<option'+(p.status===s?' selected':'')+'>'+s+'</option>';}).join('') +
-    '</select></div>' +
-    '<div class="fg"><label class="fl">Recruiting Stage</label><select class="fi" id="ep-rs">' +
-    ['','Early','Building List','In Contact','Visit/Showcase','Offer/Commit','Committed'].map(function(s){return '<option'+(p.recruitStage===s?' selected':'')+'>'+s+'</option>';}).join('') +
-    '</select></div>' +
-    '</div>' +
-    '<div class="fg"><label class="fl">Email</label><input class="fi" id="ep-email" value="'+(p.email||'')+'"></div>' +
-    '<div class="fg"><label class="fl">Schools in Communication</label><input class="fi" id="ep-cols" placeholder="e.g. Mercy, SUNY Brockport" value="'+(p.colleges||'')+'"></div>' +
-
-    // College currently attending
-    '<div style="margin:8px 0 6px;font-size:.65rem;letter-spacing:.09em;text-transform:uppercase;color:#9b59b6;font-weight:700;">🎓 Currently In College</div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">College Name</label><input class="fi" id="ep-curcol" placeholder="e.g. Mercy University" value="'+(p.currentCollege||'')+'"></div>' +
-    '<div class="fg"><label class="fl">Year(s)</label><input class="fi" id="ep-curyr" placeholder="e.g. 2025–Present" value="'+(p.currentYear||'')+'"></div>' +
-    '</div>' +
-    '<div class="fg"><label class="fl">Aid / Scholarship</label><input class="fi" id="ep-curaid" placeholder="e.g. Full Athletic Scholarship" value="'+(p.currentAid||'')+'"></div>' +
-
-    // Prior college 1
-    '<div style="margin:8px 0 6px;font-size:.65rem;letter-spacing:.09em;text-transform:uppercase;color:var(--blu);font-weight:700;">Prior College 1</div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">College Name</label><input class="fi" id="ep-col1" placeholder="e.g. Calhoun CC" value="'+(p.college1||'')+'"></div>' +
-    '<div class="fg"><label class="fl">Year(s)</label><input class="fi" id="ep-yr1" placeholder="e.g. \'22–\'23" value="'+(p.years1||'')+'"></div>' +
-    '</div>' +
-    '<div class="fg"><label class="fl">Aid</label><input class="fi" id="ep-aid1" placeholder="e.g. Full" value="'+(p.aid1||'')+'"></div>' +
-
-    // Prior college 2
-    '<div style="margin:8px 0 6px;font-size:.65rem;letter-spacing:.09em;text-transform:uppercase;color:var(--sub);font-weight:700;">Prior College 2</div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">College Name</label><input class="fi" id="ep-col2" placeholder="e.g. Post University" value="'+(p.college2||'')+'"></div>' +
-    '<div class="fg"><label class="fl">Year(s)</label><input class="fi" id="ep-yr2" placeholder="e.g. \'23–\'24" value="'+(p.years2||'')+'"></div>' +
-    '</div>' +
-    '<div class="fg"><label class="fl">Aid</label><input class="fi" id="ep-aid2" placeholder="e.g. Senior Year Aid" value="'+(p.aid2||'')+'"></div>' +
-
-    '<div class="fg"><label class="fl">SA Plan</label><input class="fi" id="ep-plan" value="'+(p.saplan||'')+'"></div>' +
-    '<div class="fg"><label class="fl">Notes</label><textarea class="fi" id="ep-notes" rows="3" style="resize:none;">'+(p.notes||'')+'</textarea></div>' +
-    '<button class="btn br3 bf" onclick="saveEditProfile('+idx+')">Save</button>');
-}
-
-function saveEditProfile(idx) {
-  var p = D.profiles[idx]; if (!p) return;
-
-  p.school         = (document.getElementById('ep-school')||{}).value || p.school;
-  p.gpa            = parseFloat((document.getElementById('ep-gpa')||{}).value) || p.gpa;
-  p.status         = (document.getElementById('ep-status')||{}).value || p.status;
-  p.recruitStage   = (document.getElementById('ep-rs')||{}).value;
-  p.email          = (document.getElementById('ep-email')||{}).value;
-  p.colleges       = (document.getElementById('ep-cols')||{}).value;
-
-  // Currently in college
-  p.currentCollege = (document.getElementById('ep-curcol')||{}).value;
-  p.currentYear    = (document.getElementById('ep-curyr')||{}).value;
-  p.currentAid     = (document.getElementById('ep-curaid')||{}).value;
-
-  // Prior colleges
-  p.college1 = (document.getElementById('ep-col1')||{}).value;
-  p.years1   = (document.getElementById('ep-yr1')||{}).value;
-  p.aid1     = (document.getElementById('ep-aid1')||{}).value;
-  p.college2 = (document.getElementById('ep-col2')||{}).value;
-  p.years2   = (document.getElementById('ep-yr2')||{}).value;
-  p.aid2     = (document.getElementById('ep-aid2')||{}).value;
-
-  // Keep commitment in sync with currentCollege or college1
-  p.commitment = p.currentCollege || p.college1 || p.commitment || '';
-
-  p.saplan = (document.getElementById('ep-plan')||{}).value;
-  p.notes  = (document.getElementById('ep-notes')||{}).value;
-
-  // Mirror status back to D.roster by name match
-  var ri = D.roster.findIndex(function(r){ return r.name && r.name.toLowerCase() === p.name.toLowerCase(); });
-  if (ri >= 0) { D.roster[ri].status = p.status; D.roster[ri].gpa = p.gpa; D.roster[ri].school = p.school; }
-
-  closeMo();
-  var b = document.getElementById('sec-body'); if(b) b.innerHTML = renderProfiles();
-  toast('Profile updated');
-}
 
 // ══════════════════════════════════════════════════
 // FILE STORAGE — Bridge document vault
@@ -10153,7 +9691,7 @@ function importRosterProfiles(input) {
         if (!name || name === 'Name' || name === 'Athlete Roster') return;
         var sport = row[1]; var school = row[2]; var gradYear = row[3];
         var email = row[4]; var status = row[6]; var program = row[7]; var gpa = row[8];
-        var existing = D.profiles.find(function(p){ return p.name === name; });
+        var existing = D.roster.find(function(r){ return r.name && r.name.toLowerCase() === name.toLowerCase(); });
         if (existing) {
           if (sport)    existing.sport    = sport;
           if (school)   existing.school   = school;
@@ -10164,10 +9702,7 @@ function importRosterProfiles(input) {
           if (gpa)      existing.gpa      = gpa;
           updated++;
         } else {
-          D.profiles.push({name:name,sport:sport||'',school:school||'',gradYear:gradYear||null,
-            status:status||'Active',program:program||'',gpa:gpa||null,email:email||'',
-            joined:'',english:'',saplan:'',recruitStage:'',colleges:'',commitment:'',notes:'', pin:''});
-          added++;
+                    added++;
         }
       });
       toast('✓ Roster synced: '+updated+' updated, '+added+' new athletes');
