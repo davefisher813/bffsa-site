@@ -3568,7 +3568,7 @@ async function loadSchoolProfile(playerIdx, collegeIdx) {
   else if (/d2|division 2|division ii/i.test(searchName)) divHint = ' Division 2';
   else if (/d3|division 3|division iii/i.test(searchName)) divHint = ' Division 3';
   // Remove division suffixes from school name for cleaner search
-  searchName = searchName.replace(/\s*(juco|d1|d2|d3|division\s*[123iii]+)\s*/gi, ' ').trim();
+  searchName = searchName.replace(/\s*(juco\s*(d[123])?|d[123]|division\s*[123iii]+)\s*/gi, ' ').trim();
 
   var prompt = 'Search for the current program profile for ' + searchName + divHint + ' for a student athlete. ' +
     'Return ONLY valid JSON, no markdown. Fields: division(D1|D2|D3|NAIA|JUCO), conference, ' +
@@ -4067,8 +4067,8 @@ function calcCollegeFit(a, college) {
   var stage = a.recruitStage || '';
 
   // ── GPA vs Division benchmarks ──
-  var gpaMin = {D1:3.0, D2:2.5, D3:2.5, NAIA:2.3, JUCO:2.0, 'PREP SCHOOL':2.0};
-  var gpaIdeal = {D1:3.4, D2:3.0, D3:3.3, NAIA:2.8, JUCO:2.5, 'PREP SCHOOL':2.5};
+  var gpaMin = {D1:3.0, D2:2.5, D3:2.5, NAIA:2.3, JUCO:2.0, 'JUCO D1':2.3, 'JUCO D2':2.0, 'JUCO D3':2.0, 'PREP SCHOOL':2.0};
+  var gpaIdeal = {D1:3.4, D2:3.0, D3:3.3, NAIA:2.8, JUCO:2.5, 'JUCO D1':2.5, 'JUCO D2':2.2, 'JUCO D3':2.0, 'PREP SCHOOL':2.5};
   var divMin = gpaMin[div] || 2.0;
   var divIdeal = gpaIdeal[div] || 2.5;
 
@@ -4380,11 +4380,13 @@ function openAddCollegeToPlayer(idx) {
     '<div style="font-size:.72rem;color:var(--sub);margin-bottom:14px;">School profile & fit analysis loads automatically</div>' +
     '<div class="fg"><label class="fl">School Name</label><input class="fi" id="nc-school" placeholder="e.g. Florida State University" onkeydown="if(event.key===\'Enter\')saveAddCollege('+idx+')"></div>' +
     '<div class="fr">' +
+    '<div class="fg"><label class="fl">Division</label><select class="fi" id="nc-div">' +
+    ['','D1','D2','D3','NAIA','JUCO D1','JUCO D2','JUCO D3','Prep School'].map(function(d){ return '<option>'+d+'</option>'; }).join('') +
+    '</select></div>' +
     '<div class="fg"><label class="fl">Status</label><select class="fi" id="nc-status">' +
     ['Target','Building List','In Contact','Visit','Offer','Committed','Not Interested'].map(function(s){ return '<option>'+s+'</option>'; }).join('') +
-    '</select></div>' +
-    '<div class="fg"><label class="fl">Coach Name</label><input class="fi" id="nc-coach" placeholder="Optional"></div>' +
-    '</div>',
+    '</select></div></div>' +
+    '<div class="fg"><label class="fl">Coach Name</label><input class="fi" id="nc-coach" placeholder="Optional"></div>',
     '<button class="btn br3 bf" style="flex:1;" onclick="saveAddCollege('+idx+')">Add + Load Profile</button>'
   );
   setTimeout(function(){ var el = document.getElementById('nc-school'); if(el) el.focus(); }, 200);
@@ -4397,7 +4399,7 @@ function saveAddCollege(idx) {
   if (!D.playerColleges[a.init]) D.playerColleges[a.init] = [];
   var entry = {
     school:      school,
-    division:    '',
+    division:    (document.getElementById('nc-div')||{}).value || '',
     status:      (document.getElementById('nc-status')||{}).value || 'Target',
     coachName:   (document.getElementById('nc-coach')||{}).value || '',
     notes:       '',
@@ -4450,7 +4452,10 @@ function calcAthleticFitTag(a, profile) {
   if (div==='D2' && stageVal >= 3) return {tag:'Fit', reasons:['Good D2 recruiting activity']};
   if (div==='D2' && stageVal < 2) return {tag:'Reach', reasons:['Limited D2 contact so far']};
   if (div==='D3' || div==='NAIA') return {tag:'Fit', reasons:['D3/NAIA accessible with current profile']};
-  if (div==='JUCO') return {tag:'Safety', reasons:['JUCO is realistic with current profile']};
+  if (div==='JUCO D1' || div==='JUCO D2' || div==='JUCO D3' || div==='JUCO') {
+    var jucoTag = div==='JUCO D1' ? (stageVal >= 2 ? 'Fit' : 'Reach') : 'Safety';
+    return {tag:jucoTag, score:jucoTag==='Fit'?55:70, reasons:['JUCO '+div+' — realistic pathway'], warnings:[]};
+  }
   return {tag:'Fit', reasons:[]};
 }
 
@@ -6780,7 +6785,7 @@ async function diRunStructuredExtract(f, cmd, extractType) {
     ].join('\n'),
     college_list: [
       'Extract ALL college/university entries. For each return:',
-      '{school, division:"D1|D2|D3|JUCO", status:"Target|Applied|Offered|Committed", notes}'
+      '{school, division:"D1|D2|D3|NAIA|JUCO D1|JUCO D2|JUCO D3", status:"Target|Applied|Offered|Committed", notes}'
     ].join('\n')
   };
 
@@ -8646,10 +8651,15 @@ function openAddCollege() {
     '<div class="mt">Add Program</div>' +
     '<div style="font-size:.72rem;color:var(--sub);margin-bottom:14px;">School profile & fit data loads automatically via web search</div>' +
     '<div class="fg"><label class="fl">School Name</label><input class="fi" id="cl-n" placeholder="e.g. Florida State University" onkeydown="if(event.key==\'Enter\')saveCollege()"></div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Division</label>' +
+    '<select class="fi" id="cl-d">' +
+    '<option value="">Unknown</option><option>D1</option><option>D2</option><option>D3</option><option>NAIA</option><option>JUCO D1</option><option>JUCO D2</option><option>JUCO D3</option><option>Prep School</option>' +
+    '</select></div>' +
     '<div class="fg"><label class="fl">Status</label>' +
     '<select class="fi" id="cl-s">' +
     '<option>Target</option><option>In Contact</option><option>Visit</option><option>Offer</option><option>Committed</option><option>Not Interested</option>' +
-    '</select></div>',
+    '</select></div></div>',
     '<button class="btn br3 bf" style="flex:1;" onclick="saveCollege()">Add + Load Profile</button>'
   );
   setTimeout(function(){ var el=document.getElementById('cl-n'); if(el) el.focus(); }, 200);
@@ -8674,7 +8684,7 @@ function saveCollege() {
 
   var entry = {
     school:         name,
-    division:       '',
+    division:       (document.getElementById('cl-d')||{}).value || '',
     status:         status,
     coachName:      '',
     notes:          '',
