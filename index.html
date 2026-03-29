@@ -837,7 +837,7 @@ function loadAppData() {
     var snap = JSON.parse(raw);
 
     // Restore all data EXCEPT roster — hardcoded roster is always source of truth
-    var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents','devBoard'];
+    var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents','devBoard','fitBenchmarks'];
     keys.forEach(function(k) {
       if (snap[k] !== undefined) D[k] = snap[k];
     });
@@ -893,6 +893,7 @@ var D = {
   events: [],
   specialEvents: [],
   devBoard: [],  // [{name, title, email, phone, notes}]
+  fitBenchmarks: null,  // null = use defaults; set to custom object to override
   roster: [
     // ── ACTIVE ──
     {name:'Angel Valerio',         init:'AV', sport:'Baseball', school:'IADIS',               grad:2026, status:'Active',    program:'Bridge', gpa:3.4,  contact:'valeriorebretonangelamin@gmail.com', guardian:'', joined:'2025-09-25', english:'No',  recruitStage:'In Contact',   saplan:'Academy - Team', notes:'', pin:''},
@@ -1129,7 +1130,7 @@ function admSec(sec) {
   }
   curSec = sec;
   goV('vSEC');
-  var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',files:'File Storage',contacts:'Coaches Database',schools:'Schools Database',more:'More Settings',events:'Special Events',devboard:'Development Board'};
+  var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',files:'File Storage',contacts:'Coaches Database',schools:'Schools Database',more:'More Settings',events:'Special Events',devboard:'Development Board',benchmarks:'Fit Benchmarks'};
   var ttl = document.getElementById('sec-ttl');
   if (ttl) ttl.textContent = titles[sec] || sec;
   var addb = document.getElementById('sec-add-btn');
@@ -1143,6 +1144,7 @@ function admSec(sec) {
   else if (sec === 'cal') body.innerHTML = renderCal();
   else if (sec === 'events') body.innerHTML = renderSpecialEvents();
   else if (sec === 'devboard') body.innerHTML = renderDevBoard();
+  else if (sec === 'benchmarks') body.innerHTML = renderFitBenchmarks();
   else if (sec === 'goals') body.innerHTML = renderGoals();
   else if (sec === 'roster') body.innerHTML = renderRoster();
   else if (sec === 'donors') body.innerHTML = renderDonors();
@@ -3520,6 +3522,8 @@ function renderPlayerInfo(idx, a) {
 
   // Single editable form — all fields
   out +=
+    '<div class="fg"><label class="fl">Full Name</label><input class="fi" id="ap-name" value="'+(a.name||'')+'" onblur="savePlayerInfo('+idx+')"></div>' +
+
     '<div class="fr">' +
     '<div class="fg"><label class="fl">Status</label><select class="fi" id="ap-status" onchange="savePlayerInfo('+idx+')">' +
     ['Active','Committed','Graduated','Exited'].map(function(s){ return '<option'+(a.status===s?' selected':'')+'>'+s+'</option>'; }).join('') +
@@ -3551,7 +3555,15 @@ function renderPlayerInfo(idx, a) {
     '<div class="fg"><label class="fl">Joined Bridge</label><input class="fi" id="ap-joined" type="date" value="'+(a.joined||'')+'" onblur="savePlayerInfo('+idx+')"></div></div>' +
 
     '<div class="fg"><label class="fl">Commitment</label><input class="fi" id="ap-commit" placeholder="Committed college name" value="'+(a.commitment||'')+'" onblur="savePlayerInfo('+idx+')"></div>' +
-    '<div class="fg"><label class="fl">Notes</label><textarea class="fi" id="ap-notes" rows="3" style="resize:none;" onblur="savePlayerInfo('+idx+')">'+(a.notes||'')+'</textarea></div>';
+    '<div class="fg"><label class="fl">Notes</label><textarea class="fi" id="ap-notes" rows="3" style="resize:none;" onblur="savePlayerInfo('+idx+')">'+(a.notes||'')+'</textarea></div>' +
+
+    '<div class="fg"><label class="fl">Athletic Fit Override <span style="color:var(--sub);font-weight:400;">(overrides calculated fit on college list)</span></label>' +
+    '<select class="fi" id="ap-fit-override" onchange="savePlayerInfo('+idx+')">' +
+    ['','Elite D1','Mid D1','Low D1','D2','NAIA','JUCO'].map(function(s){
+      var cur = (D.measurables&&D.measurables[a.init]&&D.measurables[a.init].fitOverride)||'';
+      return '<option'+(cur===s?' selected':'')+'>'+s+'</option>';
+    }).join('') +
+    '</select></div>';
 
   // Commitment callout
   if (a.commitment) {
@@ -3577,6 +3589,14 @@ function renderPlayerInfo(idx, a) {
 
 function savePlayerInfo(idx) {
   var a = D.roster[idx]; if (!a) return;
+  var newName = ((document.getElementById('ap-name')||{}).value||'').trim();
+  if (newName && newName !== a.name) {
+    a.name = newName;
+    // Update header
+    var nm = document.getElementById('vp-name');
+    var sb = document.getElementById('vp-sub');
+    if (nm) nm.textContent = newName;
+  }
   a.status       = (document.getElementById('ap-status')||{}).value || a.status;
   a.recruitStage = (document.getElementById('ap-stage')||{}).value || '';
   var gv = parseFloat((document.getElementById('ap-gpa')||{}).value);
@@ -3593,6 +3613,10 @@ function savePlayerInfo(idx) {
   a.english      = ((document.getElementById('ap-english')||{}).value||'');
   a.joined       = ((document.getElementById('ap-joined')||{}).value||'').trim();
   a.sport        = ((document.getElementById('ap-sport')||{}).value||'').trim();
+  // Fit override — stored in measurables
+  if (!D.measurables) D.measurables = {};
+  if (!D.measurables[a.init]) D.measurables[a.init] = {};
+  D.measurables[a.init].fitOverride = (document.getElementById('ap-fit-override')||{}).value || '';
   saveAppData();
   toast('Saved ✓');
   playerTab('info');
@@ -3769,7 +3793,8 @@ function refreshSchoolDB(key) {
     });
   });
   if (playerIdx >= 0) {
-    loadSchoolProfile(playerIdx, collegeIdx);
+    var a = D.roster[playerIdx];
+    spqEnqueueOne(playerIdx, a.init, collegeIdx);
   } else {
     toast('No athletes have this school — delete and re-add to refresh');
   }
@@ -3939,8 +3964,81 @@ async function loadSchoolProfile(playerIdx, collegeIdx) {
 
 
 // ══════════════════════════════════════════════════════════════════
-// COLLEGE FIT ENGINE
+// SCHOOL PROFILE QUEUE — Single global sequential loader
 // ══════════════════════════════════════════════════════════════════
+
+var _spq = {
+  running: false,
+  items: []  // [{playerIdx, collegeIdx, init}]
+};
+
+function spqEnqueue(playerIdx, init) {
+  // Add all unloaded schools for this player to the queue (if not already queued)
+  var colleges = D.playerColleges[init] || [];
+  colleges.forEach(function(c, ci) {
+    if (!c.profile && !c.profileError) {
+      var already = _spq.items.some(function(x){ return x.playerIdx===playerIdx && x.collegeIdx===ci && x.init===init; });
+      if (!already) {
+        c.profileLoading = true;
+        _spq.items.push({playerIdx:playerIdx, collegeIdx:ci, init:init});
+      }
+    }
+  });
+  saveAppData();
+  spqRun();
+}
+
+function spqEnqueueOne(playerIdx, init, collegeIdx) {
+  var colleges = D.playerColleges[init] || [];
+  var c = colleges[collegeIdx];
+  if (!c || c.profile || c.profileError) return;
+  var already = _spq.items.some(function(x){ return x.playerIdx===playerIdx && x.collegeIdx===collegeIdx && x.init===init; });
+  if (!already) {
+    c.profileLoading = true;
+    _spq.items.push({playerIdx:playerIdx, collegeIdx:collegeIdx, init:init});
+  }
+  saveAppData();
+  spqRun();
+}
+
+function spqRun() {
+  if (_spq.running || _spq.items.length === 0) return;
+  _spq.running = true;
+  var item = _spq.items.shift();
+
+  // Validate item still needs loading
+  var colleges = D.playerColleges[item.init] || [];
+  var c = colleges[item.collegeIdx];
+  if (!c || c.profile) {
+    // Already loaded — skip to next
+    _spq.running = false;
+    setTimeout(spqRun, 500);
+    return;
+  }
+
+  loadSchoolProfile(item.playerIdx, item.collegeIdx)
+    .then(function() {
+      _spq.running = false;
+      if (_spq.items.length > 0) {
+        setTimeout(spqRun, 4500); // 4.5s between calls — well under rate limit
+      }
+    })
+    .catch(function() {
+      _spq.running = false;
+      if (_spq.items.length > 0) {
+        setTimeout(spqRun, 4500);
+      }
+    });
+}
+
+// Call after a college list import to queue all new schools
+function spqEnqueueAfterImport(init) {
+  var playerIdx = D.roster.findIndex(function(r){ return r.init===init; });
+  if (playerIdx < 0) return;
+  spqEnqueue(playerIdx, init);
+}
+
+
 
 
 // ══════════════════════════════════════════════════════════════════
@@ -4522,13 +4620,7 @@ function getFitSummary(a, colleges) {
 function renderPlayerColleges(idx, a) {
   var colleges = (D.playerColleges[a.init] || []);
 
-  // Auto-load profiles for any school that doesn't have one yet
-  colleges.forEach(function(c, ci) {
-    if (!c.profile && !c.profileLoading && !c.profileError) {
-      c.profileLoading = true;
-      loadSchoolProfile(idx, ci);
-    }
-  });
+  // Profiles loaded via global queue — see schoolProfileQueue
   var statusColors = {
     'Target':    'var(--blu)',
     'Applied':   'var(--yel)',
@@ -4707,8 +4799,8 @@ function saveAddCollege(idx) {
   saveAppData();
   toast(school + ' added — loading profile...');
   playerTab('colleges');
-  // Fire profile load in background
-  loadSchoolProfile(idx, newIdx);
+  // Enqueue via global queue (one at a time, no hammering)
+  spqEnqueueOne(idx, a.init, newIdx);
 }
 
 
@@ -4729,25 +4821,323 @@ function calcAcademicFitTag(a, profile) {
   return {tag:'Fit', reasons:['Academic profile appears compatible']};
 }
 
+// ══════════════════════════════════════════════════════════════════
+// FIT BENCHMARKS — Admin-editable athletic standards
+// ══════════════════════════════════════════════════════════════════
+
+function getDefaultBenchmarks() {
+  return {
+    tiers: [
+      { id:'elite_d1',  label:'Elite D1 / Top JUCO',  desc:'Miami, Oregon, Vanderbilt, etc.' },
+      { id:'mid_d1',    label:'Mid-Major D1',          desc:'Solid D1 programs' },
+      { id:'low_d1',    label:'Low D1 / High D2',      desc:'Lower D1, upper D2' },
+      { id:'d2_naia',   label:'D2 / D3 / NAIA',        desc:'D2, D3, NAIA programs' },
+      { id:'juco',      label:'JUCO',                   desc:'Junior college programs' }
+    ],
+    positions: [
+      {
+        id:'middle_inf', label:'Middle Infield / CF (SS, 2B, CF)',
+        metrics: [
+          { tier:'elite_d1', sixty_max:6.9,  sixty_ideal:6.7, arm_inf:90,  arm_of:95,  exit_velo:100 },
+          { tier:'mid_d1',   sixty_max:7.0,  sixty_ideal:6.8, arm_inf:87,  arm_of:92,  exit_velo:95  },
+          { tier:'low_d1',   sixty_max:7.1,  sixty_ideal:6.9, arm_inf:84,  arm_of:89,  exit_velo:90  },
+          { tier:'d2_naia',  sixty_max:7.3,  sixty_ideal:7.1, arm_inf:80,  arm_of:85,  exit_velo:85  },
+          { tier:'juco',     sixty_max:7.2,  sixty_ideal:6.9, arm_inf:85,  arm_of:90,  exit_velo:92  }
+        ]
+      },
+      {
+        id:'corner',  label:'Corner Players (1B, 3B, LF, RF)',
+        metrics: [
+          { tier:'elite_d1', sixty_max:7.2,  sixty_ideal:7.0, arm_inf:90,  arm_of:92,  exit_velo:100 },
+          { tier:'mid_d1',   sixty_max:7.4,  sixty_ideal:7.2, arm_inf:87,  arm_of:89,  exit_velo:95  },
+          { tier:'low_d1',   sixty_max:7.5,  sixty_ideal:7.3, arm_inf:84,  arm_of:86,  exit_velo:90  },
+          { tier:'d2_naia',  sixty_max:7.7,  sixty_ideal:7.4, arm_inf:80,  arm_of:82,  exit_velo:85  },
+          { tier:'juco',     sixty_max:7.5,  sixty_ideal:7.2, arm_inf:85,  arm_of:88,  exit_velo:92  }
+        ]
+      },
+      {
+        id:'catcher', label:'Catcher (C)',
+        metrics: [
+          { tier:'elite_d1', sixty_max:7.3,  sixty_ideal:7.0, arm_inf:90,  arm_of:90,  exit_velo:98, pop_time:1.9 },
+          { tier:'mid_d1',   sixty_max:7.5,  sixty_ideal:7.2, arm_inf:85,  arm_of:85,  exit_velo:93, pop_time:2.0 },
+          { tier:'low_d1',   sixty_max:7.6,  sixty_ideal:7.3, arm_inf:82,  arm_of:82,  exit_velo:88, pop_time:2.05},
+          { tier:'d2_naia',  sixty_max:7.8,  sixty_ideal:7.5, arm_inf:78,  arm_of:78,  exit_velo:83, pop_time:2.1 },
+          { tier:'juco',     sixty_max:7.6,  sixty_ideal:7.3, arm_inf:82,  arm_of:82,  exit_velo:88, pop_time:2.0 }
+        ]
+      },
+      {
+        id:'rhp', label:'RHP — Starting / Relieving',
+        metrics: [
+          { tier:'elite_d1', fb_min:90, fb_ideal:93, note:'93–95 ideal; 90 absolute floor' },
+          { tier:'mid_d1',   fb_min:88, fb_ideal:91, note:'90–93 mph range' },
+          { tier:'low_d1',   fb_min:85, fb_ideal:88, note:'Command & secondary matter more' },
+          { tier:'d2_naia',  fb_min:82, fb_ideal:86, note:'Location & off-speed key' },
+          { tier:'juco',     fb_min:85, fb_ideal:89, note:'Top JUCO = same as Elite D1' }
+        ]
+      },
+      {
+        id:'lhp', label:'LHP — Starting / Relieving',
+        metrics: [
+          { tier:'elite_d1', fb_min:88, fb_ideal:91, note:'In the 90s = go anywhere' },
+          { tier:'mid_d1',   fb_min:86, fb_ideal:89, note:'~2 mph grace vs RHP' },
+          { tier:'low_d1',   fb_min:83, fb_ideal:86, note:'Command counts heavily' },
+          { tier:'d2_naia',  fb_min:80, fb_ideal:84, note:'Off-speed & deception key' },
+          { tier:'juco',     fb_min:83, fb_ideal:88, note:'LHP premium at all levels' }
+        ]
+      }
+    ]
+  };
+}
+
+function getFitBenchmarks() {
+  return (D.fitBenchmarks && D.fitBenchmarks.tiers) ? D.fitBenchmarks : getDefaultBenchmarks();
+}
+
+// Map school division string to tier id
+function divisionToTier(divStr) {
+  var d = (divStr||'').toUpperCase();
+  if (d==='D1') return 'mid_d1';  // default D1 = mid; elite identified by name
+  if (d.includes('JUCO')) return 'juco';
+  if (d==='D2') return 'd2_naia';
+  if (d==='D3' || d==='NAIA') return 'd2_naia';
+  return 'mid_d1';
+}
+
+// Determine athlete position group
+function athletePositionGroup(a) {
+  var pos = ((a.measurables && a.measurables.position)||a.position||'').toUpperCase();
+  var sport = (a.sport||'').toLowerCase();
+  if (!sport.includes('baseball') && !sport.includes('softball')) return null;
+  if (/RHP|SP|RP|P\b/.test(pos)) return 'rhp';
+  if (/LHP/.test(pos)) return 'lhp';
+  if (/SS|2B|CF/.test(pos)) return 'middle_inf';
+  if (/1B|3B|LF|RF|DH/.test(pos)) return 'corner';
+  if (/C\b|CATCH/.test(pos)) return 'catcher';
+  return null; // unknown position
+}
+
 function calcAthleticFitTag(a, profile) {
-  if (!profile || !profile.athletics) return {tag:'Unknown', reasons:[]};
-  var stageScore = {'':0,'Early':1,'Building List':2,'In Contact':3,'Visit/Showcase':4,'Offer/Commit':5,'Committed':6};
-  var stageVal = stageScore[a.recruitStage||''] || 0;
-  var div = (profile.division||'').toUpperCase();
-  var conflicts = (profile.conflicts||[]).filter(function(c){return c.type==='athletic';});
-  var hasConflict = conflicts.some(function(c){return c.severity==='conflict';});
-  if (hasConflict) return {tag:'Conflict', reasons: conflicts.map(function(c){return c.message;})};
-  if (div==='D1' && stageVal < 2) return {tag:'Conflict', reasons:['No D1 recruiting contact — extremely difficult to walk on at D1']};
-  if (div==='D1' && stageVal < 3) return {tag:'Reach', reasons:['Limited D1 contact — needs offer or visit to be realistic']};
-  if (div==='D1' && stageVal >= 4) return {tag:'Fit', reasons:['Active D1 recruiting process']};
-  if (div==='D2' && stageVal >= 3) return {tag:'Fit', reasons:['Good D2 recruiting activity']};
-  if (div==='D2' && stageVal < 2) return {tag:'Reach', reasons:['Limited D2 contact so far']};
-  if (div==='D3' || div==='NAIA') return {tag:'Fit', reasons:['D3/NAIA accessible with current profile']};
-  if (div==='JUCO D1' || div==='JUCO D2' || div==='JUCO D3' || div==='JUCO') {
-    var jucoTag = div==='JUCO D1' ? (stageVal >= 2 ? 'Fit' : 'Reach') : 'Safety';
-    return {tag:jucoTag, score:jucoTag==='Fit'?55:70, reasons:['JUCO '+div+' — realistic pathway'], warnings:[]};
+  if (!profile) return {tag:'Unknown', reasons:[]};
+
+  // Per-athlete override — admin-set, always wins
+  var m = D.measurables && D.measurables[a.init] ? D.measurables[a.init] : {};
+  if (m.fitOverride && m.fitOverride !== '') {
+    var overrideMap = {
+      'Elite D1':'Fit', 'Mid D1':'Fit', 'Low D1':'Fit',
+      'D2':'Fit', 'NAIA':'Fit', 'JUCO':'Fit',
+      'Conflict':'Conflict', 'Reach':'Reach', 'Safety':'Safety'
+    };
+    return {tag: overrideMap[m.fitOverride]||'Fit', reasons:['Override: '+m.fitOverride], override:true};
   }
-  return {tag:'Fit', reasons:[]};
+
+  var bm      = getFitBenchmarks();
+  var div     = (profile.division||profile.athletics&&profile.athletics.level_of_play||'').toString();
+  var tier    = divisionToTier(div);
+  var posGroup= athletePositionGroup(a);
+
+  // If we can't determine position, fall back to recruiting stage logic
+  if (!posGroup) {
+    var stageScore = {'':0,'Early':1,'Building List':2,'In Contact':3,'Visit/Showcase':4,'Offer/Commit':5,'Committed':6};
+    var sv = stageScore[a.recruitStage||'']||0;
+    var d  = (profile.division||'').toUpperCase();
+    if (d==='D1' && sv<2) return {tag:'Conflict', reasons:['No D1 recruiting contact']};
+    if (d==='D1' && sv<3) return {tag:'Reach',    reasons:['Limited D1 contact']};
+    if (d==='D1' && sv>=4)return {tag:'Fit',      reasons:['Active D1 recruiting']};
+    if (d==='D2' && sv>=3) return {tag:'Fit',     reasons:['Good D2 recruiting activity']};
+    if (d==='D2')          return {tag:'Reach',   reasons:['Limited D2 contact']};
+    return {tag:'Fit', reasons:[]};
+  }
+
+  // Find position benchmarks
+  var posData = bm.positions.find(function(p){ return p.id===posGroup; });
+  if (!posData) return {tag:'Unknown', reasons:['No benchmarks for this position']};
+
+  var tierBm = posData.metrics.find(function(bmt){ return bmt.tier===tier; });
+  if (!tierBm) return {tag:'Unknown', reasons:['No benchmarks for this division tier']};
+
+  var reasons = []; var warnings = []; var conflicts = []; var score = 0; var checks = 0;
+
+  // Pitcher checks
+  if (posGroup==='rhp'||posGroup==='lhp') {
+    var fb = parseFloat(m.fbVelo)||0;
+    if (fb > 0) {
+      checks++;
+      if (fb >= tierBm.fb_ideal)        { score += 2; reasons.push('FB '+fb+' mph meets ideal ('+tierBm.fb_ideal+'+ mph)'); }
+      else if (fb >= tierBm.fb_min)     { score += 1; warnings.push('FB '+fb+' mph meets floor ('+tierBm.fb_min+' mph min)'); }
+      else                               { conflicts.push('FB '+fb+' mph below '+tierBm.fb_min+' mph minimum for this level'); }
+    }
+  } else {
+    // Position player checks
+    var sixty  = parseFloat(m.sixty)||0;
+    var exitV  = parseFloat(m.exitVelo)||0;
+    var armV   = parseFloat(m.infieldVelo||m.exitVelo)||0;
+    var popT   = parseFloat(m.popTime)||0;
+
+    if (sixty > 0) {
+      checks++;
+      if (sixty <= tierBm.sixty_ideal)     { score += 2; reasons.push('60 time '+sixty+' (ideal ≤'+tierBm.sixty_ideal+')'); }
+      else if (sixty <= tierBm.sixty_max)  { score += 1; warnings.push('60 time '+sixty+' (max '+tierBm.sixty_max+')'); }
+      else                                  { conflicts.push('60 time '+sixty+' too slow (max '+tierBm.sixty_max+' for this level)'); }
+    }
+    if (exitV > 0 && tierBm.exit_velo) {
+      checks++;
+      var evThresh = tierBm.exit_velo;
+      if (exitV >= evThresh)           { score += 2; reasons.push('Exit velo '+exitV+' mph meets '+evThresh+'+ target'); }
+      else if (exitV >= evThresh-5)    { score += 1; warnings.push('Exit velo '+exitV+' mph (target '+evThresh+')'); }
+      else                             { conflicts.push('Exit velo '+exitV+' mph below '+evThresh+' mph target'); }
+    }
+    if (armV > 0 && tierBm.arm_inf) {
+      checks++;
+      var armThresh = (posGroup==='middle_inf'||posGroup==='corner') ? tierBm.arm_inf : tierBm.arm_of||tierBm.arm_inf;
+      if (armV >= armThresh)           { score += 2; reasons.push('Arm '+armV+' mph meets '+armThresh+'+ target'); }
+      else if (armV >= armThresh-5)    { score += 1; warnings.push('Arm '+armV+' mph (target '+armThresh+')'); }
+      else                             { conflicts.push('Arm strength '+armV+' mph below '+armThresh+' mph target'); }
+    }
+    if (posGroup==='catcher' && popT > 0 && tierBm.pop_time) {
+      checks++;
+      if (popT <= tierBm.pop_time)     { score += 2; reasons.push('Pop time '+popT+'s meets '+tierBm.pop_time+'s target'); }
+      else                             { warnings.push('Pop time '+popT+'s (target '+tierBm.pop_time+'s)'); }
+    }
+  }
+
+  // No measurables — fall back to recruiting stage
+  if (checks === 0) {
+    var stageScore2 = {'':0,'Early':1,'Building List':2,'In Contact':3,'Visit/Showcase':4,'Offer/Commit':5,'Committed':6};
+    var sv2 = stageScore2[a.recruitStage||'']||0;
+    if ((tier==='elite_d1'||tier==='mid_d1') && sv2<3) return {tag:'Reach', reasons:['No measurables — limited recruiting contact for this level']};
+    if ((tier==='elite_d1') && sv2>=4) return {tag:'Fit', reasons:['Active D1 recruiting process']};
+    return {tag:'Unknown', reasons:['Add measurables for accurate fit assessment']};
+  }
+
+  if (conflicts.length > 0) return {tag:'Conflict', reasons:conflicts.concat(warnings)};
+  var pct = score / (checks * 2);
+  var tag = pct >= 0.75 ? 'Fit' : pct >= 0.4 ? 'Reach' : 'Conflict';
+  return {tag:tag, reasons:reasons.concat(warnings)};
+}
+
+// ── Fit Benchmarks Admin UI ──
+function renderFitBenchmarks() {
+  var bm = getFitBenchmarks();
+  var isCustom = !!(D.fitBenchmarks && D.fitBenchmarks.tiers);
+
+  var out = '<div style="padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between;">' +
+    '<div>' +
+    '<div style="font-size:.95rem;font-weight:800;color:var(--tx);">Fit Benchmarks</div>' +
+    '<div style="font-size:.72rem;color:var(--sub);margin-top:2px;">'+(isCustom?'Custom benchmarks active':'Using default BFFSA benchmarks')+'</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:6px;">' +
+    (isCustom?'<button onclick="bmReset()" style="font-size:.68rem;padding:5px 10px;background:var(--rm);border:1px solid var(--b2);color:var(--red2);border-radius:8px;cursor:pointer;">Reset Defaults</button>':'') +
+    '</div></div>';
+
+  // Each position group
+  bm.positions.forEach(function(pos, pi) {
+    var isPitcher = pos.id==='rhp'||pos.id==='lhp';
+    out += '<div style="margin:0 16px 12px;">' +
+      '<div style="font-size:.7rem;font-weight:800;color:var(--tx);margin-bottom:6px;">'+pos.label+'</div>' +
+      '<div style="background:var(--card);border:1px solid var(--b1);border-radius:10px;overflow:hidden;">' +
+      '<table style="width:100%;border-collapse:collapse;">' +
+      '<tr style="background:var(--card2);">' +
+      '<th style="padding:7px 10px;font-size:.6rem;color:var(--sub);text-align:left;font-weight:700;text-transform:uppercase;">Tier</th>' +
+      (isPitcher ?
+        '<th style="padding:7px 8px;font-size:.6rem;color:var(--sub);text-align:center;font-weight:700;text-transform:uppercase;">Floor</th>' +
+        '<th style="padding:7px 8px;font-size:.6rem;color:var(--sub);text-align:center;font-weight:700;text-transform:uppercase;">Ideal</th>' :
+        '<th style="padding:7px 8px;font-size:.6rem;color:var(--sub);text-align:center;font-weight:700;text-transform:uppercase;">60 Max</th>' +
+        '<th style="padding:7px 8px;font-size:.6rem;color:var(--sub);text-align:center;font-weight:700;text-transform:uppercase;">Arm</th>' +
+        '<th style="padding:7px 8px;font-size:.6rem;color:var(--sub);text-align:center;font-weight:700;text-transform:uppercase;">Exit Velo</th>'
+      ) +
+      '<th style="padding:7px 8px;font-size:.6rem;color:var(--sub);text-align:center;font-weight:700;text-transform:uppercase;">Edit</th>' +
+      '</tr>';
+
+    pos.metrics.forEach(function(mt, mi) {
+      var tierLabel = (bm.tiers.find(function(t){return t.id===mt.tier;})||{}).label || mt.tier;
+      out += '<tr style="border-top:1px solid var(--b1);">' +
+        '<td style="padding:8px 10px;font-size:.72rem;font-weight:600;color:var(--tx);">'+tierLabel+'</td>';
+      if (isPitcher) {
+        out += '<td style="padding:8px;text-align:center;font-size:.75rem;color:var(--red2);">'+mt.fb_min+'</td>' +
+               '<td style="padding:8px;text-align:center;font-size:.75rem;color:var(--grn);">'+mt.fb_ideal+'</td>';
+      } else {
+        out += '<td style="padding:8px;text-align:center;font-size:.75rem;color:var(--sub);">'+mt.sixty_max+'</td>' +
+               '<td style="padding:8px;text-align:center;font-size:.75rem;color:var(--grn);">'+mt.arm_inf+'</td>' +
+               '<td style="padding:8px;text-align:center;font-size:.75rem;color:var(--grn);">'+mt.exit_velo+'</td>';
+      }
+      out += '<td style="padding:8px;text-align:center;">' +
+        '<button onclick="bmEditMetric('+pi+','+mi+')" style="font-size:.65rem;padding:2px 8px;background:var(--card2);border:1px solid var(--b1);border-radius:5px;color:var(--tx2);cursor:pointer;">Edit</button>' +
+        '</td></tr>';
+    });
+    out += '</table></div></div>';
+  });
+
+  out += '<div style="padding:0 16px 24px;">' +
+    '<div style="font-size:.72rem;color:var(--sub);line-height:1.6;background:var(--card2);border-radius:8px;padding:10px 12px;">' +
+    '💡 Edit any metric to customize benchmarks. Changes apply immediately to all fit calculations. Tap Reset Defaults to restore original values.</div></div>';
+
+  return out;
+}
+
+function bmEditMetric(posIdx, metricIdx) {
+  var bm = getFitBenchmarks();
+  // If using defaults, clone to D.fitBenchmarks first
+  if (!D.fitBenchmarks || !D.fitBenchmarks.tiers) {
+    D.fitBenchmarks = JSON.parse(JSON.stringify(getDefaultBenchmarks()));
+  }
+  var pos = D.fitBenchmarks.positions[posIdx];
+  var mt  = pos.metrics[metricIdx];
+  var tier= (D.fitBenchmarks.tiers.find(function(t){return t.id===mt.tier;})||{}).label||mt.tier;
+  var isPitcher = pos.id==='rhp'||pos.id==='lhp';
+
+  openMo(
+    '<div class="mt">Edit Benchmark</div>' +
+    '<div style="font-size:.78rem;color:var(--sub);margin-bottom:14px;">'+pos.label+' · '+tier+'</div>' +
+    (isPitcher ?
+      '<div class="fr">' +
+      '<div class="fg"><label class="fl">Floor FB (mph)</label><input class="fi" id="bm-min" type="number" value="'+mt.fb_min+'"></div>' +
+      '<div class="fg"><label class="fl">Ideal FB (mph)</label><input class="fi" id="bm-ideal" type="number" value="'+mt.fb_ideal+'"></div>' +
+      '</div>' +
+      '<div class="fg"><label class="fl">Notes</label><input class="fi" id="bm-note" value="'+(mt.note||'')+'"></div>'
+      :
+      '<div class="fr">' +
+      '<div class="fg"><label class="fl">60 Max (sec)</label><input class="fi" id="bm-sixty" type="number" step="0.01" value="'+mt.sixty_max+'"></div>' +
+      '<div class="fg"><label class="fl">60 Ideal (sec)</label><input class="fi" id="bm-sixty-ideal" type="number" step="0.01" value="'+mt.sixty_ideal+'"></div>' +
+      '</div>' +
+      '<div class="fr">' +
+      '<div class="fg"><label class="fl">Arm Velo (mph)</label><input class="fi" id="bm-arm" type="number" value="'+mt.arm_inf+'"></div>' +
+      '<div class="fg"><label class="fl">Exit Velo (mph)</label><input class="fi" id="bm-exit" type="number" value="'+mt.exit_velo+'"></div>' +
+      '</div>' +
+      (mt.pop_time!==undefined ? '<div class="fg"><label class="fl">Pop Time (sec)</label><input class="fi" id="bm-pop" type="number" step="0.01" value="'+mt.pop_time+'"></div>' : '')
+    ),
+    '<button class="btn br3 bf" style="flex:1;" onclick="bmSaveMetric('+posIdx+','+metricIdx+')">Save</button>'
+  );
+}
+
+function bmSaveMetric(posIdx, metricIdx) {
+  if (!D.fitBenchmarks||!D.fitBenchmarks.tiers) D.fitBenchmarks=JSON.parse(JSON.stringify(getDefaultBenchmarks()));
+  var mt = D.fitBenchmarks.positions[posIdx].metrics[metricIdx];
+  var isPitcher = D.fitBenchmarks.positions[posIdx].id==='rhp'||D.fitBenchmarks.positions[posIdx].id==='lhp';
+  if (isPitcher) {
+    mt.fb_min   = parseFloat((document.getElementById('bm-min')||{}).value)||mt.fb_min;
+    mt.fb_ideal = parseFloat((document.getElementById('bm-ideal')||{}).value)||mt.fb_ideal;
+    mt.note     = ((document.getElementById('bm-note')||{}).value||'').trim();
+  } else {
+    mt.sixty_max   = parseFloat((document.getElementById('bm-sixty')||{}).value)||mt.sixty_max;
+    mt.sixty_ideal = parseFloat((document.getElementById('bm-sixty-ideal')||{}).value)||mt.sixty_ideal;
+    mt.arm_inf     = parseFloat((document.getElementById('bm-arm')||{}).value)||mt.arm_inf;
+    mt.exit_velo   = parseFloat((document.getElementById('bm-exit')||{}).value)||mt.exit_velo;
+    if (document.getElementById('bm-pop')) mt.pop_time = parseFloat(document.getElementById('bm-pop').value)||mt.pop_time;
+  }
+  saveAppData();
+  closeMo();
+  var b=document.getElementById('sec-body');
+  if (b) b.innerHTML=renderFitBenchmarks();
+  toast('Benchmark updated ✓');
+}
+
+function bmReset() {
+  if (!confirm('Reset all benchmarks to BFFSA defaults?')) return;
+  D.fitBenchmarks = null;
+  saveAppData();
+  var b=document.getElementById('sec-body');
+  if (b) b.innerHTML=renderFitBenchmarks();
+  toast('Reset to defaults ✓');
 }
 
 function calcCombinedTag(acTag, athTag) {
@@ -4831,7 +5221,7 @@ function openSchoolProfile(playerIdx, collegeIdx) {
       (p.athletics.playing_time_outlook?'<div style="display:flex;justify-content:space-between;padding:4px 0;"><span style="font-size:.75rem;color:var(--sub);">Playing Time</span><span style="font-size:.75rem;font-weight:700;color:'+(p.athletics.playing_time_outlook==='realistic'?'var(--grn)':p.athletics.playing_time_outlook==='competitive'?'#ff9500':'var(--red2)')+';">'+(p.athletics.playing_time_outlook.charAt(0).toUpperCase()+p.athletics.playing_time_outlook.slice(1))+'</span></div>':'') +
       '</div>' : '');
 
-  openMo(html, '<button class="btn br3 bf" style="flex:1;" onclick="openCoachEmailGenerator('+playerIdx+','+collegeIdx+');closeMo()">&#9993; Draft Email</button><button class="btn bgh" style="margin-left:8px;" onclick="loadSchoolProfile('+playerIdx+','+collegeIdx+');closeMo()">&#8635; Refresh</button>');
+  openMo(html, '<button class="btn br3 bf" style="flex:1;" onclick="openCoachEmailGenerator('+playerIdx+','+collegeIdx+');closeMo()">&#9993; Draft Email</button><button class="btn bgh" style="margin-left:8px;" onclick="var a=D.roster['+playerIdx+'];if(a){var c=(D.playerColleges[a.init]||[])['+collegeIdx+'];if(c){c.profile=null;c.profileError=null;spqEnqueueOne('+playerIdx+',a.init,'+collegeIdx+');}}closeMo();toast(\'Refreshing...\')">&#8635; Refresh</button>');
 }
 
 function removeCollegeFromPlayer(idx, collegeIdx) {
@@ -5226,7 +5616,8 @@ function saveMeasurables(idx) {
     m.popTime     = document.getElementById('ms-pop').value || '';
     m.infieldVelo = document.getElementById('ms-inf').value || '';
   }
-  m.highlightUrl = document.getElementById('ms-hl').value || '';
+  m.highlightUrl  = document.getElementById('ms-hl').value || '';
+  m.fitOverride   = (document.getElementById('ms-fit-override')||{}).value || '';
   closeMo(); saveAppData();
   toast('Measurables saved ✓');
   playerTab('info');
@@ -5500,7 +5891,7 @@ function renderMore() {
 
   return `<div class="shdr"><span class="sti">All Sections</span></div>
   <div class="cl" style="margin:0 16px 16px;">
-    ${[['&#128176;','g','acct','Accounting'],['&#128172;','b','msgs','Message Board'],['&#127919;','r','goals','Goals'],['&#129309;','g','donors','Donor CRM'],['&#128202;','b','reports','Reports'],['&#127909;','b','meetings','Board Meetings'],['&#127891;','b','schools','Schools DB'],['&#127775;','b','events','Special Events'],['&#128101;','r','devboard','Dev Board']].map(function(it){
+    ${[['&#128176;','g','acct','Accounting'],['&#128172;','b','msgs','Message Board'],['&#127919;','r','goals','Goals'],['&#129309;','g','donors','Donor CRM'],['&#128202;','b','reports','Reports'],['&#127909;','b','meetings','Board Meetings'],['&#127891;','b','schools','Schools DB'],['&#127775;','b','events','Special Events'],['&#128101;','r','devboard','Dev Board'],['&#127919;','b','benchmarks','Fit Benchmarks']].map(function(it){
       return `<button class="cr" onclick="admSec('${it[2]}')">
         <div class="ci ${it[1]}">${it[0]}</div>
         <div style="flex:1;"><div class="cn">${it[3]}</div></div>
@@ -5582,7 +5973,8 @@ function exportAppData() {
       measurables:    D.measurables,
       eligibility:    D.eligibility,
       specialEvents:  D.specialEvents,
-      devBoard:       D.devBoard
+      devBoard:       D.devBoard,
+      fitBenchmarks:  D.fitBenchmarks
     };
     var json = JSON.stringify(snap, null, 2);
     var blob = new Blob([json], {type: 'application/json'});
@@ -7291,7 +7683,10 @@ function diConfirmImport(idx) {
         status:      entry.status||'Target',
         coachName:   entry.coachName||'',
         notes:       entry.notes||'',
-        lastUpdated: new Date().toISOString().split('T')[0]
+        lastUpdated: new Date().toISOString().split('T')[0],
+        profile:     null,
+        profileLoading: false,
+        profileError:   null
       });
       count++;
     });
@@ -7313,6 +7708,10 @@ function diConfirmImport(idx) {
     if (playerNames.length > 0) {
       toast('✅ College list updated for: ' + playerNames.join(', '));
     }
+    // Enqueue profile loads for all new/updated schools — sequential, 4.5s apart
+    Object.keys(playerUpdates).forEach(function(init) {
+      spqEnqueueAfterImport(init);
+    });
   }
 
   // school_data import - populate schools database
@@ -8628,17 +9027,7 @@ function renderColleges() {
   var colleges = D.playerColleges[athInit] || [];
   var rosterIdx = D.roster.findIndex(function(r){ return r.init === athInit; });
 
-  // Auto-load profiles for schools with no profile and no active load/error — staggered to avoid rate limits
-  if (rosterIdx >= 0) {
-    var loadDelay = 0;
-    colleges.forEach(function(c, ci) {
-      if (!c.profile && !c.profileLoading && !c.profileError) {
-        c.profileLoading = true;
-        setTimeout(function(){ loadSchoolProfile(rosterIdx, ci); }, loadDelay);
-        loadDelay += 3000; // 3s between each to stay under 30k TPM
-      }
-    });
-  }
+  // Profiles loaded via global queue — see schoolProfileQueue
 
 
   var athRoster = D.roster.find(function(r){ return r.init === athInit; }) || {};
@@ -8799,7 +9188,7 @@ function athRetryProfile(i) {
   if (rosterIdx < 0) return;
   var body = document.getElementById('asec-body');
   if (body) body.innerHTML = renderColleges();
-  loadSchoolProfile(rosterIdx, i);
+  spqEnqueueOne(rosterIdx, athInit, i);
 }
 
 function athEditCollege(i) {
@@ -8914,7 +9303,7 @@ function saveCollege() {
   // Find the roster index for this athlete
   var rosterIdx = D.roster.findIndex(function(r){ return r.init === athInit; });
   if (rosterIdx >= 0) {
-    loadSchoolProfile(rosterIdx, newIdx);
+    spqEnqueueOne(rosterIdx, athInit, newIdx);
   }
 }
 
