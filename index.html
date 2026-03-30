@@ -833,6 +833,8 @@ function saveAppData() {
         fitBenchmarks:  D.fitBenchmarks
       };
       localStorage.setItem('bffsa-data', JSON.stringify(snap));
+      localStorage.setItem('bffsa-sync-ts', Date.now().toString());
+      scheduleSync();
     } catch(e) { console.warn('Save failed', e); }
   }, 800);
 }
@@ -891,6 +893,172 @@ function loadAppData() {
 
 
 
+
+// ══════════════════════════════════════════════════
+// SUPABASE SYNC SYSTEM
+// ══════════════════════════════════════════════════
+var _syncTimer = null;
+var _syncStatus = 'idle'; // idle | pushing | pulling | error | ok
+var _lastSyncAt = null;
+
+function syncUpdateIndicator(status, msg) {
+  _syncStatus = status;
+  var el = document.getElementById('sync-indicator');
+  if (!el) return;
+  var icons = { idle:'☁', pushing:'⬆', pulling:'⬇', ok:'✓', error:'!' };
+  var colors = { idle:'var(--sub)', pushing:'var(--blu)', pulling:'var(--pur)', ok:'var(--grn)', error:'var(--red)' };
+  el.textContent = (icons[status]||'☁') + (msg ? ' ' + msg : '');
+  el.style.color = colors[status] || 'var(--sub)';
+}
+
+// Push local data to Supabase via Netlify function
+function syncPush(silent) {
+  try {
+    var raw = localStorage.getItem('bffsa-data');
+    if (!raw) return;
+    if (!silent) syncUpdateIndicator('pushing', 'Saving...');
+    fetch('/.netlify/functions/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: JSON.parse(raw), client_ts: new Date().toISOString() })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(res) {
+      if (res.ok) {
+        _lastSyncAt = new Date();
+        syncUpdateIndicator('ok', 'Synced');
+        setTimeout(function(){ syncUpdateIndicator('idle'); }, 3000);
+      } else {
+        syncUpdateIndicator('error', 'Sync failed');
+        console.warn('Sync push failed:', res.error);
+      }
+    })
+    .catch(function(e){
+      syncUpdateIndicator('error', 'Offline');
+      console.warn('Sync push error:', e);
+    });
+  } catch(e) { console.warn('syncPush error:', e); }
+}
+
+// Pull latest data from Supabase and merge into local
+function syncPull(onDone) {
+  syncUpdateIndicator('pulling', 'Syncing...');
+  fetch('/.netlify/functions/sync', { method: 'GET' })
+  .then(function(r){ return r.json(); })
+  .then(function(res) {
+    if (!res.found) {
+      syncUpdateIndicator('ok', 'No cloud data');
+      setTimeout(function(){ syncUpdateIndicator('idle'); }, 2000);
+      if (onDone) onDone(false);
+      return;
+    }
+    // Compare timestamps — only apply if cloud is newer
+    var cloudTs = new Date(res.updated_at).getTime();
+    var localTs = parseInt(localStorage.getItem('bffsa-sync-ts') || '0');
+    if (cloudTs > localTs) {
+      // Apply cloud data to localStorage then reload D
+      localStorage.setItem('bffsa-data', JSON.stringify(res.data));
+      localStorage.setItem('bffsa-sync-ts', cloudTs.toString());
+      loadAppData();
+      _lastSyncAt = new Date();
+      syncUpdateIndicator('ok', 'Updated');
+      setTimeout(function(){ syncUpdateIndicator('idle'); }, 3000);
+      if (onDone) onDone(true); // true = data was updated
+    } else {
+      syncUpdateIndicator('ok', 'Up to date');
+      setTimeout(function(){ syncUpdateIndicator('idle'); }, 2000);
+      if (onDone) onDone(false);
+    }
+  })
+  .catch(function(e){
+    syncUpdateIndicator('error', 'Offline');
+    console.warn('syncPull error:', e);
+    if (onDone) onDone(false);
+  });
+}
+
+// Update last-sync timestamp display
+function syncUpdateLastTs() {
+  var el = document.getElementById('sync-last');
+  if (!el) return;
+  if (_lastSyncAt) {
+    var h = _lastSyncAt.getHours(), m = _lastSyncAt.getMinutes();
+    var ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    el.textContent = 'Last sync: ' + h + ':' + (m < 10 ? '0' : '') + m + ' ' + ampm;
+  }
+}
+
+function syncPushManual() {
+  syncUpdateIndicator('pushing', 'Pushing...');
+  var raw = localStorage.getItem('bffsa-data');
+  if (!raw) { toast('Nothing to push'); return; }
+  fetch('/.netlify/functions/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data: JSON.parse(raw), client_ts: new Date().toISOString() })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(res) {
+    if (res.ok) {
+      _lastSyncAt = new Date();
+      syncUpdateLastTs();
+      syncUpdateIndicator('ok', 'Pushed ✓');
+      toast('✓ Data pushed to cloud');
+      setTimeout(function(){ syncUpdateIndicator('idle'); }, 3000);
+    } else {
+      syncUpdateIndicator('error', 'Failed');
+      toast('Push failed — check connection');
+    }
+  })
+  .catch(function(){ syncUpdateIndicator('error', 'Offline'); toast('Push failed — offline'); });
+}
+
+function syncPullManual() {
+  syncUpdateIndicator('pulling', 'Pulling...');
+  fetch('/.netlify/functions/sync', { method: 'GET' })
+  .then(function(r){ return r.json(); })
+  .then(function(res) {
+    if (!res.found) {
+      syncUpdateIndicator('idle');
+      toast('No cloud data found');
+      return;
+    }
+    localStorage.setItem('bffsa-data', JSON.stringify(res.data));
+    localStorage.setItem('bffsa-sync-ts', new Date(res.updated_at).getTime().toString());
+    loadAppData();
+    _lastSyncAt = new Date();
+    syncUpdateLastTs();
+    syncUpdateIndicator('ok', 'Pulled ✓');
+    toast('✓ Data pulled from cloud');
+    setTimeout(function(){ syncUpdateIndicator('idle'); }, 3000);
+    if (typeof renderAdmHome === 'function') renderAdmHome();
+  })
+  .catch(function(){ syncUpdateIndicator('error', 'Offline'); toast('Pull failed — offline'); });
+}
+
+// Called from More menu manual sync button
+function manualSync() {
+  syncPull(function(updated) {
+    if (updated) {
+      toast('✓ Synced from cloud — data updated');
+      // Refresh current view
+      if (typeof renderAdmHome === 'function' && document.getElementById('vADM') && document.getElementById('vADM').style.display !== 'none') {
+        renderAdmHome();
+      }
+    } else {
+      syncPush(false);
+    }
+  });
+}
+
+// Auto-push after every saveAppData (debounced 5s after the save debounce)
+function scheduleSync() {
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(function(){ syncPush(true); }, 5000);
+}
+
+// ══════════════════════════════════════════════════
 var D = {
   tasks: [],
   aTasks: [],
@@ -6229,6 +6397,21 @@ function renderMore() {
       </button>`;
     }).join('')}
   </div>
+  <div class="shdr"><span class="sti">Cloud Sync</span></div>
+  <div style="margin:0 16px 16px;">
+    <div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;padding:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:.82rem;font-weight:700;color:var(--tx);">Desktop ↔ Mobile</span>
+        <span id="sync-indicator" style="font-size:.75rem;color:var(--sub);">☁</span>
+      </div>
+      <div style="font-size:.72rem;color:var(--sub);margin-bottom:8px;">Syncs automatically on every save. Use these buttons to force a manual push or pull.</div>
+      <div id="sync-last" style="font-size:.7rem;color:var(--sub);margin-bottom:10px;">Last sync: not yet this session</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn bf" style="flex:1;background:var(--blu);border-radius:10px;" onclick="syncPushManual()">&#8679; Push to Cloud</button>
+        <button class="btn bf" style="flex:1;background:var(--pur);border-radius:10px;" onclick="syncPullManual()">&#8681; Pull from Cloud</button>
+      </div>
+    </div>
+  </div>
   <div class="shdr"><span class="sti">Data Backup</span></div>
   <div style="margin:0 16px 16px;">
     <div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;padding:14px;">
@@ -10332,6 +10515,13 @@ function setFontSize(size, silent) {
 
 document.addEventListener('DOMContentLoaded', function(){
   loadAppData();
+  // Pull from cloud on startup — silently merges if cloud is newer
+  setTimeout(function(){ syncPull(function(updated){
+    if (updated) {
+      // Refresh dashboard if it is visible
+      if (typeof renderAdmHome === 'function') renderAdmHome();
+    }
+  }); }, 1500);
   // Restore Doc AI command history (after DI object is initialized)
   diLoadHistory();
   // Restore and resume school profile queue (after D.playerColleges is loaded)
