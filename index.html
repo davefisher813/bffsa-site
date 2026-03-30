@@ -179,6 +179,7 @@ body.bffsa-light .scr,body.ios-light .scr{background-image:none;}
   border:1px solid var(--b1);overflow:hidden;
   box-shadow:var(--shadow-sm);
 }
+.sc:nth-child(n+4){border-top:1px solid var(--b1);}
 .sc{background:var(--card);padding:15px 8px;text-align:center;position:relative;}
 .sc+.sc{border-left:1px solid var(--b1);}
 .sc::before{
@@ -467,13 +468,13 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
       
       <div><div class="ttl">BFFSA Admin</div><span class="tsub">Control Center</span></div>
     </div>
-    <div style="display:flex;gap:5px;align-items:center;flex-shrink:0;">
+    <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
       <div class="ndot"></div>
-      <div style="display:flex;gap:5px;align-items:center;">
-        <button onclick="goV('vATHPICK');renderAthPicker();" title="Athletes" style="font-size:.68rem;font-weight:700;padding:4px 8px;border-radius:8px;border:1px solid var(--b2);background:var(--card2);color:var(--sub);cursor:pointer;">⚾ Athletes</button>
-        <button onclick="goV('vPUB');pubTab('about');" title="Public" style="font-size:.68rem;font-weight:700;padding:5px 9px;border-radius:8px;border:1px solid var(--b2);background:var(--card2);color:var(--sub);cursor:pointer;">&#127760; Public</button>
-        <button class="ta" onclick="D._currentUser=null; goV('vSP');">Exit</button>
+      <div style="display:flex;align-items:center;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:3px;gap:2px;">
+        <button id="tb-ops-btn" onclick="goV('vADM');renderAdmHome();document.getElementById('tb-ops-btn').style.background='var(--red)';document.getElementById('tb-ops-btn').style.color='#fff';document.getElementById('tb-ath-btn').style.background='transparent';document.getElementById('tb-ath-btn').style.color='var(--sub)';" style="font-size:.68rem;font-weight:700;padding:5px 11px;border-radius:7px;border:none;background:var(--red);color:#fff;cursor:pointer;transition:all .15s;">Ops</button>
+        <button id="tb-ath-btn" onclick="goV('vATHPICK');renderAthPicker();document.getElementById('tb-ath-btn').style.background='var(--red)';document.getElementById('tb-ath-btn').style.color='#fff';document.getElementById('tb-ops-btn').style.background='transparent';document.getElementById('tb-ops-btn').style.color='var(--sub)';" style="font-size:.68rem;font-weight:700;padding:5px 11px;border-radius:7px;border:none;background:transparent;color:var(--sub);cursor:pointer;transition:all .15s;">Athletes</button>
       </div>
+      <button class="ta" onclick="D._currentUser=null; goV('vSP');">Exit</button>
     </div>
   </div>
   <div class="scr">
@@ -485,6 +486,9 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
       <div class="sc"><span class="sn" id="stat-athletes">0</span><span class="sl">Athletes</span></div>
       <div class="sc"><span class="sn" id="stat-placed">0</span><span class="sl">Placed</span></div>
       <div class="sc"><span class="sn" id="stat-raised">$0</span><span class="sl">Raised</span></div>
+      <div class="sc"><span class="sn" id="stat-tasks">0</span><span class="sl">Open Tasks</span></div>
+      <div class="sc"><span class="sn" id="stat-events">0</span><span class="sl">Events</span></div>
+      <div class="sc"><span class="sn" id="stat-donors">0</span><span class="sl">Donors</span></div>
     </div>
     <div class="shdr a2"><span class="sti">Quick Actions</span></div>
     <div class="qag a2">
@@ -594,8 +598,10 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
     <div class="tbl"><button class="bk" onclick="goV('vADM')">&#8249;</button><div class="ttl" id="sec-ttl"></div></div>
     <div style="display:flex;gap:6px;align-items:center;">
       <button class="ta" id="sec-add-btn" style="display:none;" onclick="secAddAction()">+ Add</button>
-      <button onclick="goV('vATHPICK');renderAthPicker();" title="Athletes" style="font-size:.7rem;font-weight:700;padding:5px 9px;border-radius:8px;border:1px solid var(--b2);background:var(--card2);color:var(--sub);cursor:pointer;">&#9918;</button>
-      <button onclick="goV('vPUB');pubTab('about');" title="Public" style="font-size:.7rem;font-weight:700;padding:5px 9px;border-radius:8px;border:1px solid var(--b2);background:var(--card2);color:var(--sub);cursor:pointer;">&#127760;</button>
+      <div style="display:flex;align-items:center;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:3px;gap:2px;">
+        <button onclick="goV('vADM');renderAdmHome();" style="font-size:.65rem;font-weight:700;padding:4px 9px;border-radius:7px;border:none;background:transparent;color:var(--sub);cursor:pointer;">Ops</button>
+        <button onclick="goV('vATHPICK');renderAthPicker();" style="font-size:.65rem;font-weight:700;padding:4px 9px;border-radius:7px;border:none;background:var(--red);color:#fff;cursor:pointer;">Athletes</button>
+      </div>
     </div>
   </div>
   <div class="scr" id="sec-body"></div>
@@ -823,7 +829,8 @@ function saveAppData() {
         scholarships:   D.scholarships,
         athleteFiles:   D.athleteFiles,
         specialEvents:  D.specialEvents,
-        devBoard:       D.devBoard
+        devBoard:       D.devBoard,
+        fitBenchmarks:  D.fitBenchmarks
       };
       localStorage.setItem('bffsa-data', JSON.stringify(snap));
     } catch(e) { console.warn('Save failed', e); }
@@ -859,6 +866,25 @@ function loadAppData() {
         if (live && saved.pin) live.pin = saved.pin;
       });
     }
+    // Reset any schools stuck in profileLoading:true (from previous sessions/crashes)
+    // They'll be retried when the user navigates to the college list
+    Object.keys(D.playerColleges).forEach(function(init) {
+      (D.playerColleges[init]||[]).forEach(function(c) {
+        if (c.profileLoading) {
+          c.profileLoading = false;
+          // Keep profileError as null so it shows retry button
+          if (!c.profile) c.profileError = null;
+        }
+      });
+    });
+
+    // Reset stuck profileLoading flags from previous sessions
+    Object.keys(D.playerColleges).forEach(function(init) {
+      (D.playerColleges[init]||[]).forEach(function(c) {
+        if (c.profileLoading) { c.profileLoading = false; }
+      });
+    });
+
     console.log('App data loaded — roster: ' + D.roster.length + ' athletes');
   } catch(e) { console.warn('Load failed', e); }
 }
@@ -1104,6 +1130,21 @@ function renderAdmHome() {
                   totalRaised >= 1000    ? '$' + Math.round(totalRaised/1000) + 'K' :
                   totalRaised > 0        ? '$' + Math.round(totalRaised) : '$0';
   document.querySelectorAll('#stat-raised').forEach(function(el){ el.textContent = raisedFmt; });
+
+  // Open tasks
+  var openTasks = (D.tasks||[]).filter(function(t){ return !t.done; }).length;
+  document.querySelectorAll('#stat-tasks').forEach(function(el){ el.textContent = openTasks; });
+
+  // Upcoming events (today or future)
+  var today = new Date(); today.setHours(0,0,0,0);
+  var upcomingEvents = (D.events||[]).filter(function(ev){
+    if (!ev.date) return false;
+    var d = new Date(ev.date); return d >= today;
+  }).length;
+  document.querySelectorAll('#stat-events').forEach(function(el){ el.textContent = upcomingEvents; });
+
+  // Donors count
+  document.querySelectorAll('#stat-donors').forEach(function(el){ el.textContent = (D.donors||[]).length; });
 }
 
 // ── ADMIN BOTTOM NAV ──
@@ -1185,6 +1226,7 @@ function toggleAdmTask(id) {
   var t = D.tasks.find(function(x){ return x.id === id; });
   if (!t) return;
   t.done = !t.done;
+  saveAppData();
   renderTaskPrev();
   var body = document.getElementById('sec-body');
   if (body && curSec === 'tasks') body.innerHTML = renderTasks();
@@ -1384,6 +1426,7 @@ function renderAcct() {
 }
 
 function acctRefresh() {
+  saveAppData();
   var body = document.getElementById('sec-body');
   if (body && curSec==='acct') body.innerHTML = renderAcct();
 }
@@ -2295,15 +2338,24 @@ function renderTasks() {
   var done = D.tasks.filter(function(t){ return t.done; }).length;
   var rows = D.tasks.length ? D.tasks.map(function(t){
     var pc = t.pri==='high' ? 'br2' : t.pri==='med' ? 'by' : 'bgr';
-    return '<button class="trow" onclick="toggleAdmTask(' + t.id + ')">' +
+    return '<div class="trow" style="display:flex;align-items:center;">' +
+      '<button onclick="toggleAdmTask(' + t.id + ')" style="flex:1;display:flex;align-items:center;gap:10px;background:none;border:none;cursor:pointer;padding:10px 0 10px 14px;text-align:left;">' +
       '<div class="tck ' + (t.done?'done':'') + '">' + (t.done?'&#10003;':'') + '</div>' +
-      '<div style="flex:1;"><div class="tn ' + (t.done?'done':'') + '">' + t.text + '</div>' +
+      '<div style="flex:1;min-width:0;"><div class="tn ' + (t.done?'done':'') + '">' + t.text + '</div>' +
       '<div class="tm">Due ' + t.due + ' &middot; ' + t.who + '</div></div>' +
-      '<span class="bd ' + pc + '">' + t.pri + '</span></button>';
+      '<span class="bd ' + pc + '">' + t.pri + '</span></button>' +
+      '<button onclick="deleteTask(' + t.id + ')" style="padding:10px 14px;background:none;border:none;cursor:pointer;color:var(--sub);font-size:.9rem;flex-shrink:0;" title="Delete">✕</button>' +
+      '</div>';
   }).join('') : '<div style="padding:40px 16px;text-align:center;color:var(--sub);font-size:.84rem;">No tasks yet. Tap + to add one.</div>';
   return '<div style="padding:12px 16px 0;display:flex;gap:8px;">' +
     '<span class="bd br2">' + open + ' Open</span><span class="bd bg">' + done + ' Done</span></div>' +
     rows + '<div style="height:20px;"></div>';
+}
+function deleteTask(id) {
+  D.tasks = D.tasks.filter(function(t){ return t.id !== id; });
+  saveAppData();
+  var body = document.getElementById('sec-body');
+  if (body) body.innerHTML = renderTasks();
 }
 function openAddTask() {
   openMo(`<div class="mt">New Task</div>
@@ -2324,6 +2376,7 @@ function saveTask() {
     due:(document.getElementById('nt-d')||{}).value||'TBD',
     who:(document.getElementById('nt-w')||{}).value||'Unassigned',
     pri:(document.getElementById('nt-p')||{}).value||'med'});
+  saveAppData();
   closeMo();
   var body = document.getElementById('sec-body');
   if (body) body.innerHTML = renderTasks();
@@ -2338,12 +2391,14 @@ function renderCal() {
   for (var i=1; i<=31; i++) dayRows += '<div class="cd ' + (i===18?'td':'') + (evDays.indexOf(i)>-1&&i!==18?' ev':'') + '">' + i + '</div>';
   dayRows += '<div class="cd dim">1</div><div class="cd dim">2</div><div class="cd dim">3</div>';
 
-  var evRows = D.events.length ? D.events.map(function(e){
+  var evRows = D.events.length ? D.events.map(function(e, ei){
     var ec = e.type==='event'?'br2':e.type==='meeting'?'bb2':e.type==='program'?'bg':'bgr';
-    return '<div class="evr">' +
+    return '<div class="evr" style="display:flex;align-items:center;">' +
       '<div class="edb"><div class="edn">' + e.date + '</div><div class="edm">' + e.mo + '</div></div>' +
-      '<div style="flex:1;"><div class="cn">' + e.title + '</div><div class="cs">' + e.time + ' &middot; ' + e.loc + '</div></div>' +
-      '<span class="bd ' + ec + '">' + e.type + '</span></div>';
+      '<div style="flex:1;min-width:0;"><div class="cn">' + e.title + '</div><div class="cs">' + e.time + ' &middot; ' + e.loc + '</div></div>' +
+      '<span class="bd ' + ec + '">' + e.type + '</span>' +
+      '<button onclick="deleteEvent(' + ei + ')" style="padding:8px 12px;background:none;border:none;cursor:pointer;color:var(--sub);font-size:.9rem;flex-shrink:0;" title="Delete">✕</button>' +
+      '</div>';
   }).join('') : '<div style="padding:16px;text-align:center;color:var(--sub);font-size:.83rem;">No events yet. Tap + Add to create one.</div>';
 
   return '<div style="padding:16px 16px 0;">' +
@@ -2383,10 +2438,17 @@ function saveEvent() {
     time:(document.getElementById('ev-ti')||{}).value||'',
     loc:(document.getElementById('ev-l')||{}).value||'',
     type:(document.getElementById('ev-tp')||{}).value||'event'});
+  saveAppData();
   closeMo();
   var body = document.getElementById('sec-body');
   if (body) body.innerHTML = renderCal();
   toast('Event added');
+}
+function deleteEvent(idx) {
+  D.events.splice(idx, 1);
+  saveAppData();
+  var body = document.getElementById('sec-body');
+  if (body) body.innerHTML = renderCal();
 }
 
 // ── GOALS ──
@@ -3102,10 +3164,17 @@ function dbSave(mi) {
 function dbDelete(mi) {
   var m=(D.devBoard||[])[mi]; if (!m) return;
   if (!confirm('Remove '+m.name+' from the development board?')) return;
+  var removedName = m.name;
   D.devBoard.splice(mi,1);
+  // Clean up orphaned event assignments
+  (D.specialEvents||[]).forEach(function(e){
+    if (!e.boardMembers) return;
+    e.boardMembers = e.boardMembers.filter(function(bm){ return bm.name !== removedName; });
+  });
   saveAppData();
   var b=document.getElementById('sec-body');
   if (b) b.innerHTML=renderDevBoard();
+  toast(removedName+' removed ✓');
 }
 
 function renderGoals() {
@@ -3117,6 +3186,7 @@ function renderGoals() {
       '<div class="pt"><div class="pb ' + (g.cl||'') + '" style="width:' + g.pct + '%;"></div></div>' +
       '<div class="gmt"><span>Due: ' + g.due + '</span>' +
       '<span>' + (g.cur>100?'$'+g.cur.toLocaleString():g.cur) + ' / ' + (g.tgt>100?'$'+g.tgt.toLocaleString():g.tgt) + '</span>' +
+      '<button onclick="deleteGoal('+JSON.stringify(g.name)+')" style="background:none;border:none;color:var(--sub);font-size:.75rem;cursor:pointer;padding:0 2px;" title="Delete goal">✕</button>' +
       '</div></div>';
   }).join('') + '<div style="height:20px;"></div>';
 }
@@ -3139,10 +3209,18 @@ function saveGoal() {
   D.goals.unshift({name:name,desc:(document.getElementById('gl-d')||{}).value||'',
     pct:Math.min(100,Math.round(cur/tgt*100)),cur:cur,tgt:tgt,
     due:(document.getElementById('gl-du')||{}).value||'',cl:''});
+  saveAppData();
   closeMo();
   var body = document.getElementById('sec-body');
   if (body) body.innerHTML = renderGoals();
   toast('Goal added');
+}
+function deleteGoal(name) {
+  D.goals = D.goals.filter(function(g){ return g.name !== name; });
+  saveAppData();
+  var body = document.getElementById('sec-body');
+  if (body) body.innerHTML = renderGoals();
+  toast('Goal removed');
 }
 
 // ── ROSTER ──
@@ -3175,6 +3253,7 @@ function renderRoster(filter) {
     '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
     '<input placeholder="Search athletes..." oninput="rosterSearch(this.value)" ' +
     'style="flex:1;padding:9px 12px;background:var(--card2);border:1px solid var(--b2);color:var(--tx);border-radius:10px;font-size:.84rem;outline:none;">' +
+    '<button onclick="openAddAthlete()" style="padding:9px 12px;font-size:.72rem;font-weight:700;border-radius:10px;border:none;cursor:pointer;flex-shrink:0;background:var(--red);color:#fff;">+ Add</button>' +
     '<button onclick="rosterToggleSelect()" style="padding:9px 12px;font-size:.72rem;font-weight:700;border-radius:10px;border:none;cursor:pointer;flex-shrink:0;' +
     (selectMode?'background:var(--red);color:#fff;':'background:var(--card2);color:var(--sub);')+'">' +
     (selectMode?'✓ Selecting':'Select') + '</button>' +
@@ -3308,6 +3387,81 @@ function rosterBulkCoordSave() {
   toast((coord?coord.name:'Coordinator removed')+' — '+sel.length+' athlete'+(sel.length>1?'s':'')+' updated ✓');
   D._rosterSelectMode=false; D._rosterSelected=[];
   rosterRefresh();
+}
+
+function openAddAthlete() {
+  var coords = (D.coordinators||[]).filter(function(c){ return c.role==='Recruiting Coordinator'; });
+  openMo(
+    '<div class="mt">Add Athlete</div>' +
+    '<div class="fg"><label class="fl">Full Name</label><input class="fi" id="na-name" placeholder="First Last"></div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Sport</label><input class="fi" id="na-sport" value="Baseball"></div>' +
+    '<div class="fg"><label class="fl">Grad Year</label><input class="fi" id="na-grad" type="number" placeholder="2026"></div>' +
+    '</div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Status</label><select class="fi" id="na-status">' +
+    ['Active','Committed','Graduated','Exited'].map(function(s){ return '<option>'+s+'</option>'; }).join('') +
+    '</select></div>' +
+    '<div class="fg"><label class="fl">GPA</label><input class="fi" id="na-gpa" type="number" step="0.1" min="0" max="4" placeholder="3.5"></div>' +
+    '</div>' +
+    '<div class="fg"><label class="fl">High School</label><input class="fi" id="na-school" placeholder="School name"></div>' +
+    '<div class="fg"><label class="fl">Athlete Contact (email)</label><input class="fi" id="na-contact" type="email" placeholder="athlete@email.com"></div>' +
+    (coords.length ? '<div class="fg"><label class="fl">Assign Coordinator</label><select class="fi" id="na-coord">' +
+    '<option value="">— None —</option>' +
+    coords.map(function(c){ return '<option value="'+c.init+'">'+c.name+'</option>'; }).join('') +
+    '</select></div>' : '') +
+    '<div class="fg"><label class="fl">Notes</label><textarea class="fi" id="na-notes" rows="2" style="resize:none;"></textarea></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="saveAddAthlete()">Add Athlete</button>'
+  );
+  setTimeout(function(){ var el=document.getElementById('na-name'); if(el) el.focus(); }, 200);
+}
+
+function saveAddAthlete() {
+  var name = ((document.getElementById('na-name')||{}).value||'').trim();
+  if (!name) { toast('Name required'); return; }
+
+  // Generate init — dedup if collision
+  var rawInit = name.split(' ').map(function(w){ return w[0]||''; }).join('').toUpperCase().slice(0,2);
+  var init = rawInit; var suffix = 2;
+  while (D.roster.find(function(r){ return r.init===init; })) { init = rawInit + suffix++; }
+
+  var gv = parseFloat((document.getElementById('na-gpa')||{}).value);
+  var gy = parseInt((document.getElementById('na-grad')||{}).value);
+
+  var entry = {
+    name:         name,
+    init:         init,
+    sport:        ((document.getElementById('na-sport')||{}).value||'Baseball').trim(),
+    grad:         isNaN(gy) ? new Date().getFullYear()+1 : gy,
+    status:       (document.getElementById('na-status')||{}).value || 'Active',
+    gpa:          isNaN(gv) ? null : gv,
+    school:       ((document.getElementById('na-school')||{}).value||'').trim(),
+    contact:      ((document.getElementById('na-contact')||{}).value||'').trim(),
+    notes:        ((document.getElementById('na-notes')||{}).value||'').trim(),
+    program:      'Bridge',
+    saplan:       '',
+    recruitStage: '',
+    guardian:     '',
+    joined:       new Date().toISOString().split('T')[0],
+    english:      null,
+    pin:          '',
+    commitment:   ''
+  };
+  D.roster.push(entry);
+
+  // Assign coordinator if selected
+  var coordInit = ((document.getElementById('na-coord')||{}).value||'');
+  if (coordInit) {
+    if (!D.assignments) D.assignments = {};
+    if (!D.assignments[init]) D.assignments[init] = {coordInit:'', tasks:[]};
+    D.assignments[init].coordInit = coordInit;
+  }
+
+  saveAppData();
+  closeMo();
+  D.rosterStatusFilter = entry.status;
+  rosterRefresh();
+  toast(name + ' added ✓');
 }
 
 function rosterRefresh() {
@@ -3522,7 +3676,7 @@ function renderPlayerInfo(idx, a) {
 
   // Single editable form — all fields
   out +=
-    '<div class="fg"><label class="fl">Full Name</label><input class="fi" id="ap-name" value="'+(a.name||'')+'" onblur="savePlayerInfo('+idx+')"></div>' +
+    '<div class="fg"><label class="fl">Full Name</label><input class="fi" id="ap-name" value="'+(a.name||'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div>' +
 
     '<div class="fr">' +
     '<div class="fg"><label class="fl">Status</label><select class="fi" id="ap-status" onchange="savePlayerInfo('+idx+')">' +
@@ -3533,29 +3687,29 @@ function renderPlayerInfo(idx, a) {
     '</select></div></div>' +
 
     '<div class="fr">' +
-    '<div class="fg"><label class="fl">Sport</label><input class="fi" id="ap-sport" value="'+(a.sport||'')+'" onblur="savePlayerInfo('+idx+')"></div>' +
-    '<div class="fg"><label class="fl">Grad Year</label><input class="fi" id="ap-grad" type="number" value="'+(a.grad||'')+'" onblur="savePlayerInfo('+idx+')"></div></div>' +
+    '<div class="fg"><label class="fl">Sport</label><input class="fi" id="ap-sport" value="'+(a.sport||'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div>' +
+    '<div class="fg"><label class="fl">Grad Year</label><input class="fi" id="ap-grad" type="number" value="'+(a.grad||'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div></div>' +
 
     '<div class="fr">' +
-    '<div class="fg"><label class="fl">GPA</label><input class="fi" id="ap-gpa" type="number" step="0.1" min="0" max="4" value="'+(a.gpa!=null?a.gpa:'')+'" onblur="savePlayerInfo('+idx+')"></div>' +
-    '<div class="fg"><label class="fl">High School</label><input class="fi" id="ap-school" value="'+(a.school||'')+'" onblur="savePlayerInfo('+idx+')"></div></div>' +
+    '<div class="fg"><label class="fl">GPA</label><input class="fi" id="ap-gpa" type="number" step="0.1" min="0" max="4" value="'+(a.gpa!=null?a.gpa:'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div>' +
+    '<div class="fg"><label class="fl">High School</label><input class="fi" id="ap-school" value="'+(a.school||'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div></div>' +
 
     '<div class="fr">' +
-    '<div class="fg"><label class="fl">Program</label><input class="fi" id="ap-program" value="'+(a.program||'')+'" onblur="savePlayerInfo('+idx+')"></div>' +
-    '<div class="fg"><label class="fl">SA Plan</label><input class="fi" id="ap-saplan" value="'+(a.saplan||'')+'" onblur="savePlayerInfo('+idx+')"></div></div>' +
+    '<div class="fg"><label class="fl">Program</label><input class="fi" id="ap-program" value="'+(a.program||'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div>' +
+    '<div class="fg"><label class="fl">SA Plan</label><input class="fi" id="ap-saplan" value="'+(a.saplan||'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div></div>' +
 
     '<div class="fr">' +
-    '<div class="fg"><label class="fl">Athlete Contact</label><input class="fi" id="ap-contact" value="'+(a.contact||'')+'" onblur="savePlayerInfo('+idx+')"></div>' +
-    '<div class="fg"><label class="fl">Guardian</label><input class="fi" id="ap-guardian" value="'+(a.guardian||'')+'" onblur="savePlayerInfo('+idx+')"></div></div>' +
+    '<div class="fg"><label class="fl">Athlete Contact</label><input class="fi" id="ap-contact" value="'+(a.contact||'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div>' +
+    '<div class="fg"><label class="fl">Guardian</label><input class="fi" id="ap-guardian" value="'+(a.guardian||'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div></div>' +
 
     '<div class="fr">' +
     '<div class="fg"><label class="fl">Speaks English</label><select class="fi" id="ap-english" onchange="savePlayerInfo('+idx+')">' +
     ['','Yes','No'].map(function(s){ return '<option'+(a.english===s?' selected':'')+'>'+s+'</option>'; }).join('') +
     '</select></div>' +
-    '<div class="fg"><label class="fl">Joined Bridge</label><input class="fi" id="ap-joined" type="date" value="'+(a.joined||'')+'" onblur="savePlayerInfo('+idx+')"></div></div>' +
+    '<div class="fg"><label class="fl">Joined Bridge</label><input class="fi" id="ap-joined" type="date" value="'+(a.joined||'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div></div>' +
 
-    '<div class="fg"><label class="fl">Commitment</label><input class="fi" id="ap-commit" placeholder="Committed college name" value="'+(a.commitment||'')+'" onblur="savePlayerInfo('+idx+')"></div>' +
-    '<div class="fg"><label class="fl">Notes</label><textarea class="fi" id="ap-notes" rows="3" style="resize:none;" onblur="savePlayerInfo('+idx+')">'+(a.notes||'')+'</textarea></div>' +
+    '<div class="fg"><label class="fl">Commitment</label><input class="fi" id="ap-commit" placeholder="Committed college name" value="'+(a.commitment||'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div>' +
+    '<div class="fg"><label class="fl">Notes</label><textarea class="fi" id="ap-notes" rows="3" style="resize:none;" onblur="savePlayerInfoDebounced('+idx+')">'+(a.notes||'')+'</textarea></div>' +
 
     '<div class="fg"><label class="fl">Athletic Fit Override <span style="color:var(--sub);font-weight:400;">(overrides calculated fit on college list)</span></label>' +
     '<select class="fi" id="ap-fit-override" onchange="savePlayerInfo('+idx+')">' +
@@ -3573,6 +3727,24 @@ function renderPlayerInfo(idx, a) {
       '<div style="font-size:.88rem;color:var(--tx);font-weight:700;">'+a.commitment+'</div></div></div>';
   }
 
+  // Measurables summary
+  var m2 = (D.measurables && D.measurables[a.init]) || {};
+  var hasMeas = m2.sixty || m2.exitVelo || m2.fbVelo || m2.infieldVelo;
+  out += '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;">' +
+    '<div>' +
+    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;margin-bottom:4px;">Measurables</div>' +
+    (hasMeas ?
+      '<div style="font-size:.72rem;color:var(--tx2);">' +
+      [m2.position||null, m2.sixty?'60: '+m2.sixty:null, m2.exitVelo?'EV: '+m2.exitVelo:null, m2.fbVelo?'FB: '+m2.fbVelo+'mph':null, m2.infieldVelo?'Arm: '+m2.infieldVelo+'mph':null]
+        .filter(Boolean).join(' · ') +
+      '</div>' :
+      '<div style="font-size:.72rem;color:var(--red2);">None entered — affects fit accuracy</div>'
+    ) +
+    '</div>' +
+    '<button onclick="openMeasurables('+idx+')" style="font-size:.7rem;padding:5px 12px;background:var(--card2);border:1px solid var(--b2);border-radius:8px;color:var(--tx2);cursor:pointer;flex-shrink:0;">' +
+    (hasMeas ? 'Edit' : '+ Add') + '</button>' +
+    '</div>';
+
   // Portal button
   out += '<button class="btn br3" style="width:100%;margin-top:12px;background:var(--card2);color:var(--tx);" onclick="togglePlayerPortal()">&#9711; ' +
     (D.portalEnabled[a.init] ? 'Manage Athlete Portal' : 'Add to Athlete Portal') + '</button>';
@@ -3585,6 +3757,12 @@ function renderPlayerInfo(idx, a) {
 
   out += '</div><div style="height:60px;"></div>';
   return out;
+}
+
+var _spInfoTimer = null;
+function savePlayerInfoDebounced(idx) {
+  clearTimeout(_spInfoTimer);
+  _spInfoTimer = setTimeout(function(){ savePlayerInfo(idx); }, 400);
 }
 
 function savePlayerInfo(idx) {
@@ -3672,6 +3850,35 @@ function saveSchoolToDB(name, profile, source) {
   saveAppData();
 }
 
+function openAddSchool() {
+  openMo('<div class="mt">Add School</div>' +
+    '<div class="fg"><label class="fl">School Name *</label><input class="fi" id="sc-n" placeholder="e.g. University at Albany"></div>' +
+    '<div class="fg"><label class="fl">Division</label><select class="fi" id="sc-dv"><option>D1</option><option>D2</option><option>NAIA</option><option>JUCO D1</option><option>JUCO D2</option></select></div>' +
+    '<div class="fg"><label class="fl">Conference</label><input class="fi" id="sc-cf" placeholder="e.g. America East"></div>' +
+    '<div class="fg"><label class="fl">GPA Min</label><input class="fi" id="sc-gm" type="number" step="0.1" placeholder="2.5"></div>' +
+    '<div class="fg"><label class="fl">In-State Cost ($/yr)</label><input class="fi" id="sc-ci" type="number" placeholder="28000"></div>' +
+    '<div class="fg"><label class="fl">Out-State Cost ($/yr)</label><input class="fi" id="sc-co" type="number" placeholder="42000"></div>' +
+    '<div class="fg"><label class="fl">Athletic Scholarship %</label><input class="fi" id="sc-as" type="number" placeholder="50"></div>' +
+    '<button class="btn br3 bf" onclick="saveAddSchool()">Add School</button>');
+}
+function saveAddSchool() {
+  var name = (document.getElementById('sc-n')||{}).value||'';
+  if (!name.trim()) { toast('Enter school name'); return; }
+  var profile = {
+    school_name: name.trim(),
+    division:    (document.getElementById('sc-dv')||{}).value||'',
+    conference:  (document.getElementById('sc-cf')||{}).value||'',
+    gpa_min:     parseFloat((document.getElementById('sc-gm')||{}).value)||null,
+    cost_in:     parseFloat((document.getElementById('sc-ci')||{}).value)||null,
+    cost_out:    parseFloat((document.getElementById('sc-co')||{}).value)||null,
+    ath_scholarship_pct: parseFloat((document.getElementById('sc-as')||{}).value)||null
+  };
+  saveSchoolToDB(name.trim(), profile, 'manual');
+  closeMo();
+  var body = document.getElementById('sec-body');
+  if (body) body.innerHTML = renderSchoolsDB();
+  toast(name.trim() + ' added to DB');
+}
 function renderSchoolsDB() {
   var schools = D.schoolsDB || {};
   var keys = Object.keys(schools).sort();
@@ -3682,6 +3889,7 @@ function renderSchoolsDB() {
     '<div><div style="font-size:.95rem;font-weight:800;color:var(--tx);">Schools Database</div>' +
     '<div style="font-size:.72rem;color:var(--sub);">' + Object.keys(schools).length + ' schools cached</div></div>' +
     '<div style="display:flex;gap:6px;">' +
+    '<button class="btn br3 bsm" onclick="openAddSchool()">+ Add</button>' +
     '<button class="btn br3 bsm" onclick="openUploadSchoolData()">Upload</button>' +
     '<button class="btn br3 bsm bf" onclick="exportSchoolsDB()">Export</button>' +
     '</div></div>' +
@@ -3968,12 +4176,45 @@ async function loadSchoolProfile(playerIdx, collegeIdx) {
 // ══════════════════════════════════════════════════════════════════
 
 var _spq = {
-  running: false,
-  items: []  // [{playerIdx, collegeIdx, init}]
+  running:     false,
+  items:       [],   // [{playerIdx, collegeIdx, init}]
+  startedAt:   null, // timestamp when current load started (for watchdog)
+  WATCHDOG_MS: 45000 // reset if stuck for 45s with no progress
 };
 
+// ── Persist queue to localStorage ──
+function spqSave() {
+  try { localStorage.setItem('bffsa-spq', JSON.stringify(_spq.items)); } catch(e) {}
+}
+
+// ── Restore queue on app load and resume ──
+function spqRestore() {
+  try {
+    var raw = localStorage.getItem('bffsa-spq');
+    if (!raw) return;
+    var saved = JSON.parse(raw);
+    if (!Array.isArray(saved) || !saved.length) return;
+    // Re-validate each item — only re-queue schools that still need loading
+    _spq.items = [];
+    saved.forEach(function(item) {
+      var colleges = D.playerColleges[item.init] || [];
+      var c = colleges[item.collegeIdx];
+      if (!c || c.profile || c.profileError) return; // already done or errored
+      var already = _spq.items.some(function(x){ return x.playerIdx===item.playerIdx && x.collegeIdx===item.collegeIdx && x.init===item.init; });
+      if (!already) {
+        c.profileLoading = true; // restore spinner state
+        _spq.items.push(item);
+      }
+    });
+    if (_spq.items.length > 0) {
+      console.log('SPQ: restored', _spq.items.length, 'pending school profiles');
+      saveAppData(); // persist the restored profileLoading flags
+      setTimeout(spqRun, 3000); // give app 3s to finish rendering before starting
+    }
+  } catch(e) { console.warn('SPQ restore failed:', e); }
+}
+
 function spqEnqueue(playerIdx, init) {
-  // Add all unloaded schools for this player to the queue (if not already queued)
   var colleges = D.playerColleges[init] || [];
   colleges.forEach(function(c, ci) {
     if (!c.profile && !c.profileError) {
@@ -3984,7 +4225,8 @@ function spqEnqueue(playerIdx, init) {
       }
     }
   });
-  saveAppData();
+  spqSave();
+  saveAppData(); // persist profileLoading flags
   spqRun();
 }
 
@@ -3997,21 +4239,38 @@ function spqEnqueueOne(playerIdx, init, collegeIdx) {
     c.profileLoading = true;
     _spq.items.push({playerIdx:playerIdx, collegeIdx:collegeIdx, init:init});
   }
+  spqSave();
   saveAppData();
   spqRun();
 }
 
 function spqRun() {
-  if (_spq.running || _spq.items.length === 0) return;
+  // Watchdog — if stuck for too long, reset and try next
+  if (_spq.running) {
+    if (_spq.startedAt && (Date.now() - _spq.startedAt) > _spq.WATCHDOG_MS) {
+      console.warn('SPQ: watchdog reset — stuck load detected');
+      _spq.running = false;
+      _spq.startedAt = null;
+    } else {
+      return; // genuinely running, don't double-start
+    }
+  }
+  if (_spq.items.length === 0) {
+    spqSave(); // clear persisted queue when done
+    return;
+  }
+
   _spq.running = true;
+  _spq.startedAt = Date.now();
   var item = _spq.items.shift();
+  spqSave(); // persist after dequeue
 
   // Validate item still needs loading
   var colleges = D.playerColleges[item.init] || [];
   var c = colleges[item.collegeIdx];
   if (!c || c.profile) {
-    // Already loaded — skip to next
     _spq.running = false;
+    _spq.startedAt = null;
     setTimeout(spqRun, 500);
     return;
   }
@@ -4019,23 +4278,37 @@ function spqRun() {
   loadSchoolProfile(item.playerIdx, item.collegeIdx)
     .then(function() {
       _spq.running = false;
-      if (_spq.items.length > 0) {
-        setTimeout(spqRun, 4500); // 4.5s between calls — well under rate limit
-      }
+      _spq.startedAt = null;
+      spqSave();
+      if (_spq.items.length > 0) setTimeout(spqRun, 4500);
     })
     .catch(function() {
       _spq.running = false;
-      if (_spq.items.length > 0) {
-        setTimeout(spqRun, 4500);
-      }
+      _spq.startedAt = null;
+      spqSave();
+      if (_spq.items.length > 0) setTimeout(spqRun, 4500);
     });
 }
 
-// Call after a college list import to queue all new schools
+// After import — queue all schools that need loading (including re-imports that reset profile to null)
 function spqEnqueueAfterImport(init) {
   var playerIdx = D.roster.findIndex(function(r){ return r.init===init; });
   if (playerIdx < 0) return;
-  spqEnqueue(playerIdx, init);
+  var colleges = D.playerColleges[init] || [];
+  colleges.forEach(function(c, ci) {
+    // Queue if: no profile AND not errored AND not already queued
+    // This catches both new schools AND re-imported schools with profile reset to null
+    if (!c.profile && !c.profileError) {
+      var already = _spq.items.some(function(x){ return x.playerIdx===playerIdx && x.collegeIdx===ci && x.init===init; });
+      if (!already) {
+        c.profileLoading = true;
+        _spq.items.push({playerIdx:playerIdx, collegeIdx:ci, init:init});
+      }
+    }
+  });
+  spqSave();
+  saveAppData();
+  spqRun();
 }
 
 
@@ -4631,10 +4904,17 @@ function renderPlayerColleges(idx, a) {
     'Not Interested':'var(--sub)'
   };
 
+  var unloaded = colleges.filter(function(c){ return !c.profile && !c.profileLoading; }).length;
+
   var out = '<div style="padding:14px 16px 6px;display:flex;justify-content:space-between;align-items:center;">' +
     '<div><div style="font-size:.95rem;font-weight:800;color:var(--tx);">College List</div>' +
-    '<div style="font-size:.72rem;color:var(--sub);">'+colleges.length+' program'+(colleges.length===1?'':'s')+'</div></div>' +
-    '<button class="btn br3 bsm" onclick="openAddCollegeToPlayer('+idx+')">+ Add</button></div>';
+    '<div style="font-size:.72rem;color:var(--sub);">'+colleges.length+' program'+(colleges.length===1?'':'s')+
+    (unloaded > 0 ? ' · <span style="color:var(--red2);">'+unloaded+' unloaded</span>' : '') +
+    '</div></div>' +
+    '<div style="display:flex;gap:6px;">' +
+    (unloaded > 0 ? '<button class="btn br3 bsm" style="background:var(--rm);color:var(--red2);border:1px solid rgba(231,76,60,.3);" onclick="spqEnqueue('+idx+',\''+(a.init)+'\');playerTab(\'colleges\');toast(\'Loading '+unloaded+' profile'+(unloaded>1?'s':'')+' — one at a time...\')">↺ Load All</button>' : '') +
+    '<button class="btn br3 bsm" onclick="openAddCollegeToPlayer('+idx+')">+ Add</button>' +
+    '</div></div>';
 
   // AI import banner
   out += '<div style="background:linear-gradient(135deg,rgba(204,0,0,.12),rgba(204,0,0,.04));border:1px solid rgba(204,0,0,.2);border-radius:10px;padding:10px 13px;margin:0 16px 12px;display:flex;align-items:center;gap:10px;">' +
@@ -4710,7 +4990,7 @@ function renderPlayerColleges(idx, a) {
           '<div style="display:flex;align-items:center;gap:10px;">' +
           '<div style="flex:1;min-width:0;">' +
           '<div style="font-size:.9rem;font-weight:700;color:var(--tx);">'+c.school+'</div>' +
-          '<div style="font-size:.68rem;color:var(--sub);margin-top:1px;">'+(c.division||'Loading division...')+(c.profile&&c.profile.conference?' · '+c.profile.conference:'')+'</div>' +
+          '<div style="font-size:.68rem;color:var(--sub);margin-top:1px;">'+(c.division||'Loading division...')+(c.profile&&c.profile.conference?' · '+c.profile.conference:'')+(c.coachName?' · '+c.coachName:'')+'</div>' +
           (c.coachName?'<div style="font-size:.7rem;color:var(--tx2);margin-top:2px;">Coach: '+c.coachName+'</div>':'') +
           '</div>' +
           '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">' +
@@ -4728,14 +5008,25 @@ function renderPlayerColleges(idx, a) {
               return '<div style="display:flex;gap:5px;align-items:flex-start;margin-bottom:2px;"><span style="font-size:.75rem;">🚫</span><span style="font-size:.7rem;color:#e74c3c;">'+cf.message+'</span></div>';
             }).join('') +
             '</div>' : '') +
-          // Loading state
+          // Loading state / retry button
           (c.profileLoading ?
             '<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--b1);display:flex;align-items:center;gap:6px;">' +
             '<div class="sp2" style="width:12px;height:12px;"></div>' +
-            '<span style="font-size:.7rem;color:var(--sub);">Loading program profile...</span></div>' : '') +
-          // Tap hint if profile loaded
+            '<span style="font-size:.7rem;color:var(--sub);">Loading profile... ('+(_spq.items.length+(_spq.running?1:0))+' in queue)</span></div>' :
+          !c.profile ?
+            '<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;">' +
+            '<span style="font-size:.7rem;color:var(--red2);">'+(c.profileError?'⚠ '+c.profileError:'Profile not loaded')+'</span>' +
+            '<button onclick="event.stopPropagation();(function(){var a=D.roster['+idx+'];if(!a)return;var c=(D.playerColleges[a.init]||[])['+realIdx+'];if(!c)return;c.profile=null;c.profileError=null;c.profileLoading=false;spqEnqueueOne('+idx+',a.init,'+realIdx+');playerTab(\'colleges\');toast(\'Queued for load...\');})()" style="font-size:.68rem;padding:3px 10px;background:var(--rm);border:1px solid rgba(231,76,60,.3);border-radius:14px;color:var(--red2);cursor:pointer;white-space:nowrap;">↺ Retry</button>' +
+            '</div>' : '') +
+          // Measurables prompt when ATH fit is Unknown, else tap hint
           (c.profile ?
-            '<div style="margin-top:6px;font-size:.65rem;color:var(--sub);text-align:right;">Tap for full profile →</div>' : '') +
+            (athFit.tag === 'Unknown' ?
+              '<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;">' +
+              '<span style="font-size:.68rem;color:var(--sub);">⚡ Add measurables for accurate fit</span>' +
+              '<button onclick="event.stopPropagation();openMeasurables('+idx+')" style="font-size:.65rem;padding:2px 9px;background:var(--card2);border:1px solid var(--b2);border-radius:12px;color:var(--tx2);cursor:pointer;white-space:nowrap;">+ Add</button>' +
+              '</div>'
+            : '<div style="margin-top:6px;font-size:.65rem;color:var(--sub);text-align:right;">Tap for full profile →</div>'
+            ) : '') +
           '<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--b1);display:flex;justify-content:flex-end;">' +
           '<button onclick="event.stopPropagation();removeCollegeFromPlayer('+idx+','+realIdx+')" style="font-size:.65rem;color:var(--sub);background:none;border:none;cursor:pointer;padding:2px 5px;">✕ Remove</button>' +
           '</div>' +
@@ -4930,12 +5221,17 @@ function calcAthleticFitTag(a, profile) {
     return {tag: overrideMap[m.fitOverride]||'Fit', reasons:['Override: '+m.fitOverride], override:true};
   }
 
+  // Graduated/Committed/Exited athletes — don't penalize with recruiting stage logic
+  if (a.status === 'Graduated' || a.status === 'Committed' || a.status === 'Exited') {
+    return {tag:'Fit', reasons:['Placed athlete — fit not penalized by stage']};
+  }
+
   var bm      = getFitBenchmarks();
   var div     = (profile.division||profile.athletics&&profile.athletics.level_of_play||'').toString();
   var tier    = divisionToTier(div);
   var posGroup= athletePositionGroup(a);
 
-  // If we can't determine position, fall back to recruiting stage logic
+  // If we can't determine position, flag it clearly so admin knows
   if (!posGroup) {
     var stageScore = {'':0,'Early':1,'Building List':2,'In Contact':3,'Visit/Showcase':4,'Offer/Commit':5,'Committed':6};
     var sv = stageScore[a.recruitStage||'']||0;
@@ -5006,7 +5302,7 @@ function calcAthleticFitTag(a, profile) {
     var sv2 = stageScore2[a.recruitStage||'']||0;
     if ((tier==='elite_d1'||tier==='mid_d1') && sv2<3) return {tag:'Reach', reasons:['No measurables — limited recruiting contact for this level']};
     if ((tier==='elite_d1') && sv2>=4) return {tag:'Fit', reasons:['Active D1 recruiting process']};
-    return {tag:'Unknown', reasons:['Add measurables for accurate fit assessment']};
+    return {tag:'Unknown', reasons:['Position not set — enter position in Measurables for accurate fit']};
   }
 
   if (conflicts.length > 0) return {tag:'Conflict', reasons:conflicts.concat(warnings)};
@@ -5600,6 +5896,41 @@ function saveVisit(idx) {
 // ══════════════════════════════════════════════════════════════════
 
 
+function openMeasurables(idx) {
+  var a = D.roster[idx]; if (!a) return;
+  var m = (D.measurables && D.measurables[a.init]) || {};
+  var isBB = (a.sport||'Baseball').toLowerCase().includes('baseball');
+  openMo(
+    '<div class="mt">Measurables — '+a.name.split(' ')[0]+'</div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Height</label><input class="fi" id="ms-height" placeholder=\'6\'1"' + "' value=\""+(m.height||'')+'"></div>' +
+    '<div class="fg"><label class="fl">Weight (lbs)</label><input class="fi" id="ms-weight" type="number" placeholder="185" value="'+(m.weight||'')+'"></div>' +
+    '</div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Position</label><input class="fi" id="ms-pos" placeholder="SS, RHP, CF..." value="'+(m.position||'')+'"></div>' +
+    '<div class="fg"><label class="fl">Bat / Throw</label><select class="fi" id="ms-bt">' +
+    ['','R/R','L/L','L/R','R/L','S/R'].map(function(v){ return '<option'+(m.batThrow===v?' selected':'')+'>'+v+'</option>'; }).join('') +
+    '</select></div>' +
+    '</div>' +
+    '<div class="fg"><label class="fl">60-Yard Dash (sec)</label><input class="fi" id="ms-sixty" type="number" step="0.01" placeholder="6.85" value="'+(m.sixty||'')+'"></div>' +
+    (isBB ?
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Exit Velo (mph)</label><input class="fi" id="ms-ev" type="number" placeholder="95" value="'+(m.exitVelo||'')+'"></div>' +
+    '<div class="fg"><label class="fl">FB Velo (mph)</label><input class="fi" id="ms-fb" type="number" placeholder="88" value="'+(m.fbVelo||'')+'"></div>' +
+    '</div>' +
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Infield Velo (mph)</label><input class="fi" id="ms-inf" type="number" placeholder="85" value="'+(m.infieldVelo||'')+'"></div>' +
+    '<div class="fg"><label class="fl">Pop Time (sec)</label><input class="fi" id="ms-pop" type="number" step="0.01" placeholder="2.0" value="'+(m.popTime||'')+'"></div>' +
+    '</div>' : '<input type="hidden" id="ms-ev"><input type="hidden" id="ms-fb"><input type="hidden" id="ms-inf"><input type="hidden" id="ms-pop">') +
+    '<div class="fg"><label class="fl">Highlight Reel URL</label><input class="fi" id="ms-hl" placeholder="YouTube or Hudl link" value="'+(m.highlightUrl||'')+'"></div>' +
+    '<div class="fg"><label class="fl">Fit Override <span style="color:var(--sub);font-weight:400;">(overrides calculated fit)</span></label>' +
+    '<select class="fi" id="ms-fit-override">' +
+    ['','Elite D1','Mid D1','Low D1','D2','NAIA','JUCO'].map(function(s){ return '<option'+(m.fitOverride===s?' selected':'')+'>'+s+'</option>'; }).join('') +
+    '</select></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="saveMeasurables('+idx+')">Save</button>'
+  );
+}
+
 function saveMeasurables(idx) {
   var a = D.roster[idx]; if (!a) return;
   var isBB = (a.sport||'Baseball').toLowerCase().includes('baseball');
@@ -5689,41 +6020,6 @@ function renderPlayerActivity(idx, a) {
 
 
 
-function openAddAthlete() {
-  openMo('<div class="mt">Add Athlete</div>' +
-    '<div class="fg"><label class="fl">Full Name</label><input class="fi" id="at-n" placeholder="First Last"></div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">Sport</label><select class="fi" id="at-sp"><option>Baseball</option><option>Basketball</option><option>Soccer</option><option>Softball</option><option>Track & Field</option><option>Other</option></select></div>' +
-    '<div class="fg"><label class="fl">Grad Year</label><input class="fi" id="at-g" placeholder="2027"></div>' +
-    '</div>' +
-    '<div class="fr">' +
-    '<div class="fg"><label class="fl">School</label><input class="fi" id="at-sch" placeholder="High School name"></div>' +
-    '<div class="fg"><label class="fl">Status</label><select class="fi" id="at-s"><option>Active</option><option>Committed</option><option>Graduated</option><option>Exited</option></select></div>' +
-    '</div>' +
-    '<div class="fg"><label class="fl">Contact Email / Instagram</label><input class="fi" id="at-c" placeholder="athlete@email.com"></div>' +
-    '<button class="btn br3 bf" onclick="saveAthlete()">Add Athlete</button>');
-}
-
-function saveAthlete() {
-  var name = (document.getElementById('at-n')||{}).value||'';
-  if (!name.trim()) { toast('Enter athlete name'); return; }
-  var init = name.trim().split(' ').map(function(w){ return w[0]||''; }).join('').toUpperCase().slice(0,2);
-  var a = {
-    name:name.trim(), init:init,
-    sport:(document.getElementById('at-sp')||{}).value||'Baseball',
-    grad:parseInt((document.getElementById('at-g')||{}).value)||2027,
-    school:(document.getElementById('at-sch')||{}).value||'',
-    status:(document.getElementById('at-s')||{}).value||'Active',
-    program:'Bridge', gpa:null, contact:(document.getElementById('at-c')||{}).value||'',
-    guardian:'', joined:new Date().toISOString().split('T')[0],
-    english:null, recruitStage:'', saplan:'', notes:''
-  };
-  D.roster.push(a);
-  closeMo(); rosterRefresh();
-  document.querySelectorAll('#stat-athletes').forEach(function(el){ el.textContent = D.roster.length; });
-  toast(name + ' added');
-}
-
 
 
 // Import roster from XLSX workbook
@@ -5788,11 +6084,15 @@ function renderDonors() {
   }, 0);
   var totalStr = total > 0 ? '$' + total.toLocaleString('en-US',{minimumFractionDigits:2}) : '$0.00';
   var rows = D.donors.length ? D.donors.map(function(d){
+    var di = D.donors.indexOf(d);
     return '<div class="dr">' +
       '<div class="av" style="width:36px;height:36px;background:var(--card2);color:var(--tx);font-size:.72rem;">' + d.init + '</div>' +
       '<div style="flex:1;"><div style="font-size:.87rem;font-weight:500;color:var(--tx);">' + d.name + '</div>' +
       '<div style="font-size:.69rem;color:var(--sub);">Last: ' + d.last + '</div></div>' +
-      '<div class="dtl">' + d.total + '</div></div>';
+      '<div class="dtl">' + d.total + '</div>' +
+      '<button onclick="openEditDonor('+di+')" style="background:none;border:none;color:var(--sub);font-size:.8rem;cursor:pointer;padding:0 4px;" title="Edit">✏️</button>' +
+      '<button onclick="deleteDonor('+di+')" style="background:none;border:none;color:var(--sub);font-size:.75rem;cursor:pointer;padding:0 2px;" title="Delete">✕</button>' +
+      '</div>';
   }).join('') : '<div style="padding:24px 16px;text-align:center;color:var(--sub);font-size:.83rem;">No donors yet. Tap + Add Donor to log a gift.</div>';
   return '<div style="padding:16px 16px 8px;">' +
     '<div class="ac"><div class="alb">Total Raised (YTD)</div><div class="an g">' + totalStr + '</div></div></div>' +
@@ -5817,10 +6117,40 @@ function saveDonor() {
   if (!name||!amt) { toast('Fill required fields'); return; }
   var init = name.trim().split(' ').map(function(w){ return w[0]||''; }).join('').toUpperCase().slice(0,2)||'?';
   D.donors.unshift({name:name.trim(),last:(document.getElementById('dn-d')||{}).value||'Today',total:amt,init:init});
+  saveAppData();
   closeMo();
   var body = document.getElementById('sec-body');
   if (body) body.innerHTML = renderDonors();
   toast('Donor added');
+}
+function deleteDonor(idx) {
+  D.donors.splice(idx, 1);
+  saveAppData();
+  var body = document.getElementById('sec-body');
+  if (body) body.innerHTML = renderDonors();
+  toast('Donor removed');
+}
+function openEditDonor(idx) {
+  var d = D.donors[idx];
+  if (!d) return;
+  openMo('<div class="mt">Edit Donor</div>' +
+    '<div class="fg"><label class="fl">Name</label><input class="fi" id="dn-en" value="' + (d.name||'') + '"></div>' +
+    '<div class="fg"><label class="fl">Total ($)</label><input class="fi" id="dn-ea" value="' + (d.total||'') + '"></div>' +
+    '<div class="fg"><label class="fl">Last Gift Date</label><input class="fi" id="dn-ed" value="' + (d.last||'') + '"></div>' +
+    '<button class="btn br3 bf" onclick="saveEditDonor(' + idx + ')">Save</button>');
+}
+function saveEditDonor(idx) {
+  var d = D.donors[idx];
+  if (!d) return;
+  d.name  = (document.getElementById('dn-en')||{}).value || d.name;
+  d.total = (document.getElementById('dn-ea')||{}).value || d.total;
+  d.last  = (document.getElementById('dn-ed')||{}).value || d.last;
+  d.init  = d.name.trim().split(' ').map(function(w){ return w[0]||''; }).join('').toUpperCase().slice(0,2)||'?';
+  saveAppData();
+  closeMo();
+  var body = document.getElementById('sec-body');
+  if (body) body.innerHTML = renderDonors();
+  toast('Donor updated');
 }
 function exportDonors() {
   var rows = [['Name','Last Gift','Total']];
@@ -6005,7 +6335,7 @@ function importAppData() {
         // Restore everything EXCEPT roster and coordinators — those are hardcoded and always win
         var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','acct',
                     'athProfile','txns','tasks','donors','contacts','coaches','schoolsDB',
-                    'specialEvents','devBoard','goals','events','offers','scholarships',
+                    'specialEvents','devBoard','fitBenchmarks','goals','events','offers','scholarships',
                     'assignments','athleteFiles','commLog','visits','measurables','eligibility'];
         var loaded = 0;
         keys.forEach(function(k) {
@@ -6399,7 +6729,7 @@ function renderDocs() {
   var totalRouted = Object.values(DI.routeData).reduce(function(s,a){ return s+a.length; }, 0);
   if (totalRouted > 0) {
     out += '<div class="sqj">';
-    var rLabels = {roster:'👥 Roster',financial:'💰 Accounting',donors:'🤝 Donors',tasks:'✅ Tasks',events:'📅 Calendar',colleges:'🎓 College Lists'};
+    var rLabels = {roster:'👥 Roster',profile:'👤 Profiles',financial:'💰 Accounting',donors:'🤝 Donors',tasks:'✅ Tasks',events:'📅 Calendar',contacts:'📋 Contacts',college_list:'🎓 College Lists',school_data:'🏫 School DB'};
     Object.keys(DI.routeData).forEach(function(k) {
       var cnt = DI.routeData[k].length;
       out += '<button class="sqj-btn'+(cnt?' has-data':'')+'" onclick="diJumpTo(\''+k+'\')">' +
@@ -6473,7 +6803,7 @@ function renderDocs() {
   // ── BULK IMPORT READY ──
   var totalImportable = q.filter(function(f){ return f.importData && f.importData.length; }).length;
   if (totalImportable > 0) {
-    var destMap = {roster:'👥 Roster',financial:'💰 Accounting',donor:'🤝 Donors',tasks:'✅ Tasks',events:'📅 Calendar'};
+    var destMap = {roster:'👥 Roster',profile:'👤 Profiles',financial:'💰 Accounting',donor:'🤝 Donors',tasks:'✅ Tasks',events:'📅 Calendar',contacts:'📋 Contacts',college_list:'🎓 College Lists',school_data:'🏫 School DB'};
     out += '<div class="di-sec-hd"><div><div class="di-sec-hd-title">⬆️ Ready to Import</div>' +
            '<div class="di-sec-hd-sub">AI has extracted structured records from your files</div></div></div>';
     out += '<div class="rt-grid">';
@@ -6525,7 +6855,7 @@ function renderDocs() {
            '<div class="di-sec-hd-title">Command History</div>' +
            '<button class="slk" onclick="DI.history=[];refreshDocUI()">Clear</button></div>';
     out += '<div style="margin:0 16px 14px;background:var(--card);border:1px solid var(--b1);border-radius:12px;overflow:hidden;padding:0 14px;">';
-    DI.history.slice(0, 6).forEach(function(h, i) {
+    DI.history.slice(0, 20).forEach(function(h, i) {
       out += '<div class="di-hist-item" onclick="diRerun('+i+')">' +
              '<span style="font-size:1rem;flex-shrink:0;">🕐</span>' +
              '<div style="flex:1;min-width:0;">' +
@@ -6555,6 +6885,7 @@ function diRenderActiveFile(f) {
          (f.type && f.type !== 'unknown' ? ' · <span style="color:'+diColor(f.type)+';font-weight:600;">'+diTypeLabel(f.type)+'</span>' : '') +
          '</div></div>' +
          '<span class="di-fh-badge" style="background:'+statusColor+'22;color:'+statusColor+';border:1px solid '+statusColor+'44;">' + statusText + '</span>' +
+         (f.status==='done' ? '<button onclick="(function(){var f=DI.queue[DI.active];if(!f)return;f.status=\'pending\';f.summary=null;f.suggestedCmds=null;f.importData=null;f.importType=null;f.result=null;f.type=\'unknown\';diReadAndProcess(DI.active);toast(\'Re-analyzing...\');})()" style="font-size:.63rem;padding:2px 8px;background:var(--card2);border:1px solid var(--b2);border-radius:6px;color:var(--sub);cursor:pointer;margin-left:6px;">↺ Re-analyze</button>' : '') +
          '</div>';
 
   // Processing steps (only show while processing)
@@ -6594,7 +6925,7 @@ function diRenderActiveFile(f) {
 
   // Import CTA
   if (f.importData && f.importData.length) {
-    var destLabels = {roster:'Add to Roster',financial:'Add to Accounting',donor:'Add to Donors',tasks:'Add to Tasks',events:'Add to Calendar'};
+    var destLabels = {roster:'Add to Roster',profile:'Add to Roster',financial:'Add to Accounting',donor:'Add to Donors',tasks:'Add to Tasks',events:'Add to Calendar',contacts:'Add to Coaches DB',college_list:'Add to College List',school_data:'Add to Schools Database'};
     out += '<div class="di-import-cta">' +
            '<span class="di-import-cta-icon">⬆️</span>' +
            '<div class="di-import-cta-info">' +
@@ -6782,11 +7113,23 @@ function diProcessAll() {
     if (f.status === 'pending' || f.status === 'err') toProcess.push(i);
   });
   if (!toProcess.length) { toast('No pending files'); return; }
-  // Stagger requests 1.5s apart to avoid rate limiting
-  toProcess.forEach(function(idx, pos) {
-    setTimeout(function() { diReadAndProcess(idx); }, pos * 1500);
-  });
-  toast('Processing ' + toProcess.length + ' file' + (toProcess.length !== 1 ? 's' : '') + '…');
+  toast('Processing ' + toProcess.length + ' file' + (toProcess.length !== 1 ? 's' : '') + ' — one at a time…');
+  // Sequential queue — wait for each to complete before starting next
+  (function runNext(remaining) {
+    if (!remaining.length) { toast('All files processed ✓'); return; }
+    var idx = remaining[0];
+    var f = DI.queue[idx];
+    if (!f) { runNext(remaining.slice(1)); return; }
+    // Poll until this file is done, then move to next
+    diReadAndProcess(idx);
+    var poll = setInterval(function() {
+      var ff = DI.queue[idx];
+      if (!ff || ff.status === 'done' || ff.status === 'err') {
+        clearInterval(poll);
+        setTimeout(function() { runNext(remaining.slice(1)); }, 2000);
+      }
+    }, 500);
+  })(toProcess);
 }
 
 function diCompareMode() {
@@ -6955,7 +7298,7 @@ async function diDetect(idx) {
     '  "key_findings": ["finding 1", "finding 2", "finding 3"],',
     '  "confidence": "high|medium|low",',
     '  "suggested_commands": ["5 most relevant commands for THIS specific document type — be specific, not generic"],',
-    '  "import_type": "profile|roster|financial|donor|tasks|events|contacts|null",',
+    '  "import_type": "profile|roster|financial|donor|tasks|events|contacts|college_list|school_data|null",',
     '  "import_data": []',
     '}',
     '',
@@ -6971,10 +7314,13 @@ async function diDetect(idx) {
     '  [{name, sport, school, grad, status:"Active|Committed|Graduated|Exited", program:"Bridge", gpa, contact, notes}]',
     '',
     'financial: [{desc, cat:"Academy|Summer Team|Scholarship|Transportation|Donations|Operations|Other", date, amt, type:"income|expense", notes}]',
-    'donor: [{name, total, last, init}]',
+    'donor: [{name, total, last, init, email, phone, address, notes}]',
     'tasks: [{text, due, who, pri:"high|med|low"}]',
     'events: [{title, date, mo, time, loc, type:"event|meeting|program"}]',
     'contacts: [{name, school, role, email}]',
+    'school_data (school/program database): [{name, division, conference, gpa_min, gpa_avg, sat_range, act_range,',
+    '  acceptance_rate, instate_total, outstate_total, athletic_scholarship(full|partial|none), avg_athletic_aid,',
+    '  sport_program, level_of_play, playing_time_outlook(realistic|competitive|difficult)}]',
     '',
     'college_list (a recruiting list for a specific athlete — MUST include athlete_name field):',
     '  [{athlete_name, school, division, status, coachName, notes}]',
@@ -7088,7 +7434,8 @@ async function diRunCmd() {
   f.lastCmd = cmd;
 
   DI.cmdHistory.push(cmd);
-  if (DI.cmdHistory.length > 30) DI.cmdHistory.shift();
+  if (DI.cmdHistory.length > 50) DI.cmdHistory.shift();
+  diSaveHistory();
   DI.cmdHistIdx = -1;
 
   var rbtn = document.getElementById('di-run-btn');
@@ -7156,8 +7503,7 @@ async function diRunCmd() {
       '  status(Target|Building List|In Contact|Visit|Offer|Committed|Not Interested), coachName, notes, lastUpdated}]',
       'D.aTasks{init}: [{text, due, pri(high|med|low), done, notes}] — athlete-specific tasks',
       'D.tasks[]: [{text, due, who, pri}] — org-wide tasks',
-      'D.acct.ledger[]: [{desc, cat, date, amt(+income/-expense), acct(Chase|FSA|Manual), year}]',
-      '  date, amt, type(income|expense), notes}]',
+      'D.acct.ledger[]: [{desc, cat, date, amt(+income/-expense), acct(Chase|FSA|Manual), year, notes}]',
       'D.donors[]: [{name, total, last, init, contact, notes}]',
       'D.events[]: [{title, date, mo, time, loc, type(event|meeting|program)}]',
       'D.contacts[]: [{name, school, role, email}] — college coaches',
@@ -7228,7 +7574,8 @@ async function diRunCmd() {
     f.result = fullResult;
     f.status = 'done';
     DI.history.unshift({cmd:cmd, file:f.name, time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})});
-    if (DI.history.length > 20) DI.history.pop();
+    if (DI.history.length > 50) DI.history.pop();
+    diSaveHistory();
 
   } catch(err) {
     f.status = 'err';
@@ -7340,7 +7687,8 @@ async function diRunStructuredExtract(f, cmd, extractType) {
     f.status = 'done';
     DI.running = false;
     DI.history.unshift({cmd:cmd, file:f.name, time:new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}), result:f.result.slice(0,500)});
-    if (DI.history.length > 20) DI.history.pop();
+    if (DI.history.length > 50) DI.history.pop();
+    diSaveHistory();
     refreshDocUI();
 
   } catch(err) {
@@ -7445,10 +7793,17 @@ function diOpenImport(idx) {
 
   var type = f.importType;
   var data = f.importData;
-  var title = {roster:'Import Athletes to Roster', profile:'Create Player Profiles',
-               financial:'Import Transactions', donor:'Import Donors',
-               tasks:'Import Tasks', events:'Import Events',
-               contacts:'Import Coach Contacts'}[type] || 'Import Data';
+  var title = {
+    roster:      'Import Athletes to Roster',
+    profile:     'Create Player Profiles',
+    financial:   'Import Transactions',
+    donor:       'Import Donors',
+    tasks:       'Import Tasks',
+    events:      'Import to Calendar',
+    contacts:    'Import Coach Contacts',
+    college_list:'Import College List',
+    school_data: 'Import School Data'
+  }[type] || 'Import Data';
 
   var preview = '';
   if (type==='profile' || type==='roster') {
@@ -7509,11 +7864,25 @@ function diOpenImport(idx) {
         '<div class="cs">'+(ev.time||'')+' · '+(ev.loc||'')+'</div></div>' +
         '<span class="bd br2">'+(ev.type||'event')+'</span></div>';
     }).join('');
+  } else if (type==='college_list') {
+    preview = data.slice(0,8).map(function(c) {
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--b1);">' +
+        '<div><div style="font-size:.84rem;font-weight:600;color:var(--tx);">'+(c.school||'Unknown')+'</div>' +
+        '<div style="font-size:.68rem;color:var(--sub);">'+(c.division||'')+(c.notes?' · '+c.notes:'')+'</div></div>' +
+        '<span style="font-size:.68rem;padding:2px 8px;border-radius:12px;background:var(--card2);color:var(--sub);">'+(c.status||'Target')+'</span></div>';
+    }).join('');
+  } else if (type==='school_data') {
+    preview = data.slice(0,8).map(function(s) {
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--b1);">' +
+        '<div><div style="font-size:.84rem;font-weight:600;color:var(--tx);">'+(s.name||s.school||'Unknown')+'</div>' +
+        '<div style="font-size:.68rem;color:var(--sub);">'+(s.division||'')+(s.conference?' · '+s.conference:'')+'</div></div>' +
+        '<span style="font-size:.68rem;color:var(--grn);">'+(s.instate_total?'$'+s.instate_total:'')+'</span></div>';
+    }).join('');
   }
 
   if (data.length > 8) preview += '<div style="padding:10px 14px;font-size:.76rem;color:var(--sub);text-align:center;">...and '+(data.length-8)+' more records</div>';
 
-  // For college_list: show player picker
+  // For college_list: show player picker with auto-detect banner
   var playerPicker = '';
   if (type === 'college_list') {
     var detectedName = f.importAthleteName || '';
@@ -7522,15 +7891,20 @@ function diOpenImport(idx) {
       var dn = detectedName.toLowerCase();
       return rn === dn || rn.split(' ')[0] === dn.split(' ')[0];
     }) : null;
-    var portalAthletes = D.roster.filter(function(r){ return r.sport; });
-    var opts = portalAthletes.map(function(r){
+    var allAthletes = D.roster.filter(function(r){ return r.status==='Active'||r.status==='Committed'; });
+    var opts = allAthletes.map(function(r){
       var sel = (detectedPlayer && detectedPlayer.init === r.init) ? ' selected' : '';
       return '<option value="'+r.init+'"'+sel+'>'+r.name+'</option>';
     }).join('');
-    playerPicker = '<div class="fg" style="margin-bottom:12px;">' +
-      '<label class="fl">Assign to Player' + (detectedName ? ' <span style="color:var(--grn);font-size:.72rem;">(AI detected: '+detectedName+')</span>' : '') + '</label>' +
+    playerPicker =
+      (detectedPlayer ?
+        '<div style="background:var(--gm);border-radius:8px;padding:8px 11px;margin-bottom:10px;display:flex;align-items:center;gap:8px;">' +
+        '<span style="font-size:.9rem;">✓</span>' +
+        '<div style="font-size:.75rem;color:var(--grn);">AI detected player: <strong>'+detectedPlayer.name+'</strong></div></div>' : '') +
+      '<div class="fg" style="margin-bottom:12px;">' +
+      '<label class="fl">Assign to Player</label>' +
       '<select class="fi" id="di-player-pick"><option value="">— Select player —</option>' + opts + '</select></div>';
-    // Store detected init for confirm
+    // Pre-set detected init
     f.importTargetInit = detectedPlayer ? detectedPlayer.init : '';
   }
 
@@ -7539,7 +7913,7 @@ function diOpenImport(idx) {
     playerPicker +
     '<div style="background:var(--card);border:1px solid var(--b1);border-radius:var(--r);margin-bottom:14px;max-height:260px;overflow-y:auto;">' + preview + '</div>' +
     '<div style="display:flex;gap:8px;">' +
-    '<button class="btn br3" style="flex:1;" onclick="' + (type==='college_list' ? 'f=DI.queue['+idx+'];var sel=document.getElementById(\'di-player-pick\');if(sel&&sel.value)f.importTargetInit=sel.value;' : '') + 'diConfirmImport('+idx+')">Import All ' + data.length + '</button>' +
+    '<button class="btn br3 bf" style="flex:1;" onclick="' + (type==='college_list' ? 'var sel=document.getElementById(\'di-player-pick\');if(sel&&sel.value){DI.queue['+idx+'].importTargetInit=sel.value;}else if(!DI.queue['+idx+'].importTargetInit){toast(\'Select a player first\');return;}' : '') + 'diConfirmImport('+idx+')">Import All ' + data.length + '</button>' +
     '<button class="btn bgh" onclick="closeMo()">Cancel</button></div>');
 }
 
@@ -7612,10 +7986,11 @@ function diConfirmImport(idx) {
       var entry = {name:c.name, school:c.school||'', role:c.role||'', email:c.email||''};
       if (exists >= 0) D.contacts[exists] = entry;
       else D.contacts.push(entry);
-      // Also upsert into master coaches DB
       upsertCoach(entry, 'doc-ai');
       count++;
     });
+    if (!DI.routeData.contacts) DI.routeData.contacts = [];
+    DI.routeData.contacts = DI.routeData.contacts.concat(data.slice(0,count));
 
   } else if (type==='financial') {
     if (!D.acct) D.acct = {ledger:[], txFilter:'all', txSearch:'', ledgerYear:'all', ledgerCat:'', ledgerSrc:'all', ledgerSearch:''};
@@ -7634,7 +8009,7 @@ function diConfirmImport(idx) {
     data.forEach(function(d) {
       if (!d.name) return;
       var init = d.name.split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2)||'?';
-      D.donors.unshift({name:d.name,total:d.total||'',last:d.last||'Imported',init:init});
+      D.donors.unshift({name:d.name,total:d.total||'',last:d.last||'Imported',init:init,email:d.email||'',phone:d.phone||'',address:d.address||'',notes:d.notes||''});
       count++;
     });
     DI.routeData.donors = DI.routeData.donors.concat(data.slice(0,count));
@@ -7668,12 +8043,24 @@ function diConfirmImport(idx) {
         player = D.roster.find(function(r){ return r.init === forcedInit; });
       } else {
         var athleteName = (entry.athlete_name||'').toLowerCase().trim();
-        player = D.roster.find(function(r) {
+        // Exact match first, then last name, then first name only (with collision detection)
+        var exactMatch = D.roster.find(function(r){
+          return (r.name||'').toLowerCase() === athleteName;
+        });
+        var firstNameMatches = D.roster.filter(function(r){
           var rn = (r.name||'').toLowerCase();
-          return rn === athleteName ||
-                 rn.split(' ')[0] === athleteName.split(' ')[0] ||
+          return rn.split(' ')[0] === athleteName.split(' ')[0] ||
                  athleteName.indexOf(rn.split(' ')[0]) >= 0;
         });
+        if (exactMatch) {
+          player = exactMatch;
+        } else if (firstNameMatches.length === 1) {
+          player = firstNameMatches[0];
+        } else if (firstNameMatches.length > 1) {
+          // Ambiguous — multiple athletes share this first name, skip with warning
+          console.warn('College list import: ambiguous athlete name "'+athleteName+'" matched '+firstNameMatches.length+' athletes — skipped. Use exact full name.');
+          return;
+        }
       }
       if (!player) return;
       if (!playerUpdates[player.init]) playerUpdates[player.init] = [];
@@ -7712,6 +8099,8 @@ function diConfirmImport(idx) {
     Object.keys(playerUpdates).forEach(function(init) {
       spqEnqueueAfterImport(init);
     });
+    if (!DI.routeData.college_list) DI.routeData.college_list = [];
+    DI.routeData.college_list = DI.routeData.college_list.concat(data.slice(0,count));
   }
 
   // school_data import - populate schools database
@@ -7762,23 +8151,35 @@ function diBulkImport(dest) {
   DI.queue.forEach(function(f) {
     if (f.importType === dest && f.importData && f.importData.length) {
       allData = allData.concat(f.importData);
-      f.importData = []; f.importType = '';
     }
   });
   if (!allData.length) { toast('No data to import'); return; }
 
-  // Create a temp file-like structure and import
-  var tempF = {importType: dest, importData: allData};
+  var fileCount = DI.queue.filter(function(f){ return f.importType===dest&&f.importData&&f.importData.length; }).length;
+  var tempF = {
+    importType:        dest,
+    importData:        allData,
+    name:              fileCount + ' file' + (fileCount>1?'s':'') + ' combined',
+    importTargetInit:  '',
+    importAthleteName: ''
+  };
+  // Use a temp slot — diConfirmImport clears importData after import, so we clean up after
   var tempIdx = DI.queue.length;
   DI.queue.push(tempF);
-  diConfirmImport(tempIdx);
-  DI.queue.pop();
-  refreshDocUI();
+  diOpenImport(tempIdx);
+  // Cleanup handled: diConfirmImport sets f.importData=[] so the slot is inert
+  // Remove it after modal closes (next tick)
+  setTimeout(function(){
+    if (DI.queue[tempIdx] && !DI.queue[tempIdx].importData.length) {
+      DI.queue.splice(tempIdx, 1);
+      refreshDocUI();
+    }
+  }, 500);
 }
 
 // ── JUMP TO SECTION ──
 function diJumpTo(section) {
-  var map = {roster:'roster',financial:'acct',donors:'donors',tasks:'tasks',events:'cal'};
+  var map = {roster:'roster',profile:'roster',financial:'acct',donors:'donors',tasks:'tasks',events:'cal',contacts:'contacts',college_list:'roster',school_data:'schools'};
   var sec = map[section];
   if (sec) {
     goV('vSEC');
@@ -7797,16 +8198,17 @@ async function diExtractAndRoute() {
 
   var extractPrompt = 'From this analysis result, extract structured data. Respond ONLY with valid JSON, no markdown, no explanation.\n\n' +
     f.result + '\n\n' +
-    'Use this format: {"import_type":"roster|college_list|financial|donor|tasks|events|contacts|null","athlete_name":"full player name if college_list else null","import_data":[]}\n' +
+    'Use this format: {"import_type":"roster|college_list|financial|donor|tasks|events|contacts|school_data|null","athlete_name":"full player name if college_list else null","import_data":[]}\n' +
     'For college_list each item needs: school, division (D1/D2/D3/JUCO), status (Target/Applied/Offered/Committed), notes.\n' +
     'For roster each item needs: name, sport, school, gradYear, status.\n' +
     'For financial each item needs: desc, amt, type (income/expense), date, cat.\n' +
-    'For contacts each item needs: name, school, role, email.';
+    'For contacts each item needs: name, school, role, email.\n' +
+    'For school_data each item needs: name, division, conference, gpa_min, gpa_avg, instate_total, outstate_total, athletic_scholarship.';
 
   try {
     var res = await fetch('/.netlify/functions/claude', {
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:2000,
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:4000,
         system:'Extract structured data. Respond ONLY with valid JSON.',
         messages:[{role:'user',content:extractPrompt}]})
     });
@@ -8037,6 +8439,7 @@ function _loadAthletePortal(init) {
   D.athProfile.gpa          = a.gpa;
   D.athProfile.school       = a.school;
   D.athProfile.recruitStage = a.recruitStage;
+  D.athProfile.email        = a.email || '';
   goV('vATH');
   refreshAthDashboard();
 }
@@ -8766,7 +9169,7 @@ function saveCollegeInfo() {
     jersey:        document.getElementById('ci-jersey').value,
     inPortal:      document.getElementById('ci-portal').value === 'In Portal'
   };
-  toast('Saved ✓');
+  saveAppData(); toast('Saved ✓');
   athSec('profile');
 }
 
@@ -8778,6 +9181,7 @@ function renderAthProfile() {
     ['Position', p.position||'—'],
     ['Graduation', p.grad||'—'],
     ['GPA', p.gpa||'—'],
+    ['Email', p.email||'—'],
     ['60-Yard Dash', p.dash60||'—'],
     ['Batting Avg', p.battingAvg||'—'],
     ['Exit Velocity', p.exitVelo||'—']
@@ -8818,6 +9222,7 @@ function openEditAthProfile() {
     '</div>' +
     '<div class="fg"><label class="fl">Batting Average</label><input class="fi" id="ep-av" placeholder="e.g. .342" value="' + (p.battingAvg||'') + '"></div>' +
     '<div class="fg"><label class="fl">Highlight Reel URL</label><input class="fi" id="ep-vd" placeholder="YouTube or Hudl link" value="' + (p.video||'') + '"></div>' +
+    '<div class="fg"><label class="fl">Email</label><input class="fi" id="ep-em" type="email" placeholder="your@email.com" value="' + (p.email||'') + '"></div>' +
     '<div class="fg"><label class="fl">About Me</label><textarea class="fi" id="ep-bi" style="resize:none;" placeholder="Write your bio here...">' + (p.bio||'') + '</textarea></div>' +
     '<button class="btn br3 bf" onclick="saveAthProfile()">Save Profile</button>');
 }
@@ -8832,6 +9237,19 @@ function saveAthProfile() {
   D.athProfile.battingAvg  = (document.getElementById('ep-av')||{}).value || D.athProfile.battingAvg|| '';
   D.athProfile.video       = (document.getElementById('ep-vd')||{}).value || D.athProfile.video     || '';
   D.athProfile.bio         = (document.getElementById('ep-bi')||{}).value || D.athProfile.bio       || '';
+  D.athProfile.email       = (document.getElementById('ep-em')||{}).value || D.athProfile.email     || '';
+  // Sync key fields back to roster entry so admin view stays current
+  var init = D._currentAthInit;
+  if (init) {
+    var rEntry = D.roster.find(function(r){ return r.init === init; });
+    if (rEntry) {
+      if (D.athProfile.gpa)      rEntry.gpa      = D.athProfile.gpa;
+      if (D.athProfile.position) rEntry.position  = D.athProfile.position;
+      if (D.athProfile.grad)     rEntry.grad      = D.athProfile.grad;
+      if (D.athProfile.email)    rEntry.email     = D.athProfile.email;
+    }
+  }
+  saveAppData();
   closeMo();
   var body = document.getElementById('asec-body');
   if (body && curASec === 'profile') body.innerHTML = renderAthProfile();
@@ -8928,6 +9346,7 @@ function saveOffer() {
     date:new Date().toISOString().split('T')[0], status:'Received'});
   closeMo();
   var body = document.getElementById('rec-body');
+  saveAppData();
   if (body) body.innerHTML = renderOffers();
   toast('Offer logged: ' + school);
 }
@@ -8978,6 +9397,7 @@ function saveScholarship() {
   D.scholarships.unshift({name:name, amt:amt, type:type, status:status, cl:clMap[status]||'bgr'});
   closeMo();
   var body = document.getElementById('rec-body');
+  saveAppData();
   if (body) body.innerHTML = renderScholarships();
   toast('Scholarship added');
 }
@@ -9596,6 +10016,8 @@ function renderContacts() {
         statusDot + '</div>';
       bySchool[school].forEach(function(c) {
         var cInit = (c.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2)||'?';
+        var cIdx = (D.contacts||[]).indexOf(c);
+        var isLegacy = cIdx >= 0;
         out += '<div class="cr">' +
           '<div class="av" style="width:36px;height:36px;background:var(--bm);color:var(--blu);font-size:.72rem;flex-shrink:0;">' + cInit + '</div>' +
           '<div style="flex:1;min-width:0;">' +
@@ -9603,6 +10025,7 @@ function renderContacts() {
           '<div class="cs">' + (c.role||'Coach') + (c.sport?' · '+c.sport:'') + '</div>' +
           (c.email?'<div style="font-size:.68rem;color:var(--blu);">'+c.email+'</div>':'') +
           '</div>' +
+          (isLegacy?'<button onclick="openEditContact('+cIdx+')" style="background:none;border:none;color:var(--sub);font-size:.8rem;cursor:pointer;padding:0 4px;">✏️</button><button onclick="deleteContact('+cIdx+')" style="background:none;border:none;color:var(--sub);font-size:.75rem;cursor:pointer;padding:0 2px;">✕</button>':'') +
           (c.email?'<a href="mailto:'+c.email+'" style="font-size:1.3rem;color:var(--blu);">📧</a>':'') +
           (c.phone?'<a href="tel:'+c.phone+'" style="font-size:1.3rem;color:var(--grn);margin-left:6px;">📞</a>':'') +
           '</div>';
@@ -9637,6 +10060,37 @@ function saveContact() {
   var body = document.getElementById('asec-body');
   if (body) body.innerHTML = renderContacts();
   toast(name + ' added');
+}
+function deleteContact(idx) {
+  D.contacts.splice(idx, 1);
+  saveAppData();
+  var body = document.getElementById('asec-body');
+  if (body) body.innerHTML = renderContacts();
+  toast('Contact removed');
+}
+function openEditContact(idx) {
+  var c = (D.contacts||[])[idx];
+  if (!c) return;
+  openMo('<div class="mt">Edit Contact</div>' +
+    '<div class="fg"><label class="fl">Name</label><input class="fi" id="ct-en" value="' + (c.name||'') + '"></div>' +
+    '<div class="fg"><label class="fl">School</label><input class="fi" id="ct-es" value="' + (c.school||'') + '"></div>' +
+    '<div class="fg"><label class="fl">Role</label><input class="fi" id="ct-er" value="' + (c.role||'') + '"></div>' +
+    '<div class="fg"><label class="fl">Email</label><input class="fi" id="ct-ee" type="email" value="' + (c.email||'') + '"></div>' +
+    '<button class="btn br3 bf" onclick="saveEditContact(' + idx + ')">Save</button>');
+}
+function saveEditContact(idx) {
+  var c = (D.contacts||[])[idx];
+  if (!c) return;
+  c.name   = (document.getElementById('ct-en')||{}).value || c.name;
+  c.school = (document.getElementById('ct-es')||{}).value || c.school;
+  c.role   = (document.getElementById('ct-er')||{}).value || c.role;
+  c.email  = (document.getElementById('ct-ee')||{}).value || c.email;
+  upsertCoach(c, 'athlete-edited');
+  saveAppData();
+  closeMo();
+  var body = document.getElementById('asec-body');
+  if (body) body.innerHTML = renderContacts();
+  toast('Contact updated');
 }
 function renderTemplates() {
   if (!D.templates.length) return '<div style="padding:40px 16px;text-align:center;color:var(--sub);font-size:.84rem;">No email templates yet. Your coach contact templates will appear here.</div><div style="height:20px;"></div>';
@@ -9696,6 +10150,7 @@ function toggleAthTask(id) {
   if (!t) return;
   t.done = !t.done;
   var body = document.getElementById('asec-body');
+  saveAppData();
   if (body) body.innerHTML = renderAthTasks();
   toast(t.done ? 'Done!' : 'Reopened');
 }
@@ -9711,6 +10166,7 @@ function saveAthTask() {
   D.aTasks.unshift({id:Date.now(),text:text.trim(),done:false,due:(document.getElementById('at-nd')||{}).value||'TBD'});
   closeMo();
   var body = document.getElementById('asec-body');
+  saveAppData();
   if (body) body.innerHTML = renderAthTasks();
   toast('Task added');
 }
@@ -9729,6 +10185,7 @@ function renderCheckin() {
 function doCheckin(idx) {
   D.checkins[idx].status = 'done';
   var body = document.getElementById('asec-body');
+  saveAppData();
   if (body) body.innerHTML = renderCheckin();
   toast('Checked in: ' + D.checkins[idx].title);
 }
@@ -9758,7 +10215,7 @@ function saveFunding() {
   closeMo();
   var body = document.getElementById('asec-body');
   if (body) body.innerHTML = renderFunding();
-  toast('Request submitted!');
+  saveAppData(); toast('Request submitted!');
 }
 
 // ── PUBLIC PORTAL ──
@@ -9875,6 +10332,10 @@ function setFontSize(size, silent) {
 
 document.addEventListener('DOMContentLoaded', function(){
   loadAppData();
+  // Restore Doc AI command history (after DI object is initialized)
+  diLoadHistory();
+  // Restore and resume school profile queue (after D.playerColleges is loaded)
+  spqRestore();
   // Restore theme
   try {
     var savedTheme = localStorage.getItem('bffsa-theme');
@@ -10633,6 +11094,7 @@ function renderFiles() {
 }
 
 function filesRefresh() {
+  saveAppData();
   var b = document.getElementById('sec-body'); if(b && curSec==='files') b.innerHTML = renderFiles();
 }
 
@@ -11016,6 +11478,25 @@ function importRosterProfiles(input) {
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+function diSaveHistory() {
+  try {
+    localStorage.setItem('bffsa-di-history', JSON.stringify({
+      history:    DI.history.slice(0,50),
+      cmdHistory: DI.cmdHistory.slice(0,50)
+    }));
+  } catch(e) {}
+}
+
+function diLoadHistory() {
+  try {
+    var raw = localStorage.getItem('bffsa-di-history');
+    if (!raw) return;
+    var saved = JSON.parse(raw);
+    if (saved.history)    DI.history    = saved.history;
+    if (saved.cmdHistory) DI.cmdHistory = saved.cmdHistory;
+  } catch(e) {}
 }
 
 </script>
