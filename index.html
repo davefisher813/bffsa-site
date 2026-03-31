@@ -858,7 +858,7 @@ function loadAppData() {
     var snap = JSON.parse(raw);
 
     // Restore all data EXCEPT roster — hardcoded roster is always source of truth
-    var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','files','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents','devBoard','fitBenchmarks','boardMembers','collegeAdvisors','devBoardMembers','msgs','checkins','templates','people'];
+    var keys = ['playerColleges','portalEnabled','roster','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','files','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents','devBoard','fitBenchmarks','boardMembers','collegeAdvisors','devBoardMembers','msgs','checkins','templates','people'];
     keys.forEach(function(k) {
       if (snap[k] !== undefined) D[k] = snap[k];
     });
@@ -913,6 +913,42 @@ function loadAppData() {
 var _syncTimer = null;
 var _syncStatus = 'idle'; // idle | pushing | pulling | error | ok
 var _lastSyncAt = null;
+
+function spqUpdateProgress() {
+  var prog = document.getElementById('spq-progress');
+  var bar  = document.getElementById('spq-bar');
+  var cnt  = document.getElementById('spq-count');
+  var cur  = document.getElementById('spq-current');
+  if (!prog) return;
+
+  var remaining = _spq.items.length + (_spq.running ? 1 : 0);
+  var total = _spq._batchTotal || remaining;
+
+  if (remaining === 0 || !_spq._batchStarted) {
+    prog.style.display = 'none';
+    return;
+  }
+
+  prog.style.display = 'block';
+  var done = total - remaining;
+  var pct  = total > 0 ? Math.round((done / total) * 100) : 0;
+  if (bar) bar.style.width = pct + '%';
+  if (cnt) cnt.textContent = done + ' / ' + total + ' (' + pct + '%)';
+
+  // Show current school loading
+  if (_spq.running && _spq.items.length >= 0) {
+    var nextItem = _spq.items[0];
+    var currentName = '';
+    if (nextItem) {
+      var cols = D.playerColleges[nextItem.init] || [];
+      var col = cols[nextItem.collegeIdx];
+      if (col) currentName = col.school;
+    }
+    if (cur) cur.textContent = currentName ? 'Loading: ' + currentName : 'Processing...';
+  } else {
+    if (cur) cur.textContent = remaining + ' remaining in queue';
+  }
+}
 
 function syncUpdateIndicator(status, msg) {
   _syncStatus = status;
@@ -4965,6 +5001,10 @@ function spqRestore() {
 // ── GLOBAL FIT REFRESH CONTROLS ──
 function refreshAllProfiles(forceRefetch) {
   _spq._batchStarted = true;
+  var allCols = [];
+  Object.values(D.playerColleges||{}).forEach(function(cs){ allCols = allCols.concat(cs); });
+  _spq._batchTotal = forceRefetch ? allCols.length : allCols.filter(function(c){ return !c.profile; }).length;
+  spqUpdateProgress();
   // Queue ALL college profiles across ALL active athletes for reload
   var active = D.roster.filter(function(r){ return r.status === 'Active' || r.status === 'Committed'; });
   var queued = 0;
@@ -5035,6 +5075,11 @@ function refreshSingleAthleteProfiles(forceRefetch) {
 
 function spqEnqueue(playerIdx, init) {
   _spq._batchStarted = true;
+  // Count total unloaded before starting
+  var allCols = [];
+  Object.values(D.playerColleges||{}).forEach(function(cs){ allCols = allCols.concat(cs); });
+  _spq._batchTotal = allCols.filter(function(c){ return !c.profile && !c.profileLoading; }).length;
+  spqUpdateProgress();
   var colleges = D.playerColleges[init] || [];
   colleges.forEach(function(c, ci) {
     if (!c.profile && !c.profileError) {
@@ -5083,6 +5128,7 @@ function spqRun() {
     }, 0);
     if (_spq._batchStarted) {
       _spq._batchStarted = false;
+      spqUpdateProgress();
       toast('✅ Batch complete — ' + totalProfiles + ' school profiles loaded. You can start another batch or back up now.');
       // Auto-push to cloud after batch finishes
       setTimeout(function(){
@@ -5113,12 +5159,14 @@ function spqRun() {
       _spq.running = false;
       _spq.startedAt = null;
       spqSave();
+      spqUpdateProgress();
       if (_spq.items.length > 0) setTimeout(spqRun, 8000);
     })
     .catch(function() {
       _spq.running = false;
       _spq.startedAt = null;
       spqSave();
+      spqUpdateProgress();
       if (_spq.items.length > 0) setTimeout(spqRun, 8000);
     });
 }
@@ -7143,6 +7191,16 @@ function renderMore() {
       </div>
       <div style="font-size:.72rem;color:var(--sub);margin-bottom:8px;">Syncs automatically on every save. Use these buttons to force a manual push or pull.</div>
       <div id="sync-last" style="font-size:.7rem;color:var(--sub);margin-bottom:10px;">Last sync: not yet this session</div>
+      <div id="spq-progress" style="display:none;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-size:.72rem;font-weight:700;color:var(--blu);">⏳ Loading school profiles...</span>
+          <span id="spq-count" style="font-size:.72rem;color:var(--sub);"></span>
+        </div>
+        <div style="height:6px;background:var(--card2);border-radius:6px;overflow:hidden;">
+          <div id="spq-bar" style="height:100%;background:var(--blu);border-radius:6px;transition:width .5s ease;width:0%;"></div>
+        </div>
+        <div id="spq-current" style="font-size:.68rem;color:var(--sub);margin-top:3px;"></div>
+      </div>
       <div style="display:flex;gap:8px;">
         <button class="btn bf" style="flex:1;background:var(--blu);border-radius:10px;" onclick="syncPushManual()">&#8679; Push to Cloud</button>
         <button class="btn bf" style="flex:1;background:var(--pur);border-radius:10px;" onclick="syncPullManual()">&#8681; Pull from Cloud</button>
