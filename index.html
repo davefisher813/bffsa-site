@@ -67,7 +67,7 @@ body.bffsa-light{
   --tx:#0a0a0a;--tx2:rgba(0,0,0,.72);--tx3:rgba(0,0,0,.38);--sub:#666;
   --red:#cc0000;--red2:#ff3333;--rm:rgba(204,0,0,.08);--rm2:rgba(204,0,0,.14);
   --grn:#16a34a;--gm:rgba(22,163,74,.1);
-  --yel:#92400e;--ym:rgba(146,64,14,.1);
+  --yel:#f1c40f;--ym:rgba(241,196,15,.13);
   --blu:#1d4ed8;--bm:rgba(29,78,216,.1);
   --nav-bg:rgba(242,242,242,.96);
   --shadow:0 2px 12px rgba(0,0,0,.10);--shadow-sm:0 1px 4px rgba(0,0,0,.08);
@@ -84,7 +84,7 @@ body.ios-light{
   --tx:#000;--tx2:rgba(0,0,0,.72);--tx3:rgba(0,0,0,.35);--sub:#6e6e73;
   --red:#cc0000;--red2:#d70015;--rm:rgba(204,0,0,.08);--rm2:rgba(204,0,0,.14);
   --grn:#248a3d;--gm:rgba(36,138,61,.1);
-  --yel:#b25000;--ym:rgba(178,80,0,.1);
+  --yel:#f1c40f;--ym:rgba(241,196,15,.13);
   --blu:#0071e3;--bm:rgba(0,113,227,.1);
   --nav-bg:rgba(242,242,247,.96);
   --shadow:0 2px 12px rgba(0,0,0,.09);--shadow-sm:0 1px 4px rgba(0,0,0,.07);
@@ -251,6 +251,7 @@ body.bffsa-light .scr,body.ios-light .scr{background-image:none;}
   display:flex;align-items:center;gap:8px;
 }
 .al.b{background:var(--bm);border-color:var(--blu);color:var(--blu);}
+.y{background:var(--ym);border-color:var(--yel);color:var(--yel);}
 .al.r{background:var(--rm);border-color:var(--red);color:var(--red);}
 .al.g{background:var(--gm);border-color:var(--grn);color:var(--grn);}
 
@@ -491,13 +492,13 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
       <div class="sc"><span class="sn" id="stat-placed">0</span><span class="sl">Placed</span></div>
       <div class="sc"><span class="sn" id="stat-raised" style="color:var(--grn);">$0</span><span class="sl">Raised</span></div>
       <div class="sc"><span class="sn" id="stat-tasks" style="color:var(--yel);">0</span><span class="sl">Open Tasks</span></div>
-      <div class="sc"><span class="sn" id="stat-events">0</span><span class="sl">Events</span></div>
-      <div class="sc"><span class="sn" id="stat-donors">0</span><span class="sl">Donors</span></div>
+      <div class="sc"><span class="sn" id="stat-events" style="color:var(--grn);">0</span><span class="sl">Events</span></div>
+      <div class="sc"><span class="sn" id="stat-donors" style="color:var(--grn);">0</span><span class="sl">Donors</span></div>
     </div>
     <div class="shdr a2"><span class="sti">Quick Actions</span></div>
     <div class="qag a2">
       <button class="qa" data-sec="docs" onclick="admSec('docs')">
-        <div style="width:42px;height:42px;border-radius:11px;background:rgba(204,0,0,.15);display:flex;align-items:center;justify-content:center;color:#CC0000;">
+        <div style="width:42px;height:42px;border-radius:11px;background:rgba(52,130,219,.15);display:flex;align-items:center;justify-content:center;color:#3482db;">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
         </div>
         <span class="ql">Docs AI</span>
@@ -523,7 +524,7 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
         </div>
         <span class="ql">Calendar</span>
       </button>
-      <button class="qa" data-sec="events" onclick="admSec('events')"><div style="width:42px;height:42px;border-radius:11px;background:rgba(52,130,219,.15);display:flex;align-items:center;justify-content:center;color:#3482db;">
+      <button class="qa" data-sec="events" onclick="admSec('events')"><div style="width:42px;height:42px;border-radius:11px;background:rgba(39,174,96,.15);display:flex;align-items:center;justify-content:center;color:#27ae60;">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
         </div>
         <span class="ql">Events</span>
@@ -592,7 +593,7 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
     <button class="upd-b" onclick="doUpdate()">Update Now</button><button onclick="dismissUpdateBar()" style="background:none;border:none;color:rgba(255,255,255,.7);font-size:1.2rem;cursor:pointer;padding:0 0 0 10px;line-height:1;">&#10005;</button>
   </div>
   <div class="tb">
-    <div class="tbl"><button class="bk" onclick="goV('vADM')">&#8249;</button><div class="ttl" id="sec-ttl"></div></div>
+    <div class="tbl"><button class="bk" onclick="secGoBack()">&#8249;</button><div class="ttl" id="sec-ttl"></div></div>
     <div style="display:flex;gap:6px;align-items:center;">
       <button class="ta" id="sec-add-btn" style="display:none;" onclick="secAddAction()">+ Add</button>
       <div style="display:flex;align-items:center;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:3px;gap:2px;">
@@ -1484,31 +1485,31 @@ function closeMo() {
 // ── SECTION CATALOG — single source of truth ──
 var SECTIONS = [
   {id:'docs',      label:'Docs AI',    cat:'red',   svgPath:'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17'},
-  {id:'tasks',     label:'Tasks',      cat:'red',   svgPath:'M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11'},
-  {id:'roster',    label:'Roster',     cat:'red',   svgPath:'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75'},
-  {id:'recruiting',label:'Recruiting', cat:'red',   svgPath:'M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5'},
-  {id:'goals',     label:'Goals',      cat:'red',   svgPath:'M12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'},
+  {id:'tasks',     label:'Tasks',      cat:'yellow', svgPath:'M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11'},
+  {id:'roster',    label:'Roster',     cat:'yellow', svgPath:'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75'},
+  {id:'recruiting',label:'Recruiting', cat:'yellow', svgPath:'M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5'},
+  {id:'goals',     label:'Goals',      cat:'yellow', svgPath:'M12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'},
   {id:'security',  label:'Security',   cat:'red',   svgPath:'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10'},
-  {id:'benchmarks',label:'Benchmarks', cat:'red',   svgPath:'M18 20V10M12 20V4M6 20v-6'},
-  {id:'acct',      label:'Accounting', cat:'green', svgPath:'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6'},
-  {id:'donors',    label:'Donors',     cat:'green', svgPath:'M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z'},
-  {id:'msgs',      label:'Messages',   cat:'blue',  svgPath:'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z'},
-  {id:'meetings',  label:'Meetings',   cat:'blue',  svgPath:'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><rect x="14" y="14" width="8" height="8" rx="1"/><path d="M22 16l-4 2 4 2'},
-  {id:'events',    label:'Events',     cat:'blue',  svgPath:'M12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'},
-  {id:'cal',       label:'Calendar',   cat:'blue',  svgPath:'M3 4h18v18H3z" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10'},
-  {id:'files',     label:'Files',      cat:'blue',  svgPath:'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z'},
-  {id:'schools',   label:'Schools DB', cat:'blue',  svgPath:'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22'},
+  {id:'benchmarks',label:'Benchmarks', cat:'yellow', svgPath:'M18 20V10M12 20V4M6 20v-6'},
+  {id:'acct',      label:'Accounting', cat:'green',  svgPath:'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6'},
+  {id:'donors',    label:'Donors',     cat:'green',  svgPath:'M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z'},
+  {id:'msgs',      label:'Messages',   cat:'red',   svgPath:'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z'},
+  {id:'meetings',  label:'Meetings',   cat:'red',   svgPath:'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><rect x="14" y="14" width="8" height="8" rx="1"/><path d="M22 16l-4 2 4 2'},
+  {id:'events',    label:'Events',     cat:'green',  svgPath:'M12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2'},
+  {id:'cal',       label:'Calendar',   cat:'red',   svgPath:'M3 4h18v18H3z" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10'},
+  {id:'files',     label:'Files',      cat:'red',   svgPath:'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z'},
+  {id:'schools',   label:'Schools DB', cat:'red',   svgPath:'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22'},
   {id:'devboard',  label:'Dev Board',  cat:'green', svgPath:'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75'},
 ];
 
 var CAT_COLORS = {
-  red:   {bg:'rgba(204,0,0,.15)',   col:'#CC0000'},
-  green: {bg:'rgba(39,174,96,.15)', col:'#27ae60'},
-  blue:  {bg:'rgba(52,130,219,.15)',col:'#3482db'},
+  red:    {bg:'rgba(204,0,0,.12)',   col:'#CC0000'},
+  yellow: {bg:'rgba(241,196,15,.15)',col:'#f1c40f'},
+  green:  {bg:'rgba(39,174,96,.12)', col:'#27ae60'},
 };
 
 // Default home layout and nav
-var DEFAULT_HOME = ['docs','tasks','roster','recruiting','goals','acct','donors','msgs','meetings','events','cal','files'];
+var DEFAULT_HOME = ['tasks','roster','recruiting','goals','acct','donors','devboard','events','docs','msgs','meetings','cal','files'];
 var DEFAULT_NAV  = ['docs','tasks','roster','meetings'];  // Home and More always present
 
 function getHomeItems() {
@@ -1527,9 +1528,9 @@ function openCustomizeHome() {
     '<div style="font-size:.78rem;color:var(--sub);margin-bottom:12px;">Select which sections appear on your home screen. Tap nav slots to change your bottom bar.</div>' +
     // Category legend
     '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">' +
-    '<span style="font-size:.68rem;padding:2px 8px;border-radius:6px;background:rgba(204,0,0,.15);color:#CC0000;font-weight:700;">● Operations</span>' +
+    '<span style="font-size:.68rem;padding:2px 8px;border-radius:6px;background:rgba(241,196,15,.15);color:#c9a800;font-weight:700;">● Operations</span>' +
     '<span style="font-size:.68rem;padding:2px 8px;border-radius:6px;background:rgba(39,174,96,.15);color:#27ae60;font-weight:700;">● Financial</span>' +
-    '<span style="font-size:.68rem;padding:2px 8px;border-radius:6px;background:rgba(52,130,219,.15);color:#3482db;font-weight:700;">● Communication</span>' +
+    '<span style="font-size:.68rem;padding:2px 8px;border-radius:6px;background:rgba(204,0,0,.12);color:#CC0000;font-weight:700;">● Communication</span>' +
     '</div>' +
     // Home sections
     '<div style="font-size:.65rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--sub);margin-bottom:8px;">HOME SCREEN TILES</div>' +
@@ -1558,8 +1559,8 @@ function openCustomizeHome() {
         '</label>';
     }).join('') +
     '</div>' +
-    '<button class="btn br3 bf" onclick="saveHomeCustom()">Save Layout</button>';
-  openMo(html);
+    '';
+  openMo(html, '<button class="btn br3 bf" style="width:100%;" onclick="saveHomeCustom()">Save Layout</button>');
 }
 
 function homeCustomToggle(id) {
@@ -1582,6 +1583,7 @@ function navCustomToggle(id) {
     nav.push(id);
   }
   D.config.navItems = nav;
+  renderAdmNav();
 }
 
 function saveHomeCustom() {
@@ -1700,7 +1702,7 @@ function renderAdmHome() {
 
   // Open tasks
   var openTasks = (D.tasks||[]).filter(function(t){ return !t.done; }).length;
-  document.querySelectorAll('#stat-tasks').forEach(function(el){ el.textContent = openTasks; el.style.color = openTasks > 0 ? 'var(--yel)' : 'var(--red)'; });
+  document.querySelectorAll('#stat-tasks').forEach(function(el){ el.textContent = openTasks; el.style.color = 'var(--yel)'; });
 
   // Upcoming events (today or future)
   var today = new Date(); today.setHours(0,0,0,0);
@@ -1726,7 +1728,14 @@ function admBnTab(tab) {
 
 // ── ADMIN SECTIONS ──
 var curSec = '';
+var _prevView = 'vADM';
+function secGoBack() {
+  goV(_prevView);
+  if (_prevView === 'vADM') renderAdmHome();
+  _prevView = 'vADM';
+}
 function admSec(sec) {
+  _prevView = document.getElementById('vADM') && document.getElementById('vADM').style.display !== 'none' ? 'vADM' : 'vSEC';
   // Reset accounting filters when leaving accounting
   if (curSec === 'acct' && sec !== 'acct') {
     if (D.acct) { D.acct.txFilter='all'; D.acct.txSearch=''; D.acct.ledgerYear='all'; D.acct.ledgerCat=''; D.acct.ledgerSrc='all'; D.acct.ledgerSearch=''; }
@@ -7333,7 +7342,7 @@ function renderMore() {
 
   return `<div class="shdr"><span class="sti">All Sections</span></div>
   <div class="cl" style="margin:0 16px 16px;">
-    ${[['&#128176;','g','acct','Accounting'],['&#128172;','b','msgs','Message Board'],['&#127919;','r','goals','Goals'],['&#129309;','g','donors','Donor CRM'],['&#128202;','b','reports','Reports'],['&#127909;','b','meetings','Board Meetings'],['&#127891;','b','schools','Schools DB'],['&#127775;','b','events','Special Events'],['&#128101;','r','devboard','Dev Board'],['&#127919;','b','benchmarks','Fit Benchmarks']].map(function(it){
+    ${[['&#128176;','g','acct','Accounting'],['&#128172;','r','msgs','Message Board'],['&#127919;','y','goals','Goals'],['&#129309;','g','donors','Donor CRM'],['&#128202;','r','reports','Reports'],['&#127909;','r','meetings','Board Meetings'],['&#127891;','r','schools','Schools DB'],['&#127775;','g','events','Special Events'],['&#128101;','g','devboard','Dev Board'],['&#127919;','y','benchmarks','Fit Benchmarks'],['&#128274;','r','security','Security']].map(function(it){
       return `<button class="cr" onclick="admSec('${it[2]}')">
         <div class="ci ${it[1]}">${it[0]}</div>
         <div style="flex:1;"><div class="cn">${it[3]}</div></div>
@@ -7400,8 +7409,8 @@ function renderMore() {
     <button class="cr" onclick="openSettings()">
       <div class="ci b">&#9881;</div><div style="flex:1;"><div class="cn">Settings</div></div><span class="chv">&#8250;</span>
     </button>
-    <button class="cr" onclick="safeUpdate()" style="border:1px solid rgba(204,0,0,.2);background:rgba(204,0,0,.05);">
-      <div class="ci g">&#128279;</div><div style="flex:1;"><div class="cn" style="color:#CC0000;">Update App</div><div class="cs">Saves your data to cloud, then reloads the latest version</div></div><span class="chv" style="color:#CC0000;">&#8250;</span>
+    <button class="cr" onclick="safeUpdate()" style="border:1px solid rgba(255,180,0,.3);background:rgba(255,180,0,.06);">
+      <div class="ci" style="background:rgba(255,180,0,.15);color:#f0a500;">&#128279;</div><div style="flex:1;"><div class="cn" style="color:#f0a500;">Update App</div><div class="cs">Saves your data to cloud, then reloads the latest version</div></div><span class="chv" style="color:#f0a500;">&#8250;</span>
     </button>
     <button class="cr" onclick="goV('vSP')">
       <div class="ci r">&#128682;</div><div style="flex:1;"><div class="cn">Sign Out</div></div><span class="chv">&#8250;</span>
