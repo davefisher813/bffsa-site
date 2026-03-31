@@ -165,7 +165,7 @@ body.bffsa-light .scr,body.ios-light .scr{background-image:none;}
   flex:1;display:flex;flex-direction:column;
   align-items:center;justify-content:center;
   gap:3px;padding:8px 4px 6px;
-  color:var(--sub);font-size:.57rem;font-weight:600;
+  color:var(--tx2);font-size:.57rem;font-weight:600;
   letter-spacing:.04em;text-transform:uppercase;
 }
 .bb svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
@@ -191,7 +191,7 @@ body.bffsa-light .scr,body.ios-light .scr{background-image:none;}
 
 /* ── SECTION HEADER ── */
 .shdr{display:flex;align-items:center;justify-content:space-between;padding:18px 16px 8px;}
-.sti{font-size:.63rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--sub);}
+.sti{font-size:.63rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--tx2);}
 
 /* ── PROFILE HERO ── */
 .ph{
@@ -228,7 +228,7 @@ body.bffsa-light .scr,body.ios-light .scr{background-image:none;}
 .ci{width:42px;height:42px;border-radius:var(--r-sm);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.25rem;}
 .cn{font-size:.9rem;font-weight:600;color:var(--tx);}
 .cs{font-size:.71rem;color:var(--sub);margin-top:1px;}
-.chv{color:var(--tx3);font-size:1rem;margin-left:auto;flex-shrink:0;}
+.chv{color:var(--tx2);font-size:1rem;margin-left:auto;flex-shrink:0;}
 
 /* ── QUICK ACTIONS ── */
 .qag{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 16px 12px;}
@@ -241,7 +241,7 @@ body.bffsa-light .scr,body.ios-light .scr{background-image:none;}
 }
 .qa:active{background:var(--card2);transform:scale(.95);}
 .qi{font-size:0;line-height:0;}
-.ql{font-size:.58rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--tx2);text-align:center;}
+.ql{font-size:.58rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--tx);text-align:center;}
 
 /* ── ALERTS ── */
 .al{
@@ -264,7 +264,7 @@ body.bffsa-light .scr,body.ios-light .scr{background-image:none;}
 }
 .fi:focus{border-color:var(--red);}
 .fi::placeholder{color:var(--tx3);}
-.fl{display:block;font-size:.64rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--sub);margin-bottom:5px;}
+.fl{display:block;font-size:.64rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--tx2);margin-bottom:5px;}
 .fg{display:flex;flex-direction:column;margin-bottom:10px;}
 .fr{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 
@@ -283,7 +283,7 @@ body.bffsa-light .scr,body.ios-light .scr{background-image:none;}
 
 /* ── TABS ── */
 .tabs{display:flex;border-bottom:1px solid var(--b1);background:var(--bg);flex-shrink:0;}
-.tab{flex:1;padding:11px 6px;font-size:.8rem;font-weight:600;color:var(--sub);letter-spacing:.03em;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;}
+.tab{flex:1;padding:11px 6px;font-size:.8rem;font-weight:600;color:var(--tx2);letter-spacing:.03em;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;}
 .tab.on{color:var(--red);border-bottom-color:var(--red);}
 
 /* ── MODAL ── */
@@ -489,8 +489,8 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
     <div class="ss a2">
       <div class="sc"><span class="sn" id="stat-athletes">0</span><span class="sl">Athletes</span></div>
       <div class="sc"><span class="sn" id="stat-placed">0</span><span class="sl">Placed</span></div>
-      <div class="sc"><span class="sn" id="stat-raised">$0</span><span class="sl">Raised</span></div>
-      <div class="sc"><span class="sn" id="stat-tasks">0</span><span class="sl">Open Tasks</span></div>
+      <div class="sc"><span class="sn" id="stat-raised" style="color:var(--grn);">$0</span><span class="sl">Raised</span></div>
+      <div class="sc"><span class="sn" id="stat-tasks" style="color:var(--yel);">0</span><span class="sl">Open Tasks</span></div>
       <div class="sc"><span class="sn" id="stat-events">0</span><span class="sl">Events</span></div>
       <div class="sc"><span class="sn" id="stat-donors">0</span><span class="sl">Donors</span></div>
     </div>
@@ -1703,11 +1703,11 @@ function renderAdmHome() {
   var raisedFmt = totalRaised >= 1000000 ? '$' + (totalRaised/1000000).toFixed(1) + 'M' :
                   totalRaised >= 1000    ? '$' + Math.round(totalRaised/1000) + 'K' :
                   totalRaised > 0        ? '$' + Math.round(totalRaised) : '$0';
-  document.querySelectorAll('#stat-raised').forEach(function(el){ el.textContent = raisedFmt; });
+  document.querySelectorAll('#stat-raised').forEach(function(el){ el.textContent = raisedFmt; el.style.color = 'var(--grn)'; });
 
   // Open tasks
   var openTasks = (D.tasks||[]).filter(function(t){ return !t.done; }).length;
-  document.querySelectorAll('#stat-tasks').forEach(function(el){ el.textContent = openTasks; });
+  document.querySelectorAll('#stat-tasks').forEach(function(el){ el.textContent = openTasks; el.style.color = openTasks > 0 ? 'var(--yel)' : 'var(--red)'; });
 
   // Upcoming events (today or future)
   var today = new Date(); today.setHours(0,0,0,0);
@@ -1718,7 +1718,7 @@ function renderAdmHome() {
   document.querySelectorAll('#stat-events').forEach(function(el){ el.textContent = upcomingEvents; });
 
   // Donors count
-  document.querySelectorAll('#stat-donors').forEach(function(el){ el.textContent = (D.donors||[]).length; });
+  document.querySelectorAll('#stat-donors').forEach(function(el){ el.textContent = (D.donors||[]).length; el.style.color = 'var(--grn)'; });
 }
 
 // ── ADMIN BOTTOM NAV ──
