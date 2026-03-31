@@ -5296,164 +5296,167 @@ function getFitSummary(a, colleges) {
 function renderPlayerColleges(idx, a) {
   var colleges = (D.playerColleges[a.init] || []);
   var unloaded = colleges.filter(function(c){ return !c.profile && !c.profileLoading && !c.profileError; }).length;
-  var tagC = {Conflict:'#e74c3c', Reach:'#ff9500', Fit:'var(--blu)', Safety:'var(--grn)', Unknown:'var(--sub)', Loading:'var(--sub)'};
-  var tagB = {Conflict:'rgba(231,76,60,.12)', Reach:'rgba(255,149,0,.1)', Fit:'rgba(52,152,219,.1)', Safety:'rgba(39,174,96,.1)', Unknown:'var(--card2)', Loading:'var(--card2)'};
-  var stCol = {'Target':'var(--sub)','In Contact':'var(--blu)','Visit':'var(--pur)','Offer':'#ff9500','Committed':'var(--grn)','Not Interested':'#888'};
+  var tagC = {Conflict:'#e74c3c',Reach:'#ff9500',Fit:'#4a9eff',Safety:'#2ecc71',Unknown:'#888',Loading:'#888'};
+  var tagB = {Conflict:'rgba(231,76,60,.15)',Reach:'rgba(255,149,0,.13)',Fit:'rgba(74,158,255,.13)',Safety:'rgba(46,204,113,.13)',Unknown:'rgba(120,120,120,.1)',Loading:'rgba(120,120,120,.1)'};
+  var stCol = {'Target':'#888','In Contact':'#4a9eff','Visit':'#a855f7','Offer':'#ff9500','Committed':'#2ecc71','Not Interested':'#666'};
   var stEm  = {'Target':'🎯','In Contact':'📬','Visit':'✈️','Offer':'🏆','Committed':'✅','Not Interested':'❌'};
 
-  // ── HEADER ──
-  var out = '<div style="padding:12px 14px 8px;display:flex;align-items:center;justify-content:space-between;">' +
+  // HEADER
+  var out = '<div style="padding:12px 16px 8px;display:flex;align-items:center;justify-content:space-between;">' +
     '<div>' +
-      '<div style="font-size:.95rem;font-weight:800;color:var(--tx);">College List</div>' +
-      '<div style="font-size:.7rem;color:var(--sub);">' + colleges.length + ' program' + (colleges.length===1?'':'s') +
-        (unloaded > 0 ? ' · <span style="color:var(--red2);">' + unloaded + ' profiles missing</span>' : '') +
-      '</div>' +
+      '<span style="font-size:1rem;font-weight:800;color:var(--tx);">College List</span>' +
+      '<span style="font-size:.75rem;color:var(--sub);margin-left:8px;">' + colleges.length + ' programs' +
+        (unloaded>0 ? ' · <span style="color:#e74c3c;">'+unloaded+' unloaded</span>' : '') +
+      '</span>' +
     '</div>' +
-    '<div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;">' +
-    (unloaded > 0 ? '<button class="btn br3 bsm" onclick="spqEnqueue('+idx+',\''+(a.init)+'\');playerTab(\'colleges\');toast(\'Loading profiles...\')">↺ Load All</button>' : '') +
+    '<div style="display:flex;gap:5px;">' +
+    (unloaded>0 ? '<button class="btn br3 bsm" onclick="spqEnqueue('+idx+',\''+a.init+'\');playerTab(\'colleges\');toast(\'Loading...\')">↺ Load All</button>' : '') +
     '<button class="btn br3 bsm" onclick="openAddCollegeToPlayer('+idx+')">+ Add</button>' +
-    '<button class="btn br3 bsm" onclick="refreshSingleAthleteProfiles(false)" title="Load missing">↺ Profiles</button>' +
-    '<button class="btn br3 bsm" style="background:rgba(231,76,60,.08);color:var(--red2);border:1px solid rgba(231,76,60,.2);" onclick="refreshSingleAthleteProfiles(true)" title="Force re-fetch">↺ Re-fetch</button>' +
-    '</div>' +
-    '</div>';
+    '<button class="btn br3 bsm" onclick="refreshSingleAthleteProfiles(false)">↺ Profiles</button>' +
+    '<button class="btn br3 bsm" style="background:rgba(231,76,60,.08);color:#e74c3c;border:1px solid rgba(231,76,60,.2);" onclick="refreshSingleAthleteProfiles(true)">↺ Re-fetch</button>' +
+    '</div></div>';
 
   if (colleges.length === 0) {
-    out += '<div style="text-align:center;padding:40px 20px;color:var(--sub);font-size:.84rem;">' +
+    out += '<div style="text-align:center;padding:40px 20px;color:var(--sub);">' +
       '<div style="font-size:2.5rem;margin-bottom:8px;">🎓</div>' +
-      '<div style="font-weight:700;color:var(--tx);margin-bottom:6px;">No programs yet</div>' +
-      'Tap + Add to start building the list.</div>';
-    out += '<div style="height:60px;"></div>';
+      '<div style="font-size:.9rem;font-weight:700;color:var(--tx);margin-bottom:4px;">No programs yet</div>' +
+      '<div style="font-size:.8rem;">Tap + Add to start building the list.</div></div>' +
+      '<div style="height:60px;"></div>';
     return out;
   }
 
-  // ── FIT SUMMARY BANNER ──
+  // FIT SUMMARY BANNER
   var fitSum = getFitSummary(a, colleges);
   if (fitSum) {
     var hasBad = fitSum.alerts.length > 0;
-    out += '<div style="background:' + (hasBad?'rgba(255,149,0,.07)':'rgba(39,174,96,.07)') + ';border:1px solid ' + (hasBad?'rgba(255,149,0,.25)':'rgba(39,174,96,.25)') + ';border-radius:10px;padding:9px 12px;margin:0 14px 10px;display:flex;align-items:center;gap:10px;">' +
-      '<div style="display:flex;gap:6px;flex-shrink:0;">' +
-      '<div style="text-align:center;padding:5px 10px;background:rgba(231,76,60,.1);border-radius:8px;min-width:38px;">' +
-        '<div style="font-size:.95rem;font-weight:900;color:#e74c3c;">' + fitSum.reaches + '</div>' +
-        '<div style="font-size:.55rem;color:#e74c3c;font-weight:700;text-transform:uppercase;">Reach</div>' +
-      '</div>' +
-      '<div style="text-align:center;padding:5px 10px;background:rgba(52,152,219,.1);border-radius:8px;min-width:38px;">' +
-        '<div style="font-size:.95rem;font-weight:900;color:var(--blu);">' + fitSum.fits + '</div>' +
-        '<div style="font-size:.55rem;color:var(--blu);font-weight:700;text-transform:uppercase;">Fit</div>' +
-      '</div>' +
-      '<div style="text-align:center;padding:5px 10px;background:rgba(39,174,96,.1);border-radius:8px;min-width:38px;">' +
-        '<div style="font-size:.95rem;font-weight:900;color:var(--grn);">' + fitSum.safetys + '</div>' +
-        '<div style="font-size:.55rem;color:var(--grn);font-weight:700;text-transform:uppercase;">Safety</div>' +
-      '</div>' +
+    out += '<div style="margin:0 14px 10px;padding:10px 12px;background:'+(hasBad?'rgba(255,149,0,.08)':'rgba(46,204,113,.08)')+';border:1px solid '+(hasBad?'rgba(255,149,0,.25)':'rgba(46,204,113,.25)')+';border-radius:10px;display:flex;align-items:center;gap:12px;">' +
+      '<div style="display:flex;gap:8px;">' +
+        '<div style="text-align:center;min-width:36px;padding:4px 8px;background:rgba(231,76,60,.12);border-radius:8px;">' +
+          '<div style="font-size:1.1rem;font-weight:900;color:#e74c3c;line-height:1;">'+fitSum.reaches+'</div>' +
+          '<div style="font-size:.62rem;font-weight:700;color:#e74c3c;text-transform:uppercase;margin-top:1px;">Reach</div>' +
+        '</div>' +
+        '<div style="text-align:center;min-width:36px;padding:4px 8px;background:rgba(74,158,255,.12);border-radius:8px;">' +
+          '<div style="font-size:1.1rem;font-weight:900;color:#4a9eff;line-height:1;">'+fitSum.fits+'</div>' +
+          '<div style="font-size:.62rem;font-weight:700;color:#4a9eff;text-transform:uppercase;margin-top:1px;">Fit</div>' +
+        '</div>' +
+        '<div style="text-align:center;min-width:36px;padding:4px 8px;background:rgba(46,204,113,.12);border-radius:8px;">' +
+          '<div style="font-size:1.1rem;font-weight:900;color:#2ecc71;line-height:1;">'+fitSum.safetys+'</div>' +
+          '<div style="font-size:.62rem;font-weight:700;color:#2ecc71;text-transform:uppercase;margin-top:1px;">Safety</div>' +
+        '</div>' +
       '</div>' +
       '<div style="flex:1;min-width:0;">' +
-        '<div style="font-size:.72rem;color:var(--tx2);line-height:1.4;">' + fitSum.summary + '</div>' +
-        (hasBad ? '<div style="font-size:.68rem;color:#ff9500;margin-top:3px;">⚠ ' + fitSum.alerts[0] + '</div>' : '') +
-      '</div>' +
-    '</div>';
+        '<div style="font-size:.78rem;color:var(--tx2);line-height:1.4;">'+fitSum.summary+'</div>' +
+        (hasBad?'<div style="font-size:.72rem;color:#ff9500;margin-top:2px;">⚠ '+fitSum.alerts[0]+'</div>':'') +
+      '</div></div>';
   }
 
-  // ── COLLEGE CARDS ──
+  // COLLEGE CARDS
   colleges.forEach(function(c, ci) {
-    var fitR    = calcCollegeFit(a, c);
-    var tag     = c.profileLoading ? 'Loading' : fitR.tag;
-    var acTag   = fitR.acTag  || (c.profileLoading ? 'Loading' : 'Unknown');
-    var athTag  = fitR.athTag || (c.profileLoading ? 'Loading' : 'Unknown');
-    var finTag  = fitR.finTag || 'Unknown';
-    var acWhy   = (fitR.warnings && fitR.warnings.find(function(w){ return w.indexOf('AC:')===0; })) || '';
-    var athWhy  = (fitR.warnings && fitR.warnings.find(function(w){ return w.indexOf('ATH:')===0; })) || '';
-    var borderCol = tag==='Conflict'?'rgba(231,76,60,.4)':tag==='Reach'?'rgba(255,149,0,.3)':tag==='Safety'?'rgba(39,174,96,.3)':'var(--b1)';
-    var accentCol = tag==='Conflict'?'#e74c3c':tag==='Reach'?'#ff9500':tag==='Safety'?'var(--grn)':tag==='Fit'?'var(--blu)':'var(--sub)';
-    var profileConflicts = c.profile ? (c.profile.conflicts||[]).filter(function(cf){return cf.severity==='conflict';}) : [];
-    var statCol = stCol[c.status] || 'var(--sub)';
-    var statEm  = stEm[c.status]  || '🎯';
-    var conf    = c.profile && c.profile.conference ? c.profile.conference : '';
-    var costIn  = c.profile && c.profile.financials && c.profile.financials.instate_total ? '$'+Math.round(c.profile.financials.instate_total/1000)+'k' : null;
-    var schType = c.profile && c.profile.financials ? (c.profile.financials.athletic_scholarship||'').toLowerCase() : '';
+    var fitR      = calcCollegeFit(a, c);
+    var tag       = c.profileLoading ? 'Loading' : fitR.tag;
+    var acTag     = fitR.acTag  || (c.profileLoading?'Loading':'Unknown');
+    var athTag    = fitR.athTag || (c.profileLoading?'Loading':'Unknown');
+    var finTag    = fitR.finTag || 'Unknown';
+    var acWhy     = (fitR.warnings&&fitR.warnings.find(function(w){return w.indexOf('AC:')===0;}))||'';
+    var athWhy    = (fitR.warnings&&fitR.warnings.find(function(w){return w.indexOf('ATH:')===0;}))||'';
+    var accentCol = tagC[tag]||'#888';
+    var profileConflicts = c.profile?(c.profile.conflicts||[]).filter(function(cf){return cf.severity==='conflict';}) : [];
+    var conf   = c.profile&&c.profile.conference?c.profile.conference:'';
+    var costIn = c.profile&&c.profile.financials&&c.profile.financials.instate_total?'$'+Math.round(c.profile.financials.instate_total/1000)+'k':null;
+    var schType= c.profile&&c.profile.financials?(c.profile.financials.athletic_scholarship||'').toLowerCase():'';
+    var statCol= stCol[c.status]||'#888';
+    var statEm = stEm[c.status]||'🎯';
 
-    out += '<div style="background:var(--card);border:1px solid '+borderCol+';border-radius:12px;margin:0 14px 8px;overflow:hidden;">' +
+    out += '<div style="margin:0 14px 8px;border-radius:12px;overflow:hidden;border:1px solid '+(tag==='Conflict'?'rgba(231,76,60,.35)':tag==='Reach'?'rgba(255,149,0,.3)':tag==='Safety'?'rgba(46,204,113,.3)':tag==='Fit'?'rgba(74,158,255,.25)':'var(--b1)')+';background:var(--card);">' +
 
       // Accent bar
       '<div style="height:3px;background:'+accentCol+';"></div>' +
 
-      // Main content - tight padding
-      '<div style="padding:10px 12px 0;">' +
+      // Card body
+      '<div style="padding:11px 14px 10px;">' +
 
-        // School name + division + ALL chips — all left-aligned, stacked tight
-        '<div ' + (c.profile ? 'onclick="openSchoolProfile('+idx+','+ci+')" style="cursor:pointer;"' : '') + '>' +
-          // Name + fit badge inline, left side
-          '<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px;">' +
-            '<div style="font-size:.92rem;font-weight:800;color:var(--tx);line-height:1.2;">' + c.school + '</div>' +
-            '<div style="flex-shrink:0;background:'+tagB[tag]+';border:1px solid '+accentCol+'44;border-radius:6px;padding:1px 7px;">' +
-              '<span style="font-size:.72rem;font-weight:900;color:'+accentCol+';">'+tag+'</span>' +
-            '</div>' +
-          '</div>' +
-          // Division + conference line
-          '<div style="font-size:.68rem;color:var(--sub);margin-bottom:5px;">' +
-            (c.division||'—') + (conf?' · '+conf:'') + (c.coachName?' · 👤 '+c.coachName:'') +
-          '</div>' +
-          // All chips on one line, left-aligned
-          '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px;">' +
-            '<span style="font-size:.62rem;padding:2px 6px;border-radius:6px;background:'+tagB[acTag]+';color:'+tagC[acTag]+';font-weight:700;">📚 AC: '+acTag+'</span>' +
-            '<span style="font-size:.62rem;padding:2px 6px;border-radius:6px;background:'+tagB[athTag]+';color:'+tagC[athTag]+';font-weight:700;">⚾ ATH: '+athTag+'</span>' +
-            '<span style="font-size:.62rem;padding:2px 6px;border-radius:6px;background:'+tagB[finTag]+';color:'+tagC[finTag]+';font-weight:700;">💵 FIN: '+finTag+'</span>' +
-            (costIn ? '<span style="font-size:.62rem;padding:2px 6px;border-radius:6px;background:var(--card2);color:var(--sub);font-weight:600;">'+costIn+'/yr</span>' : '') +
-            (schType==='full' ? '<span style="font-size:.62rem;padding:2px 6px;border-radius:6px;background:rgba(39,174,96,.12);color:var(--grn);font-weight:700;">Full Aid</span>' :
-             schType==='partial' ? '<span style="font-size:.62rem;padding:2px 6px;border-radius:6px;background:rgba(255,149,0,.1);color:#ff9500;font-weight:700;">Partial Aid</span>' : '') +
-          '</div>' +
+        // Line 1: School name + Fit tag
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
+          '<div style="font-size:.95rem;font-weight:800;color:var(--tx);flex:1;">' + c.school + '</div>' +
+          '<div style="font-size:.75rem;font-weight:800;color:'+accentCol+';background:'+tagB[tag]+';border:1px solid '+accentCol+'33;padding:2px 9px;border-radius:6px;white-space:nowrap;">' + tag + '</div>' +
         '</div>' +
 
-        // Row 3: Unknown reasons (only if relevant)
-        (acTag==='Unknown' && acWhy ? '<div style="font-size:.64rem;color:var(--sub);margin-bottom:5px;">📚 '+acWhy.replace('AC: ','')+'</div>' : '') +
-        (athTag==='Unknown' && athWhy ? '<div style="font-size:.64rem;color:var(--sub);margin-bottom:5px;">⚾ '+athWhy.replace('ATH: ','')+'</div>' : '') +
+        // Line 2: Division · conference · coach
+        '<div style="font-size:.76rem;color:var(--sub);margin-bottom:7px;">' +
+          (c.division||'—') + (conf?' · <span style="color:var(--tx2);">'+conf+'</span>':'') + (c.coachName?' · 👤 <span style="color:var(--tx2);">'+c.coachName+'</span>':'') +
+        '</div>' +
+
+        // Line 3: Fit chips row
+        '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:' + ((acWhy||athWhy||profileConflicts.length>0||(!c.profile&&!c.profileLoading))?'6':'0') + 'px;">' +
+          '<span style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:'+tagB[acTag]+';color:'+tagC[acTag]+';font-weight:700;">📚 AC: '+acTag+'</span>' +
+          '<span style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:'+tagB[athTag]+';color:'+tagC[athTag]+';font-weight:700;">⚾ ATH: '+athTag+'</span>' +
+          '<span style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:'+tagB[finTag]+';color:'+tagC[finTag]+';font-weight:700;">💵 FIN: '+finTag+'</span>' +
+          (costIn?'<span style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:var(--card2);color:var(--tx2);font-weight:600;">'+costIn+'/yr</span>':'') +
+          (schType==='full'?'<span style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:rgba(46,204,113,.13);color:#2ecc71;font-weight:700;">Full Aid</span>':
+           schType==='partial'?'<span style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:rgba(255,149,0,.1);color:#ff9500;font-weight:700;">Partial Aid</span>':'') +
+        '</div>' +
+
+        // Unknown reason hints — readable size, not tiny
+        (acTag==='Unknown'&&acWhy?'<div style="font-size:.72rem;color:#888;margin-bottom:4px;">📚 '+acWhy.replace('AC: ','')+'</div>':'') +
+        (athTag==='Unknown'&&athWhy?'<div style="font-size:.72rem;color:#888;margin-bottom:4px;">⚾ '+athWhy.replace('ATH: ','')+'</div>':'') +
 
         // Conflicts
-        (profileConflicts.length > 0 ?
+        (profileConflicts.length>0?
           '<div style="margin-bottom:6px;">' +
           profileConflicts.slice(0,2).map(function(cf){
-            return '<div style="display:flex;gap:4px;align-items:flex-start;"><span style="font-size:.7rem;">🚫</span><span style="font-size:.68rem;color:#e74c3c;">'+cf.message+'</span></div>';
-          }).join('') + '</div>' : '') +
+            return '<div style="display:flex;gap:5px;align-items:flex-start;"><span>🚫</span><span style="font-size:.74rem;color:#e74c3c;">'+cf.message+'</span></div>';
+          }).join('')+'</div>':'') +
 
-        // Profile error / loading
-        (c.profileLoading ?
-          '<div style="font-size:.68rem;color:var(--sub);display:flex;align-items:center;gap:5px;margin-bottom:6px;"><div class="sp2" style="width:8px;height:8px;"></div>Loading profile...</div>' :
-        !c.profile ?
-          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
-          '<span style="font-size:.68rem;color:var(--red2);">' + (c.profileError?'⚠ '+c.profileError:'Profile not loaded') + '</span>' +
-          '<button onclick="event.stopPropagation();(function(){var a=D.roster['+idx+'];if(!a)return;var c=(D.playerColleges[a.init]||[])['+ci+'];if(!c)return;c.profile=null;c.profileError=null;c.profileLoading=false;spqEnqueueOne('+idx+',a.init,'+ci+');playerTab(\'colleges\');toast(\'Queued...\');})();" style="font-size:.65rem;padding:2px 8px;background:var(--rm);border:1px solid rgba(231,76,60,.3);border-radius:10px;color:var(--red2);cursor:pointer;">↺ Retry</button>' +
-          '</div>' : '') +
+        // Profile not loaded
+        (!c.profile&&!c.profileLoading?
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
+          '<span style="font-size:.74rem;color:#e74c3c;">'+(c.profileError?'⚠ '+c.profileError:'Profile not loaded')+'</span>' +
+          '<button onclick="event.stopPropagation();(function(){var a=D.roster['+idx+'];if(!a)return;var c=(D.playerColleges[a.init]||[])['+ci+'];if(!c)return;c.profile=null;c.profileError=null;c.profileLoading=false;spqEnqueueOne('+idx+',a.init,'+ci+');playerTab(\'colleges\');toast(\'Queued...\');})();" style="font-size:.72rem;padding:3px 10px;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;color:#e74c3c;cursor:pointer;white-space:nowrap;">↺ Retry</button>' +
+          '</div>':'') +
+
+        // Loading spinner
+        (c.profileLoading?'<div style="font-size:.74rem;color:#888;display:flex;align-items:center;gap:6px;margin-bottom:4px;"><div class="sp2" style="width:10px;height:10px;"></div>Loading profile...</div>':'') +
 
         // Measurables prompt
-        (c.profile && athTag==='Unknown' ?
-          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
-          '<span style="font-size:.65rem;color:var(--sub);">⚡ Add measurables for athletic fit</span>' +
-          '<button onclick="event.stopPropagation();openMeasurables('+idx+')" style="font-size:.62rem;padding:2px 8px;background:var(--card2);border:1px solid var(--b1);border-radius:10px;color:var(--tx2);cursor:pointer;">+ Add</button>' +
-          '</div>' : '') +
+        (c.profile&&athTag==='Unknown'?
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">' +
+          '<span style="font-size:.74rem;color:#888;">⚡ Enter measurables for athletic fit</span>' +
+          '<button onclick="event.stopPropagation();openMeasurables('+idx+')" style="font-size:.72rem;padding:3px 10px;background:var(--card2);border:1px solid var(--b1);border-radius:8px;color:var(--tx2);cursor:pointer;white-space:nowrap;">+ Measurables</button>' +
+          '</div>':'') +
 
       '</div>' +
 
-      // Footer: status pill + remove
-      '<div style="display:flex;align-items:center;gap:6px;padding:7px 12px 8px;border-top:1px solid var(--b1);margin-top:6px;background:rgba(0,0,0,.15);">' +
-        '<div style="position:relative;flex:1;">' +
-          '<div style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:16px;background:var(--card2);border:1px solid var(--b1);pointer-events:none;">' +
-            '<span style="font-size:.8rem;">'+statEm+'</span>' +
-            '<span style="font-size:.7rem;font-weight:700;color:'+statCol+';">'+c.status+'</span>' +
+      // FOOTER
+      '<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-top:1px solid var(--b1);background:rgba(0,0,0,.1);">' +
+
+        // Status pill
+        '<div style="position:relative;">' +
+          '<div style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:16px;background:var(--card2);border:1px solid var(--b1);pointer-events:none;white-space:nowrap;">' +
+            '<span style="font-size:.85rem;">'+statEm+'</span>' +
+            '<span style="font-size:.78rem;font-weight:700;color:'+statCol+';">'+c.status+'</span>' +
           '</div>' +
           '<select onchange="updateCollegeStatusAdmin('+idx+','+ci+',this.value)" onclick="event.stopPropagation()" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;">' +
           ['Target','In Contact','Visit','Offer','Committed','Not Interested'].map(function(s){
             return '<option value="'+s+'"'+(c.status===s?' selected':'')+'>'+s+'</option>';
-          }).join('') +
-          '</select>' +
+          }).join('')+'</select>' +
         '</div>' +
-        (c.profile ? '<button onclick="event.stopPropagation();openSchoolProfile('+idx+','+ci+')" style="font-size:.68rem;padding:4px 9px;background:rgba(52,152,219,.1);border:1px solid rgba(52,152,219,.3);border-radius:12px;color:var(--blu);cursor:pointer;font-weight:700;white-space:nowrap;">Profile</button>' : '') +
-        '<button onclick="event.stopPropagation();removeCollegeFromPlayer('+idx+','+ci+')" style="font-size:.75rem;padding:4px 8px;background:none;border:none;color:var(--sub);cursor:pointer;">✕</button>' +
-      '</div>' +
 
+        // Full School Profile button
+        (c.profile?'<button onclick="event.stopPropagation();openSchoolProfile('+idx+','+ci+')" style="font-size:.78rem;padding:5px 12px;background:rgba(74,158,255,.1);border:1px solid rgba(74,158,255,.3);border-radius:10px;color:#4a9eff;cursor:pointer;font-weight:700;white-space:nowrap;">Full School Profile</button>':'') +
+
+        '<div style="flex:1;"></div>' +
+
+        // Remove
+        '<button onclick="event.stopPropagation();removeCollegeFromPlayer('+idx+','+ci+')" style="font-size:.8rem;padding:4px 8px;background:none;border:none;color:#555;cursor:pointer;">✕</button>' +
+
+      '</div>' +
     '</div>';
   });
 
   out += '<div style="height:60px;"></div>';
   return out;
 }
+
 
 
 
