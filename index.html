@@ -5417,11 +5417,12 @@ function renderPlayerColleges(idx, a) {
         // Loading spinner
         (c.profileLoading?'<div style="font-size:.74rem;color:#888;display:flex;align-items:center;gap:6px;margin-bottom:4px;"><div class="sp2" style="width:10px;height:10px;"></div>Loading profile...</div>':'') +
 
-        // Measurables prompt
-        (c.profile&&athTag==='Unknown'?
-          '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">' +
-          '<span style="font-size:.74rem;color:#888;">⚡ Enter measurables for athletic fit</span>' +
-          '<button onclick="event.stopPropagation();openMeasurables('+idx+')" style="font-size:.72rem;padding:3px 10px;background:var(--card2);border:1px solid var(--b1);border-radius:8px;color:var(--tx2);cursor:pointer;white-space:nowrap;">+ Measurables</button>' +
+        // Measurables prompt + Refresh Profile button
+        (c.profile?
+          '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;">' +
+          (athTag==='Unknown'?'<span style="font-size:.74rem;color:#888;flex:1;">⚡ Enter measurables for athletic fit</span>':'<div style="flex:1;"></div>') +
+          (athTag==='Unknown'?'<button onclick="event.stopPropagation();openMeasurables('+idx+')" style="font-size:.72rem;padding:3px 10px;background:var(--card2);border:1px solid var(--b1);border-radius:8px;color:var(--tx2);cursor:pointer;white-space:nowrap;">+ Measurables</button>':'') +
+          '<button onclick="event.stopPropagation();refreshSchoolProfile('+idx+','+ci+')" style="font-size:.72rem;padding:3px 10px;background:rgba(74,158,255,.08);border:1px solid rgba(74,158,255,.25);border-radius:8px;color:#4a9eff;cursor:pointer;white-space:nowrap;">↺ Refresh Profile</button>' +
           '</div>':'') +
 
       '</div>' +
@@ -6022,6 +6023,16 @@ function openSchoolProfile(playerIdx, collegeIdx) {
   openMo(html, '<button class="btn br3 bf" style="flex:1;" onclick="openCoachEmailGenerator('+playerIdx+','+collegeIdx+');closeMo()">&#9993; Draft Email</button><button class="btn bgh" style="margin-left:8px;" onclick="var a=D.roster['+playerIdx+'];if(a){var c=(D.playerColleges[a.init]||[])['+collegeIdx+'];if(c){c.profile=null;c.profileError=null;spqEnqueueOne('+playerIdx+',a.init,'+collegeIdx+');}}closeMo();toast(\'Refreshing...\')">&#8635; Refresh</button>');
 }
 
+function refreshSchoolProfile(playerIdx, collegeIdx) {
+  var a = D.roster[playerIdx]; if (!a) return;
+  var cols = D.playerColleges[a.init]; if (!cols || !cols[collegeIdx]) return;
+  cols[collegeIdx].profile = null;
+  cols[collegeIdx].profileError = null;
+  cols[collegeIdx].profileLoading = false;
+  spqEnqueueOne(playerIdx, a.init, collegeIdx);
+  playerTab('colleges');
+  toast('Refreshing profile for ' + cols[collegeIdx].school + '...');
+}
 function updateCollegeStatusAdmin(playerIdx, collegeIdx, val) {
   var a = D.roster[playerIdx]; if (!a) return;
   var cols = D.playerColleges[a.init]; if (!cols || !cols[collegeIdx]) return;
