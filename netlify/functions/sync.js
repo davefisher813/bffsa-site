@@ -1,10 +1,11 @@
-// /.netlify/functions/sync
+// netlify/functions/sync.js
 // Supabase-backed bidirectional sync for BFFSA Bridge App
 // Secrets stored in Netlify environment variables — never hardcoded
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY;
 const TABLE = 'app_sync';
+const APP_ID = 'bffsa-bridge';
 
 exports.handler = async function(event) {
   const headers = {
@@ -19,7 +20,11 @@ exports.handler = async function(event) {
   }
 
   if (!SUPABASE_URL || !SUPABASE_SECRET) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Missing env vars' }) };
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'Missing Supabase env vars — set SUPABASE_URL and SUPABASE_SECRET_KEY in Netlify' })
+    };
   }
 
   const sbHeaders = {
@@ -29,48 +34,82 @@ exports.handler = async function(event) {
     'Prefer': 'return=representation'
   };
 
+  const base = `${SUPABASE_URL}/rest/v1/${TABLE}`;
+
   try {
+    // ── GET: Pull latest data ──
     if (event.httpMethod === 'GET') {
       const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/${TABLE}?app_id=eq.bffsa-bridge&order=updated_at.desc&limit=1`,
-        { headers: sbHeaders }
+        `${base}?app_id=eq.${APP_ID}&order=updated_at.desc&limit=1`,
+        { method: 'GET', headers: sbHeaders }
       );
+      if (!res.ok) {
+        const err = await res.text();
+        return { statusCode: 500, headers, body: JSON.stringify({ error: 'Supabase GET failed: ' + err }) };
+      }
       const rows = await res.json();
       if (!rows || rows.length === 0) {
         return { statusCode: 200, headers, body: JSON.stringify({ found: false }) };
       }
-      return { statusCode: 200, headers, body: JSON.stringify({ found: true, data: rows[0].data, updated_at: rows[0].updated_at }) };
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ found: true, data: rows[0].data, updated_at: rows[0].updated_at })
+      };
     }
 
+    // ── POST: Push data (upsert) ──
     if (event.httpMethod === 'POST') {
       const body = JSON.parse(event.body || '{}');
       const { data, client_ts } = body;
-      if (!data) return { statusCode: 400, headers, body: JSON.stringify({ error: 'No data' }) };
+      if (!data) {
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'No data in request body' }) };
+      }
 
-      const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/${TABLE}?app_id=eq.bffsa-bridge`,
+      const now = new Date().toISOString();
+
+      // Step 1: Check if record exists
+      const checkRes = await fetch(
+        `${base}?app_id=eq.${APP_ID}&select=id`,
+        { method: 'GET', headers: sbHeaders }
+      );
+      const existing = await checkRes.json();
+      const exists = existing && existing.length > 0;
+
+      // Step 2: PATCH if exists, POST if not
+      const upsertRes = await fetch(
+        exists ? `${base}?app_id=eq.${APP_ID}` : base,
         {
-          method: 'POST',
-          headers: { ...sbHeaders, 'Prefer': 'resolution=merge-duplicates,return=representation' },
+          method: exists ? 'PATCH' : 'POST',
+          headers: sbHeaders,
           body: JSON.stringify({
-            app_id: 'bffsa-bridge',
+            app_id: APP_ID,
             data: data,
-            updated_at: new Date().toISOString(),
-            client_ts: client_ts || null
+            updated_at: now,
+            client_ts: client_ts || now
           })
         }
       );
-      const result = await res.json();
-      if (res.ok) {
-        return { statusCode: 200, headers, body: JSON.stringify({ ok: true, updated_at: result[0]?.updated_at }) };
-      } else {
-        return { statusCode: 500, headers, body: JSON.stringify({ error: result }) };
+
+      if (!upsertRes.ok) {
+        const errText = await upsertRes.text();
+        return { statusCode: 500, headers, body: JSON.stringify({ error: 'Supabase upsert failed: ' + errText }) };
       }
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ ok: true, updated_at: now })
+      };
     }
 
     return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
 
   } catch (e) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: e.message }) };
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: e.message, stack: e.stack ? e.stack.split('\n')[0] : '' })
+    };
   }
 };
