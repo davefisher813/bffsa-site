@@ -377,6 +377,10 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
 
 /* ── MISC ── */
 #vPLAYER .tabs{position:sticky;top:0;z-index:5;}
+
+.sp2{display:inline-block;width:12px;height:12px;border:2px solid var(--b2);border-top-color:var(--red);border-radius:50%;animation:spin .7s linear infinite;}
+
+@keyframes spin{to{transform:rotate(360deg);}}
 </style>
 
 </head>
@@ -828,12 +832,14 @@ function saveAppData() {
         offers:         D.offers,
         scholarships:   D.scholarships,
         athleteFiles:   D.athleteFiles,
+        files:          D.files,
         specialEvents:  D.specialEvents,
         devBoard:       D.devBoard,
         fitBenchmarks:  D.fitBenchmarks,
         boardMembers:   D.boardMembers,
         collegeAdvisors: D.collegeAdvisors,
         devBoardMembers: D.devBoardMembers,
+        people:          D.people,
         msgs:           D.msgs,
         checkins:       D.checkins,
         templates:      D.templates
@@ -852,7 +858,7 @@ function loadAppData() {
     var snap = JSON.parse(raw);
 
     // Restore all data EXCEPT roster — hardcoded roster is always source of truth
-    var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents','devBoard','fitBenchmarks','boardMembers','collegeAdvisors','devBoardMembers','msgs','checkins','templates'];
+    var keys = ['playerColleges','portalEnabled','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','files','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents','devBoard','fitBenchmarks','boardMembers','collegeAdvisors','devBoardMembers','msgs','checkins','templates','people'];
     keys.forEach(function(k) {
       if (snap[k] !== undefined) D[k] = snap[k];
     });
@@ -893,7 +899,8 @@ function loadAppData() {
       });
     });
 
-    console.log('App data loaded — roster: ' + D.roster.length + ' athletes');
+    migrateToPeople();
+    console.log('App data loaded — roster: ' + D.roster.length + ' athletes, people: ' + (D.people||[]).length);
   } catch(e) { console.warn('Load failed', e); }
 }
 
@@ -928,7 +935,11 @@ function syncPush(silent) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ data: JSON.parse(raw), client_ts: new Date().toISOString() })
     })
-    .then(function(r){ return r.json(); })
+    .then(function(r){
+      return r.text().then(function(txt){
+        try { return JSON.parse(txt); } catch(e) { throw new Error('Sync server error ('+r.status+')'); }
+      });
+    })
     .then(function(res) {
       if (res.ok) {
         _lastSyncAt = new Date();
@@ -936,12 +947,19 @@ function syncPush(silent) {
         setTimeout(function(){ syncUpdateIndicator('idle'); }, 3000);
       } else {
         syncUpdateIndicator('error', 'Sync failed');
-        console.warn('Sync push failed:', res.error);
+        console.warn('Sync push failed:', res.error||res);
       }
     })
     .catch(function(e){
-      syncUpdateIndicator('error', 'Offline');
-      console.warn('Sync push error:', e);
+    var msg = (e&&e.message)||'';
+    var isFnError = msg.indexOf('<!DOCTYPE') >= 0 || msg.indexOf('not valid JSON') >= 0 || msg.indexOf('Unexpected token') >= 0;
+    if (isFnError) {
+      syncUpdateIndicator('error', 'Fn Error');
+      console.warn('Sync function not found — check netlify/functions/sync.js exists in repo and SUPABASE_URL + SUPABASE_SECRET_KEY are set in Netlify env vars.');
+    } else {
+      syncUpdateIndicator('error', 'Failed');
+      console.warn('Sync push error:', msg);
+    }
     });
   } catch(e) { console.warn('syncPush error:', e); }
 }
@@ -950,7 +968,13 @@ function syncPush(silent) {
 function syncPull(onDone) {
   syncUpdateIndicator('pulling', 'Syncing...');
   fetch('/.netlify/functions/sync', { method: 'GET' })
-  .then(function(r){ return r.json(); })
+  .then(function(r){
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    return r.text().then(function(txt){
+      try { return JSON.parse(txt); }
+      catch(e) { throw new Error('Invalid response from sync function — check Netlify logs'); }
+    });
+  })
   .then(function(res) {
     if (!res.found) {
       syncUpdateIndicator('ok', 'No cloud data');
@@ -977,8 +1001,16 @@ function syncPull(onDone) {
     }
   })
   .catch(function(e){
-    syncUpdateIndicator('error', 'Offline');
-    console.warn('syncPull error:', e);
+    var msg = (e&&e.message)||'';
+    var isOffline = msg.indexOf('fetch') >= 0 || msg.indexOf('network') >= 0 || msg.indexOf('Failed to fetch') >= 0;
+    var isFnError = msg.indexOf('<!DOCTYPE') >= 0 || msg.indexOf('not valid JSON') >= 0 || msg.indexOf('Unexpected token') >= 0;
+    if (isFnError) {
+      syncUpdateIndicator('error', 'Fn Error');
+      console.warn('Sync function not found — check netlify/functions/sync.js is deployed and env vars SUPABASE_URL + SUPABASE_SECRET_KEY are set in Netlify dashboard.');
+    } else {
+      syncUpdateIndicator('error', isOffline ? 'Offline' : 'Failed');
+      console.warn('syncPull error:', msg);
+    }
     if (onDone) onDone(false);
   });
 }
@@ -1004,7 +1036,12 @@ function syncPushManual() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data: JSON.parse(raw), client_ts: new Date().toISOString() })
   })
-  .then(function(r){ return r.json(); })
+  .then(function(r){
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    return r.text().then(function(txt){
+      try { return JSON.parse(txt); } catch(e) { throw new Error('Bad response'); }
+    });
+  })
   .then(function(res) {
     if (res.ok) {
       _lastSyncAt = new Date();
@@ -1014,16 +1051,22 @@ function syncPushManual() {
       setTimeout(function(){ syncUpdateIndicator('idle'); }, 3000);
     } else {
       syncUpdateIndicator('error', 'Failed');
-      toast('Push failed — check connection');
+      toast('Push failed — ' + (res.error||'check connection'));
     }
   })
-  .catch(function(){ syncUpdateIndicator('error', 'Offline'); toast('Push failed — offline'); });
+  .catch(function(e){ syncUpdateIndicator('error', 'Failed'); toast('Push failed — '+(e.message||'offline')); });
 }
 
 function syncPullManual() {
   syncUpdateIndicator('pulling', 'Pulling...');
   fetch('/.netlify/functions/sync', { method: 'GET' })
-  .then(function(r){ return r.json(); })
+  .then(function(r){
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    return r.text().then(function(txt){
+      try { return JSON.parse(txt); }
+      catch(e) { throw new Error('Sync function error — check Netlify dashboard'); }
+    });
+  })
   .then(function(res) {
     if (!res.found) {
       syncUpdateIndicator('idle');
@@ -1079,12 +1122,13 @@ var D = {
   portalEnabled: {},   // keyed by player init: true/false
   collegeInfo: {},     // keyed by player init: {currentSchool, division, year, eligibility, aid, gpa, position, jersey, inPortal} — controls who appears in athlete picker
   config: {
-    adminPin: '1234',
+    adminPin: '',  // Set via Security screen — fallback in checkPin
   },
+  // Legacy arrays kept for backward compat — migrated to D.people on load
   coordinators: [
     {name:'Dave Fisher', init:'DF', role:'Executive Director', contact:'', pin:'2580'},
-    {name:'Mike',        init:'MK', role:'Recruiting Coordinator', contact:'', pin:'3691'},
-    {name:'Kevin',       init:'KV', role:'Recruiting Coordinator', contact:'', pin:'4702'},
+    {name:'Mike Skrapits', init:'MK', role:'Recruiting Coordinator', contact:'', pin:'3691'},
+    {name:'Kevin Valdovinos', init:'KV', role:'Recruiting Coordinator', contact:'', pin:'4702'},
   ],
   checkins:  [],
   templates: [],
@@ -1094,8 +1138,13 @@ var D = {
     {name:'Wei Chang',              init:'WC',  role:'Treasurer',                    pin:'', canEditFinancials:true},
     {name:'Linda Fisher',           init:'LF',  role:'Secretary',                    pin:'', canEditFinancials:false},
   ],
-  collegeAdvisors: [],   // [{name, init, role, pin, assignedAthletes:[], canEditFinancials:false}]
-  devBoardMembers: [],   // [{name, init, role, pin, canEditFinancials:false}]
+  collegeAdvisors: [],
+  devBoardMembers: [],
+  // ── UNIFIED PEOPLE DIRECTORY ──
+  // Each person: {name, init, pin, roles:['admin'|'coordinator'|'board'|'devboard'], 
+  //   title, canEditFinancials, assignedAthletes:[]}
+  people: [],
+  files:       {folders:[], docs:[]},   // org-level file vault
   assignments: {},     // {playerInit: {coordInit, tasks:[{id,text,due,notes,priority,done,createdAt}]}}
   txns: [],
   msgs: [],
@@ -1166,6 +1215,89 @@ function enterAdmin() {
   goV('vLGN');
   setTimeout(function(){ var p = document.getElementById('apin'); if(p){ p.value=''; p.focus(); } }, 250);
 }
+// ── PEOPLE DIRECTORY HELPERS ──
+
+function migrateToPeople() {
+  // Run once on load — migrates legacy arrays into D.people
+  if (!D.people) D.people = [];
+
+  // Merge coordinators
+  (D.coordinators||[]).forEach(function(c) {
+    if (c.init === 'DF') return; // Dave is admin, skip
+    var existing = D.people.find(function(p){ return p.init === c.init; });
+    if (!existing) {
+      D.people.push({
+        name: c.name, init: c.init, pin: c.pin||'',
+        roles: ['coordinator'], title: c.role||'Recruiting Coordinator',
+        canEditFinancials: false, assignedAthletes: []
+      });
+    } else {
+      if (!existing.roles.includes('coordinator')) existing.roles.push('coordinator');
+      if (c.pin && !existing.pin) existing.pin = c.pin;
+    }
+  });
+
+  // Merge boardMembers
+  (D.boardMembers||[]).forEach(function(m) {
+    var existing = D.people.find(function(p){ return p.init === m.init; });
+    if (!existing) {
+      D.people.push({
+        name: m.name, init: m.init, pin: m.pin||'',
+        roles: ['board'], title: m.role||'Board Member',
+        canEditFinancials: !!m.canEditFinancials, assignedAthletes: []
+      });
+    } else {
+      if (!existing.roles.includes('board')) existing.roles.push('board');
+      if (m.canEditFinancials) existing.canEditFinancials = true;
+      if (m.pin && !existing.pin) existing.pin = m.pin;
+    }
+  });
+
+  // Merge devBoardMembers
+  (D.devBoardMembers||[]).forEach(function(m) {
+    var existing = D.people.find(function(p){ return p.init === m.init; });
+    if (!existing) {
+      D.people.push({
+        name: m.name, init: m.init, pin: m.pin||'',
+        roles: ['devboard'], title: m.role||'Development Board',
+        canEditFinancials: !!m.canEditFinancials, assignedAthletes: []
+      });
+    } else {
+      if (!existing.roles.includes('devboard')) existing.roles.push('devboard');
+      if (m.canEditFinancials) existing.canEditFinancials = true;
+      if (m.pin && !existing.pin) existing.pin = m.pin;
+    }
+  });
+
+  // Coordinators also get advisory access automatically
+  D.people.forEach(function(p) {
+    if (p.roles.includes('coordinator') && !p.roles.includes('advisor')) {
+      p.roles.push('advisor');
+    }
+  });
+}
+
+function getPersonPermissions(person) {
+  // Returns combined permission set from all roles
+  var roles = person.roles || [];
+  return {
+    canSeeRoster:      true,
+    canSeeRecruiting:  true,
+    canSeeFinancials:  roles.includes('board') || roles.includes('devboard') || person.canEditFinancials,
+    canEditFinancials: !!person.canEditFinancials,
+    canSeeAthletes:    true,
+    canEditAthletes:   roles.includes('coordinator'),
+    canSeeDevBoard:    roles.includes('devboard') || roles.includes('board'),
+    canSeeDonors:      roles.includes('devboard') || roles.includes('board'),
+    canSeeEvents:      roles.includes('devboard') || roles.includes('board'),
+    canSeeAllSections: roles.includes('board'),
+    isCoordinator:     roles.includes('coordinator'),
+    isBoard:           roles.includes('board'),
+    isDevBoard:        roles.includes('devboard'),
+    assignedAthletes:  person.assignedAthletes || []
+  };
+}
+
 function checkPin() {
   var el = document.getElementById('apin');
   if (!el) return;
@@ -1175,7 +1307,7 @@ function checkPin() {
   // ── Admin master PIN ──
   var adminPin = (D.config && D.config.adminPin) ? D.config.adminPin : '1234';
   if (entered === adminPin) {
-    D._currentUser = {role:'admin', name:'Dave', init:'DF'};
+    D._currentUser = {role:'admin', name:'Dave', init:'DF', roles:['admin']};
     el.value = '';
     goV('vADM');
     renderAdmHome();
@@ -1183,49 +1315,30 @@ function checkPin() {
     return;
   }
 
-  // ── Coordinator PINs ──
-  var coord = (D.coordinators || []).find(function(c){ return c.pin && c.pin === entered; });
-  if (coord) {
-    D._currentUser = {role:'coordinator', name:coord.name, init:coord.init};
+  // ── Unified people directory — one PIN, combined roles ──
+  var person = (D.people||[]).find(function(p){ return p.pin && p.pin === entered; });
+  if (person) {
+    var perms = getPersonPermissions(person);
+    D._currentUser = {
+      name: person.name,
+      init: person.init,
+      roles: person.roles || [],
+      // Primary role for legacy checks — most permissive wins
+      role: person.roles.includes('board') ? 'board' :
+            person.roles.includes('coordinator') ? 'coordinator' :
+            person.roles.includes('devboard') ? 'devboard' : 'advisor',
+      canEditFinancials: !!person.canEditFinancials,
+      assignedAthletes: person.assignedAthletes || [],
+      permissions: perms
+    };
     el.value = '';
     goV('vADM');
     renderAdmHome();
-    toast('Welcome, ' + coord.name.split(' ')[0] + '.');
+    toast('Welcome, ' + person.name.split(' ')[0] + '.');
     return;
   }
 
-  // ── Board of Directors PINs ──
-  var boardMember = (D.boardMembers || []).find(function(m){ return m.pin && m.pin === entered; });
-  if (boardMember) {
-    D._currentUser = {role:'board', name:boardMember.name, init:boardMember.init, canEditFinancials:!!boardMember.canEditFinancials};
-    el.value = '';
-    goV('vADM');
-    renderAdmHome();
-    toast('Welcome, ' + boardMember.name.split(' ')[0] + '.');
-    return;
-  }
-
-  // ── College Advisor PINs ──
-  var advisor = (D.collegeAdvisors || []).find(function(a){ return a.pin && a.pin === entered; });
-  if (advisor) {
-    D._currentUser = {role:'advisor', name:advisor.name, init:advisor.init, assignedAthletes:advisor.assignedAthletes||[]};
-    el.value = '';
-    goV('vADM');
-    renderAdmHome();
-    toast('Welcome, ' + advisor.name.split(' ')[0] + '.');
-    return;
-  }
-
-  // ── Dev Board Member PINs ──
-  var devMember = (D.devBoardMembers || []).find(function(m){ return m.pin && m.pin === entered; });
-  if (devMember) {
-    D._currentUser = {role:'devboard', name:devMember.name, init:devMember.init, canEditFinancials:!!devMember.canEditFinancials};
-    el.value = '';
-    goV('vADM');
-    renderAdmHome();
-    toast('Welcome, ' + devMember.name.split(' ')[0] + '.');
-    return;
-  }
+  // ── Legacy fallback — athlete portal PINs still handled in signInAsAthlete ──
 
   // ── Wrong PIN ──
   toast('Incorrect PIN');
@@ -1244,12 +1357,53 @@ function dismissUpdateBar() {
   if (b2) b2.style.display = 'none';
 }
 function checkForUpdate() {
-  toast('Checking for updates...');
-  setTimeout(function(){ window.location.href = 'https://app.bffsa.org?v=' + Date.now(); }, 800);
+  safeUpdate();
 }
 function doUpdate() {
-  toast('Checking for updates...');
-  setTimeout(function(){ window.location.href = 'https://app.bffsa.org?v=' + Date.now(); }, 800);
+  safeUpdate();
+}
+function safeUpdate() {
+  // Step 1: Push all data to cloud, then reload
+  toast('Saving your data...');
+  var raw = localStorage.getItem('bffsa-data');
+  if (!raw) {
+    // No data to save — just reload
+    _doReload();
+    return;
+  }
+  syncUpdateIndicator('pushing', 'Saving...');
+  fetch('/.netlify/functions/sync', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({data: JSON.parse(raw), client_ts: new Date().toISOString()})
+  })
+  .then(function(r){
+    return r.text().then(function(txt){
+      try { return JSON.parse(txt); } catch(e) { throw new Error('Server error '+r.status); }
+    });
+  })
+  .then(function(res) {
+    if (res.ok) {
+      toast('✓ Data saved — loading update...');
+      setTimeout(_doReload, 1200);
+    } else {
+      _confirmUnsavedReload();
+    }
+  })
+  .catch(function() {
+    _confirmUnsavedReload();
+  });
+}
+function _doReload() {
+  window.location.href = 'https://app.bffsa.org?v=' + Date.now();
+}
+function _confirmUnsavedReload() {
+  openMo('<div class="mt">⚠ Update Available</div>' +
+    '<div style="font-size:.82rem;color:var(--tx2);margin-bottom:16px;line-height:1.6;">Could not sync to cloud before updating. Your data is saved locally on this device but will not be backed up to the cloud first.</div>' +
+    '<div style="display:flex;gap:8px;">' +
+    '<button class="btn br3 bf" style="flex:1;" onclick="closeMo();_doReload()">Update Anyway</button>' +
+    '<button class="btn bo" style="flex:1;" onclick="closeMo()">Cancel</button>' +
+    '</div>');
 }
 
 // ── THEME ──
@@ -1388,23 +1542,34 @@ function admSec(sec) {
   if (curSec === 'acct' && sec !== 'acct') {
     if (D.acct) { D.acct.txFilter='all'; D.acct.txSearch=''; D.acct.ledgerYear='all'; D.acct.ledgerCat=''; D.acct.ledgerSrc='all'; D.acct.ledgerSearch=''; }
   }
-  // Role-based section access
+  // Role-based section access — unified permissions
   var role = D._currentUser ? D._currentUser.role : 'guest';
-  var allowedByRole = {
-    coordinator: ['roster','recruiting','tasks','calendar','security'],
-    board:       ['roster','recruiting','acct','donors','goals','events','specialEvents','devboard','benchmarks','reports','schools','meetings','ms','more','security'],
-    advisor:     ['roster','recruiting','more'],
-    devboard:    ['donors','goals','events','specialEvents','devboard','acct','more']
-  };
-  if (role !== 'admin' && allowedByRole[role]) {
-    if (allowedByRole[role].indexOf(sec) < 0) { toast('Access restricted'); return; }
+  var perms = D._currentUser && D._currentUser.permissions;
+  if (role !== 'admin') {
+    // Build allowed sections from combined permissions
+    var allowed = ['more','security'];
+    if (perms) {
+      if (perms.canSeeRoster)     allowed.push('roster','recruiting','benchmarks');
+      if (perms.canSeeFinancials) allowed.push('acct');
+      if (perms.canSeeDonors)     allowed.push('donors');
+      if (perms.canSeeEvents)     allowed.push('goals','events','specialEvents');
+      if (perms.canSeeDevBoard)   allowed.push('devboard');
+      if (perms.canSeeAllSections) allowed.push('ms','reports','schools','meetings','ms','tasks','cal','files','contacts');
+      if (perms.isCoordinator)    allowed.push('tasks','cal','files','contacts');
+    } else {
+      // Legacy fallback
+      var legacyAllowed = {
+        coordinator: ['roster','recruiting','tasks','calendar','security','more'],
+        board:       ['roster','recruiting','acct','donors','goals','events','specialEvents','devboard','benchmarks','reports','schools','meetings','ms','more','security'],
+        advisor:     ['roster','recruiting','more'],
+        devboard:    ['donors','goals','events','specialEvents','devboard','acct','more']
+      };
+      allowed = legacyAllowed[role] || allowed;
+    }
+    if (allowed.indexOf(sec) < 0) { toast('Access restricted'); return; }
   }
-  // Board can only view financials, not edit, unless canEditFinancials
-  if (role === 'devboard' && sec === 'acct' && !D._currentUser.canEditFinancials) {
-    D._acctReadOnly = true;
-  } else {
-    D._acctReadOnly = (role === 'board' && !D._currentUser.canEditFinancials);
-  }
+  // Financial edit read-only flag
+  D._acctReadOnly = role !== 'admin' && !(D._currentUser && D._currentUser.canEditFinancials);
   curSec = sec;
   goV('vSEC');
   var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',files:'File Storage',contacts:'Coaches Database',schools:'Schools Database',more:'More Settings',events:'Special Events',devboard:'Development Board',benchmarks:'Fit Benchmarks'};
@@ -1428,7 +1593,7 @@ function admSec(sec) {
   else if (sec === 'reports') body.innerHTML = renderReports();
   else if (sec === 'meetings') body.innerHTML = renderMeetings();
   else if (sec === 'recruiting') body.innerHTML = renderCoordDashboard();
-  else if (sec === 'security') body.innerHTML = renderSecuritySettings();
+  else if (sec === 'security') { migrateToPeople(); saveAppData(); body.innerHTML = renderSecuritySettings(); }
   else if (sec === 'files') body.innerHTML = renderFiles();
   else if (sec === 'contacts') body.innerHTML = renderAdminCoachesDB();
   else if (sec === 'schools') body.innerHTML = renderSchoolsDB();
@@ -1631,6 +1796,7 @@ if (!D.acct) D.acct = {
 
 function renderAcct() {
   var v = D.acct.acctView || 'dashboard';
+  var readOnly = !!D._acctReadOnly;
   var tabs = [
     {id:'dashboard',   label:'Dashboard'},
     {id:'transactions',label:'Transactions'},
@@ -1641,12 +1807,21 @@ function renderAcct() {
     {id:'board',       label:'Board'},
     {id:'import',      label:'Import'}
   ];
-  var tabBar = '<div style="display:flex;gap:5px;padding:12px 16px 0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;">' +
+  // Read-only users: hide Import tab
+  if (readOnly) tabs = tabs.filter(function(t){ return t.id !== 'import'; });
+  var tabBar = (readOnly ? '<div style="background:rgba(255,149,0,.08);border:1px solid rgba(255,149,0,.25);border-radius:8px;margin:10px 16px 0;padding:7px 12px;font-size:.74rem;color:#ff9500;">👁 View only — contact admin to edit financial data</div>' : '') +
+    '<div style="display:flex;gap:5px;padding:8px 16px 0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;">' +
     tabs.map(function(t){
       return '<button onclick="D.acct.acctView=\''+t.id+'\';acctRefresh()" style="flex-shrink:0;padding:7px 13px;font-size:.72rem;font-weight:600;border-radius:20px;border:none;cursor:pointer;transition:all .15s;' +
         (v===t.id ? 'background:var(--red);color:#fff;' : 'background:var(--card2);color:var(--sub);') +
         '">'+t.label+'</button>';
     }).join('') + '</div>';
+
+  // Read-only banner for board/devboard users without financial edit rights
+  var roBanner = readOnly ?
+    '<div style="display:flex;align-items:center;gap:8px;margin:8px 16px 0;padding:8px 12px;background:rgba(255,149,0,.1);border:1px solid rgba(255,149,0,.3);border-radius:8px;">' +
+    '<span style="font-size:.9rem;">🔒</span>' +
+    '<span style="font-size:.74rem;color:#ff9500;font-weight:600;">View only — you do not have financial edit access</span></div>' : '';
 
   var content = '';
   if      (v==='dashboard')    content = acctDashboard();
@@ -1656,9 +1831,11 @@ function renderAcct() {
   else if (v==='receipts')     content = acctReceipts();
   else if (v==='schedule')     content = acctSchedule();
   else if (v==='board')        content = acctBoard();
-  else if (v==='import')       content = acctImport();
+  else if (v==='import')       content = readOnly ?
+    '<div style="text-align:center;padding:40px 20px;color:var(--sub);">🔒 Import requires financial edit access.</div>' :
+    acctImport();
 
-  return tabBar + content + '<div style="height:80px;"></div>';
+  return tabBar + roBanner + content + '<div style="height:80px;"></div>';
 }
 
 function acctRefresh() {
@@ -2484,6 +2661,8 @@ function acctImportFile(input) {
 
       // Register in file vault
       var fdate = new Date().toISOString().split('T')[0];
+      if (!D.files) D.files = {folders:[],docs:[]};
+      if (!D.files.docs) D.files.docs = [];
       var exists = D.files.docs.some(function(d){return d.name===file.name;});
       if (!exists) {
         D.files.docs.push({id:Date.now(), folder:'financial', name:file.name, type:file.name.split('.').pop(),
@@ -2571,6 +2750,7 @@ function sendMsg() {
   if (!inp || !inp.value.trim()) return;
   D.msgs.unshift({id:Date.now(),from:'Dave Fisher',role:'Executive Director',time:'Just now',text:inp.value,init:'DF'});
   inp.value = '';
+  saveAppData();
   var body = document.getElementById('sec-body');
   if (body) body.innerHTML = renderMsgs();
   toast('Sent');
@@ -3732,7 +3912,7 @@ function rosterBulkStatus() {
     '<div class="mt">Change Status</div>' +
     '<div style="font-size:.78rem;color:var(--sub);margin-bottom:14px;">Applying to '+sel.length+' athlete'+(sel.length>1?'s':'')+'</div>' +
     '<div class="fg"><label class="fl">New Status</label><select class="fi" id="bulk-status">' +
-    ['Active','Committed','Graduated','Exited'].map(function(s){ return '<option>'+s+'</option>'; }).join('') +
+    ['Active','Committed','Graduated','Exited','Transfer Portal'].map(function(s){ return '<option>'+s+'</option>'; }).join('') +
     '</select></div>',
     '<button class="btn br3 bf" style="flex:1;" onclick="rosterBulkStatusSave()">Apply</button>'
   );
@@ -3793,7 +3973,7 @@ function openAddAthlete() {
     '</div>' +
     '<div class="fr">' +
     '<div class="fg"><label class="fl">Status</label><select class="fi" id="na-status">' +
-    ['Active','Committed','Graduated','Exited'].map(function(s){ return '<option>'+s+'</option>'; }).join('') +
+    ['Active','Committed','Graduated','Exited','Transfer Portal'].map(function(s){ return '<option>'+s+'</option>'; }).join('') +
     '</select></div>' +
     '<div class="fg"><label class="fl">GPA</label><input class="fi" id="na-gpa" type="number" step="0.1" min="0" max="4" placeholder="3.5"></div>' +
     '</div>' +
@@ -4073,7 +4253,7 @@ function renderPlayerInfo(idx, a) {
 
     '<div class="fr">' +
     '<div class="fg"><label class="fl">Status</label><select class="fi" id="ap-status" onchange="savePlayerInfo('+idx+')">' +
-    ['Active','Committed','Graduated','Exited'].map(function(s){ return '<option'+(a.status===s?' selected':'')+'>'+s+'</option>'; }).join('') +
+    ['Active','Committed','Graduated','Exited','Transfer Portal'].map(function(s){ return '<option'+(a.status===s?' selected':'')+'>'+s+'</option>'; }).join('') +
     '</select></div>' +
     '<div class="fg"><label class="fl">Recruiting Stage</label><select class="fi" id="ap-stage" onchange="savePlayerInfo('+idx+')">' +
     ['','Early','Building List','In Contact','Visit/Showcase','Offer/Commit','Committed'].map(function(s){ return '<option'+(a.recruitStage===s?' selected':'')+'>'+s+'</option>'; }).join('') +
@@ -4086,6 +4266,31 @@ function renderPlayerInfo(idx, a) {
     '<div class="fr">' +
     '<div class="fg"><label class="fl">GPA</label><input class="fi" id="ap-gpa" type="number" step="0.1" min="0" max="4" value="'+(a.gpa!=null?a.gpa:'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div>' +
     '<div class="fg"><label class="fl">High School</label><input class="fi" id="ap-school" value="'+(a.school||'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div></div>' +
+
+    '<div style="display:flex;gap:16px;padding:8px 0 4px;">' +
+    '<label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--tx2);cursor:pointer;">' +
+    '<input type="checkbox" id="ap-gpa-verified"'+(a.gpaVerified?' checked':'')+' onchange="savePlayerInfo('+idx+')" style="width:16px;height:16px;cursor:pointer;accent-color:var(--grn);"> ' +
+    '<span>GPA Verified <span style="font-size:.68rem;color:'+(a.gpaVerified?'var(--grn)':'#ff9500')+';">'+(a.gpaVerified?'✓ Official transcript on file':'⚠ Upload transcript to verify')+'</span></span></label>' +
+    '<label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--tx2);cursor:pointer;">' +
+    '<input type="checkbox" id="ap-scores-verified"'+(a.scoresVerified?' checked':'')+' onchange="savePlayerInfo('+idx+')" style="width:16px;height:16px;cursor:pointer;accent-color:var(--grn);"> ' +
+    '<span>Test Scores Verified <span style="font-size:.68rem;color:'+(a.scoresVerified?'var(--grn)':'#ff9500')+';">'+(a.scoresVerified?'✓ Official scores on file':'⚠ Upload scores to verify')+'</span></span></label>' +
+    '</div>' +
+
+    // Course load difficulty
+    '<div style="padding:8px 0 10px;">' +
+    '<label class="fl" style="margin-bottom:6px;display:block;">Course Load Difficulty</label>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' +
+    '<select class="fi" id="ap-course-load" onchange="savePlayerInfo('+idx+')" style="flex:1;max-width:220px;">' +
+    ['','Regular','Mixed (some Honors)','Mostly Honors/AP','Heavy AP/IB'].map(function(o){
+      return '<option value="'+o+'"'+(a.courseLoad===o?' selected':'')+'>'+(!o?'— Not set —':o)+'</option>';
+    }).join('') +
+    '</select>' +
+    (a.courseLoad&&a.courseLoadSource==='ai'?'<span style="font-size:.68rem;padding:2px 8px;border-radius:10px;background:rgba(52,152,219,.12);color:var(--blu);">🤖 AI extracted</span>':'')+
+    (a.courseLoad&&a.courseLoadSource==='manual'?'<span style="font-size:.68rem;padding:2px 8px;border-radius:10px;background:var(--card2);color:var(--sub);">Manual</span>':'')+
+    '<button onclick="extractTranscriptAI('+idx+')" style="font-size:.72rem;padding:4px 10px;background:rgba(204,0,0,.1);border:1px solid rgba(204,0,0,.25);border-radius:8px;color:var(--red2);cursor:pointer;white-space:nowrap;">🤖 Extract from Transcript</button>' +
+    '</div>' +
+    (a.courseLoadNotes?'<div style="font-size:.7rem;color:var(--sub);margin-top:4px;">'+a.courseLoadNotes+'</div>':'')+
+    '</div>' +
 
     '<div class="fr">' +
     '<div class="fg"><label class="fl">Program</label><input class="fi" id="ap-program" value="'+(a.program||'')+'" onblur="savePlayerInfoDebounced('+idx+')"></div>' +
@@ -4188,10 +4393,97 @@ function savePlayerInfo(idx) {
   if (!D.measurables) D.measurables = {};
   if (!D.measurables[a.init]) D.measurables[a.init] = {};
   D.measurables[a.init].fitOverride = (document.getElementById('ap-fit-override')||{}).value || '';
+  // Academic verification flags
+  a.gpaVerified    = !!(document.getElementById('ap-gpa-verified')||{}).checked;
+  a.scoresVerified = !!(document.getElementById('ap-scores-verified')||{}).checked;
+  var cl = (document.getElementById('ap-course-load')||{}).value || '';
+  if (cl) { a.courseLoad = cl; if (!a.courseLoadSource) a.courseLoadSource = 'manual'; }
   saveAppData();
   toast('Saved ✓');
   playerTab('info');
   rosterRefresh();
+}
+
+function extractTranscriptAI(playerIdx) {
+  var a = D.roster[playerIdx]; if (!a) return;
+
+  // Find transcript files in athlete's file vault
+  var athFiles = (D.athleteFiles && D.athleteFiles[a.init]) || [];
+  var allFiles = (D.files && D.files.docs) || [];
+  var transcriptFile = athFiles.concat(allFiles).find(function(f) {
+    var nm = (f.name||'').toLowerCase();
+    return nm.indexOf('transcript') >= 0 || nm.indexOf('grades') >= 0 || nm.indexOf('academic') >= 0;
+  });
+
+  var fileNote = transcriptFile ? 'Found file: ' + transcriptFile.name : 'No transcript file found in vault — paste transcript text below or upload to Files tab first.';
+
+  openMo('<div class="mt">🤖 Extract Course Load</div>' +
+    '<div style="font-size:.75rem;color:var(--sub);margin-bottom:10px;">' + fileNote + '</div>' +
+    '<div class="fg"><label class="fl">Paste transcript text (or course list)</label>' +
+    '<textarea class="fi" id="tr-text" style="height:120px;resize:none;" placeholder="Paste courses here, e.g.: AP Calculus AB - A, Honors English - B+, Regular PE - A..."></textarea></div>' +
+    '<button class="btn br3 bf" onclick="runTranscriptExtract(' + playerIdx + ')">Analyze Transcript</button>');
+}
+
+function runTranscriptExtract(playerIdx) {
+  var a = D.roster[playerIdx]; if (!a) return;
+  var text = (document.getElementById('tr-text')||{}).value||'';
+  if (!text.trim()) { toast('Paste transcript text first'); return; }
+
+  var btn = document.querySelector('#mo-body button.btn.br3.bf');
+  if (btn) { btn.textContent = 'Analyzing...'; btn.disabled = true; }
+
+  var prompt = 'Analyze this high school transcript/course list and determine the overall course load difficulty. ' +
+    'Count courses by type: Regular, Honors, AP, IB, Dual Enrollment. ' +
+    'Return ONLY valid JSON: {' +
+    '"courseLoad": one of ["Regular","Mixed (some Honors)","Mostly Honors/AP","Heavy AP/IB"],' +
+    '"apCount": number,' +
+    '"honorsCount": number,' +
+    '"regularCount": number,' +
+    '"ibCount": number,' +
+    '"dualCount": number,' +
+    '"notes": "1-2 sentence summary of course rigor",' +
+    '"gpaVerified": true if GPA is explicitly listed in transcript' +
+    '} Transcript: ' + text.substring(0, 3000);
+
+  fetch('/.netlify/functions/claude', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      system: 'You are a transcript analyst. Return only valid JSON, no markdown, no explanation.',
+      messages: [{role: 'user', content: prompt}]
+    })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data) {
+    var txt = (data.content||[]).map(function(c){ return c.text||''; }).join('').trim();
+    var jsonStart = txt.indexOf('{'); var jsonEnd = txt.lastIndexOf('}');
+    if (jsonStart < 0 || jsonEnd < 0) throw new Error('No JSON returned');
+    var result = JSON.parse(txt.substring(jsonStart, jsonEnd+1));
+
+    a.courseLoad = result.courseLoad || 'Mixed (some Honors)';
+    a.courseLoadSource = 'ai';
+    a.courseLoadNotes = result.notes || '';
+    if (result.gpaVerified) a.gpaVerified = true;
+    a.transcriptData = {
+      apCount: result.apCount||0,
+      honorsCount: result.honorsCount||0,
+      regularCount: result.regularCount||0,
+      ibCount: result.ibCount||0,
+      dualCount: result.dualCount||0
+    };
+
+    saveAppData();
+    closeMo();
+    var body = document.getElementById('vp-body');
+    if (body) body.innerHTML = renderPlayerInfo(playerIdx, a);
+    toast('✓ Course load extracted: ' + a.courseLoad);
+  })
+  .catch(function(e) {
+    toast('Extraction failed: ' + e.message);
+    if (btn) { btn.textContent = 'Analyze Transcript'; btn.disabled = false; }
+  });
 }
 
 function openPlayerEdit() {
@@ -4528,13 +4820,17 @@ async function loadSchoolProfile(playerIdx, collegeIdx) {
   // Remove division suffixes from school name for cleaner search
   searchName = searchName.replace(/\s*(juco\s*(d[123])?|d[123]|division\s*[123iii]+)\s*/gi, ' ').trim();
 
-  var prompt = 'Find current data for ' + searchName + divHint + ' athletic program. ' +
+  var isTransfer = (athStage === 'Transfer Portal' || (D._currentAthIsCollege));
+  var majorQuery = (D.athProfile && D.athProfile.desiredMajor) ? D.athProfile.desiredMajor :
+    (D.roster.find(function(r){return r.init===(D._currentAthInit||'');})||{}).desiredMajor || '';
+  var prompt = 'Find current data for ' + searchName + divHint + (isTransfer?' transfer portal':'') + ' athletic program. ' +
     'Return ONLY valid JSON. Fields: division(D1|D2|D3|NAIA|JUCO), conference, ' +
     'academics:{gpa_min,gpa_avg,sat_range,act_range,acceptance_rate,ncaa_clearinghouse}, ' +
     'financials:{instate_total,outstate_total,athletic_scholarship(full|partial|none),avg_athletic_aid}, ' +
-    'athletics:{sport_program,playing_time_outlook(realistic|competitive|difficult)}, ' +
+    'athletics:{sport_program,playing_time_outlook(realistic|competitive|difficult)' + (isTransfer?',transfer_portal_active(true|false),transfer_scholarships(full|partial|none)':'') + '}, ' +
+    (majorQuery ? 'major_availability:{major:"' + majorQuery + '",offered(true|false|unknown),accreditation_notes:""}, ' : '') +
     'conflicts:[{type,severity(conflict|warning),message}]. ' +
-    'Athlete: GPA=' + (athGpa||'?') + ' Sport=' + athSport + '. Flag real conflicts only.';
+    'Athlete: GPA=' + (athGpa||'?') + ' Sport=' + athSport + (isTransfer?' (transfer portal student)':'') + '. Flag real conflicts only.';
 
   try {
     var res = await fetch('/.netlify/functions/claude', {
@@ -4549,6 +4845,20 @@ async function loadSchoolProfile(playerIdx, collegeIdx) {
       })
     });
 
+    if (res.status === 429) {
+      // Rate limited — put back in queue with longer delay
+      if (colleges[collegeIdx]) {
+        colleges[collegeIdx].profileLoading = false;
+        colleges[collegeIdx].profileError = null; // don't show error, just wait
+      }
+      _spq.items.unshift(item || {playerIdx: playerIdx, init: (D.roster[playerIdx]||{}).init, collegeIdx: collegeIdx});
+      _spq.running = false;
+      _spq.startedAt = null;
+      setTimeout(spqRun, 12000); // wait 12s before retrying
+      saveAppData();
+      _refreshCollegeView(playerIdx);
+      return;
+    }
     if (!res.ok) {
       var errBody = await res.json().catch(function(){ return {}; });
       throw new Error((errBody.error && errBody.error.message) ? errBody.error.message : 'API error ' + res.status);
@@ -4775,13 +5085,13 @@ function spqRun() {
       _spq.running = false;
       _spq.startedAt = null;
       spqSave();
-      if (_spq.items.length > 0) setTimeout(spqRun, 4500);
+      if (_spq.items.length > 0) setTimeout(spqRun, 8000);
     })
     .catch(function() {
       _spq.running = false;
       _spq.startedAt = null;
       spqSave();
-      if (_spq.items.length > 0) setTimeout(spqRun, 4500);
+      if (_spq.items.length > 0) setTimeout(spqRun, 8000);
     });
 }
 
@@ -5243,7 +5553,9 @@ function calcCollegeFit(a, college) {
   if (athResult.tag === 'Unknown') warnings.push('ATH: ' + (athResult.reasons||['No athletic data'])[0]);
 
   return {tag:combined, score:score, reasons:reasons, warnings:warnings,
-          acTag:acResult.tag, athTag:athResult.tag, finTag:finResult.tag};
+          acTag:acResult.tag,  acReasons:acResult.reasons||[],
+          athTag:athResult.tag, athReasons:athResult.reasons||[],
+          finTag:finResult.tag, finReasons:finResult.reasons||[]};
 }
 
 
@@ -5314,6 +5626,7 @@ function renderPlayerColleges(idx, a) {
     '<button class="btn br3 bsm" onclick="openAddCollegeToPlayer('+idx+')">+ Add</button>' +
     '<button class="btn br3 bsm" onclick="refreshSingleAthleteProfiles(false)">↺ Profiles</button>' +
     '<button class="btn br3 bsm" style="background:rgba(231,76,60,.08);color:#e74c3c;border:1px solid rgba(231,76,60,.2);" onclick="refreshSingleAthleteProfiles(true)">↺ Re-fetch</button>' +
+    '<button class="btn br3 bsm" style="background:rgba(46,204,113,.08);color:#2ecc71;border:1px solid rgba(46,204,113,.2);" onclick="recalcFitAll()">★ Recalc Fit</button>' +
     '</div></div>';
 
   if (colleges.length === 0) {
@@ -5386,11 +5699,11 @@ function renderPlayerColleges(idx, a) {
           (c.division||'—') + (conf?' · <span style="color:var(--tx2);">'+conf+'</span>':'') + (c.coachName?' · 👤 <span style="color:var(--tx2);">'+c.coachName+'</span>':'') +
         '</div>' +
 
-        // Line 3: Fit chips row
+        // Line 3: Fit chips row — clickable pills
         '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:' + ((acWhy||athWhy||profileConflicts.length>0||(!c.profile&&!c.profileLoading))?'6':'0') + 'px;">' +
-          '<span style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:'+tagB[acTag]+';color:'+tagC[acTag]+';font-weight:700;">📚 AC: '+acTag+'</span>' +
-          '<span style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:'+tagB[athTag]+';color:'+tagC[athTag]+';font-weight:700;">⚾ ATH: '+athTag+'</span>' +
-          '<span style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:'+tagB[finTag]+';color:'+tagC[finTag]+';font-weight:700;">💵 FIN: '+finTag+'</span>' +
+          '<button onclick="event.stopPropagation();playerTab(\'info\')" title="Edit academic info — click to go to Info tab" style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:'+tagB[acTag]+';color:'+tagC[acTag]+';font-weight:700;border:none;cursor:pointer;">📚 AC: '+acTag+'</button>' +
+          '<button onclick="event.stopPropagation();openMeasurables('+idx+')" title="Click to edit measurables" style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:'+tagB[athTag]+';color:'+tagC[athTag]+';font-weight:700;border:none;cursor:pointer;">⚾ ATH: '+athTag+'</button>' +
+          '<button onclick="event.stopPropagation();'+(c.profile?'openSchoolProfile('+idx+','+ci+')\'':'\'toast(\'Load profile first\')\'')+'" title="View financial details" style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:'+tagB[finTag]+';color:'+tagC[finTag]+';font-weight:700;border:none;cursor:pointer;">💵 FIN: '+finTag+'</button>' +
           (costIn?'<span style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:var(--card2);color:var(--tx2);font-weight:600;">'+costIn+'/yr</span>':'') +
           (schType==='full'?'<span style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:rgba(46,204,113,.13);color:#2ecc71;font-weight:700;">Full Aid</span>':
            schType==='partial'?'<span style="font-size:.72rem;padding:3px 8px;border-radius:6px;background:rgba(255,149,0,.1);color:#ff9500;font-weight:700;">Partial Aid</span>':'') +
@@ -5519,8 +5832,33 @@ function saveAddCollege(idx) {
 function calcAcademicFitTag(a, profile) {
   var gpa = parseFloat(a.gpa) || 0;
 
+  // Course load difficulty adjustment — stronger transcript = GPA weighted higher
+  // Effectively adjusts GPA by up to +0.15 for very rigorous courses
+  var courseLoadBoost = 0;
+  var clNote = '';
+  var cl = a.courseLoad || '';
+  if      (cl === 'Heavy AP/IB')           { courseLoadBoost = 0.15; clNote = 'Heavy AP/IB course load (+ rigor boost)'; }
+  else if (cl === 'Mostly Honors/AP')      { courseLoadBoost = 0.10; clNote = 'Mostly Honors/AP (+ rigor boost)'; }
+  else if (cl === 'Mixed (some Honors)')   { courseLoadBoost = 0.05; clNote = 'Mixed course load'; }
+  else if (cl === 'Regular')               { courseLoadBoost = 0;    clNote = 'Regular course load (no rigor boost)'; }
+  var adjustedGpa = gpa > 0 ? Math.round((gpa + courseLoadBoost) * 100) / 100 : 0;
+
   // No profile at all
   if (!profile) return {tag:'Unknown', reasons:['No school profile loaded yet']};
+
+  // Major availability check (advisory — doesn't change tag but adds to reasons)
+  var majorNote = '';
+  var desiredMajor = a.desiredMajor || (D.athProfile && D.athProfile.desiredMajor) || '';
+  if (desiredMajor && profile.major_availability) {
+    var ma = profile.major_availability;
+    if (ma.offered === false) {
+      majorNote = '⚠ ' + desiredMajor + ' not offered at this school';
+    } else if (ma.offered === true) {
+      majorNote = '✓ ' + desiredMajor + ' is offered' + (ma.accreditation_notes ? ' · ' + ma.accreditation_notes : '');
+    }
+  } else if (desiredMajor) {
+    majorNote = 'Major availability for "' + desiredMajor + '" not yet verified — refresh profile to check';
+  }
 
   // Profile loaded but no academics block
   if (!profile.academics) {
@@ -5563,10 +5901,20 @@ function calcAcademicFitTag(a, profile) {
   if (gpa <= 0) return {tag:'Unknown', reasons:['No GPA on file — enter GPA in athlete profile for accurate academic fit']};
 
   // Full calculation with real school data
-  if (gpa < gpaMin) return {tag:'Conflict', reasons:['GPA '+gpa+' is below '+profile.division+' minimum of '+gpaMin]};
-  if (gpaAvg > 0 && gpa >= gpaAvg - 0.1) return {tag:'Safety', reasons:['GPA '+gpa+' meets or exceeds average admitted student ('+gpaAvg+')']};
-  if (gpa >= gpaMin + 0.3) return {tag:'Fit', reasons:['GPA '+gpa+' comfortably above minimum ('+gpaMin+')']};
-  return {tag:'Reach', reasons:['GPA '+gpa+' is close to minimum ('+gpaMin+') — limited buffer']};
+  var verified = !!(a.gpaVerified);
+  var verNote  = verified ? '' : ' (unverified)';
+  var gpaDisplay = gpa + (courseLoadBoost > 0 ? ' → '+adjustedGpa+' adjusted' : '');
+  var clSuffix = clNote ? ' · ' + clNote : '';
+  var mArr = majorNote ? [majorNote] : [];
+  if (adjustedGpa < gpaMin) return {tag:'Conflict', reasons:['GPA '+gpaDisplay+verNote+' is below '+profile.division+' minimum of '+gpaMin+clSuffix].concat(mArr)};
+  // Safety: adjusted GPA at or above admitted student average
+  if (gpaAvg > 0 && adjustedGpa >= gpaAvg) return {tag:'Safety', reasons:['GPA '+gpaDisplay+verNote+' meets or exceeds avg admitted student ('+gpaAvg+')'+clSuffix].concat(mArr)};
+  // Reach: below the admitted average
+  if (gpaAvg > 0 && adjustedGpa < gpaAvg) return {tag:'Reach', reasons:['GPA '+gpaDisplay+verNote+' below avg admitted student ('+gpaAvg+') — above minimum but competitive'+clSuffix].concat(mArr)};
+  // No avg data: use min-based logic
+  if (adjustedGpa >= gpaMin + 0.5) return {tag:'Safety', reasons:['GPA '+gpaDisplay+verNote+' well above minimum ('+gpaMin+')'+clSuffix].concat(mArr)};
+  if (adjustedGpa >= gpaMin + 0.2) return {tag:'Fit',    reasons:['GPA '+gpaDisplay+verNote+' comfortably above minimum ('+gpaMin+')'+clSuffix].concat(mArr)};
+  return {tag:'Reach', reasons:['GPA '+gpaDisplay+verNote+' close to minimum ('+gpaMin+') — limited buffer'+clSuffix].concat(mArr)};
 }
 
 function calcFinancialFitTag(a, profile) {
@@ -5942,9 +6290,11 @@ function openSchoolProfile(playerIdx, collegeIdx) {
   var p = college.profile;
   var fitResult = calcCollegeFit(a, college);
   var combined  = fitResult.tag;
-  var acFit     = {tag: fitResult.acTag  || 'Unknown', reasons: fitResult.reasons||[]};
-  var athFit    = {tag: fitResult.athTag || 'Unknown', reasons: fitResult.reasons||[]};
-  var finFit    = {tag: fitResult.finTag || 'Unknown', reasons: fitResult.reasons||[]};
+  var acFit     = {tag: fitResult.acTag  || 'Unknown', reasons: fitResult.acReasons  || []};
+  var athFit    = {tag: fitResult.athTag || 'Unknown', reasons: fitResult.athReasons || []};
+  var finFit    = {tag: fitResult.finTag || 'Unknown', reasons: fitResult.finReasons || []};
+  var gpaVerified   = !!(a.gpaVerified);
+  var scoresVerified= !!(a.scoresVerified);
   var tagColors = {Conflict:'#e74c3c', Reach:'#ff9500', Fit:'var(--blu)', Safety:'var(--grn)', Unknown:'var(--sub)'};
   var tagBgs = {Conflict:'rgba(231,76,60,.12)', Reach:'rgba(255,149,0,.12)', Fit:'rgba(52,152,219,.12)', Safety:'rgba(39,174,96,.12)', Unknown:'var(--card2)'};
 
@@ -5953,21 +6303,27 @@ function openSchoolProfile(playerIdx, collegeIdx) {
 
     // Combined fit badge
     '<div style="display:flex;gap:8px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--b1);">' +
+    // Academic box
     '<div style="flex:1;text-align:center;padding:10px;background:'+tagBgs[acFit.tag]+';border-radius:10px;">' +
     '<div style="font-size:.6rem;color:var(--sub);font-weight:700;text-transform:uppercase;margin-bottom:3px;">📚 Academic</div>' +
     '<div style="font-size:.9rem;font-weight:800;color:'+tagColors[acFit.tag]+'">'+acFit.tag+'</div>' +
-    (acFit.tag==='Unknown'&&acFit.reasons&&acFit.reasons[0]?'<div style="font-size:.6rem;color:var(--sub);margin-top:3px;line-height:1.3;">'+acFit.reasons[0]+'</div>':'')+
+    (acFit.reasons&&acFit.reasons[0]?'<div style="font-size:.6rem;color:var(--sub);margin-top:3px;line-height:1.3;">'+acFit.reasons[0]+'</div>':'')+
+    '<div style="font-size:.58rem;margin-top:4px;color:'+(gpaVerified?'#2ecc71':'#ff9500')+';">GPA '+(gpaVerified?'✓ Verified':'⚠ Unverified')+'</div>' +
+    '<div style="font-size:.58rem;color:'+(scoresVerified?'#2ecc71':'#ff9500')+';">Scores '+(scoresVerified?'✓ Verified':'⚠ Unverified')+'</div>' +
     '</div>' +
+    // Athletic box
     '<div style="flex:1;text-align:center;padding:10px;background:'+tagBgs[athFit.tag]+';border-radius:10px;">' +
     '<div style="font-size:.6rem;color:var(--sub);font-weight:700;text-transform:uppercase;margin-bottom:3px;">⚾ Athletic</div>' +
     '<div style="font-size:.9rem;font-weight:800;color:'+tagColors[athFit.tag]+'">'+athFit.tag+'</div>' +
-    (athFit.tag==='Unknown'&&athFit.reasons&&athFit.reasons[0]?'<div style="font-size:.6rem;color:var(--sub);margin-top:3px;line-height:1.3;">'+athFit.reasons[0]+'</div>':'')+
+    (athFit.reasons&&athFit.reasons[0]?'<div style="font-size:.6rem;color:var(--sub);margin-top:3px;line-height:1.3;">'+athFit.reasons[0]+'</div>':'')+
     '</div>' +
+    // Financial box
     '<div style="flex:1;text-align:center;padding:10px;background:'+tagBgs[finFit.tag]+';border-radius:10px;">' +
     '<div style="font-size:.6rem;color:var(--sub);font-weight:700;text-transform:uppercase;margin-bottom:3px;">💵 Financial</div>' +
     '<div style="font-size:.9rem;font-weight:800;color:'+tagColors[finFit.tag]+'">'+finFit.tag+'</div>' +
     (finFit.reasons&&finFit.reasons[0]?'<div style="font-size:.6rem;color:var(--sub);margin-top:3px;line-height:1.3;">'+finFit.reasons[0]+'</div>':'')+
     '</div>' +
+    // Overall box
     '<div style="flex:1;text-align:center;padding:10px;background:'+tagBgs[combined]+';border-radius:10px;border:1px solid '+tagColors[combined]+';">' +
     '<div style="font-size:.6rem;color:var(--sub);font-weight:700;text-transform:uppercase;margin-bottom:3px;">Overall</div>' +
     '<div style="font-size:.9rem;font-weight:800;color:'+tagColors[combined]+'">'+combined+'</div></div>' +
@@ -6773,7 +7129,7 @@ function renderMore() {
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button class="btn bf" style="width:100%;background:var(--blu);border-radius:10px;" onclick="refreshAllProfiles(false)">&#8635; Load Missing Profiles (All Athletes)</button>
         <button class="btn bf" style="width:100%;background:var(--pur);border-radius:10px;" onclick="refreshAllProfiles(true)">&#8635; Force Re-Fetch All Profiles</button>
-        <button class="btn bf" style="width:100%;background:var(--grn);border-radius:10px;" onclick="refreshAllFit()">&#9733; Recalculate Fit (Current Athlete)</button>
+        <button class="btn bf" style="width:100%;background:var(--grn);border-radius:10px;" onclick="recalcFitAll()">&#9733; Recalculate Fit (All Athletes)</button>
       </div>
     </div>
   </div>
@@ -6799,8 +7155,8 @@ function renderMore() {
     <button class="cr" onclick="openSettings()">
       <div class="ci b">&#9881;</div><div style="flex:1;"><div class="cn">Settings</div></div><span class="chv">&#8250;</span>
     </button>
-    <button class="cr" onclick="checkForUpdate()">
-      <div class="ci g">&#128279;</div><div style="flex:1;"><div class="cn">Check for Updates</div><div class="cs">Reload app from server</div></div><span class="chv">&#8250;</span>
+    <button class="cr" onclick="safeUpdate()" style="border:1px solid rgba(46,204,113,.2);background:rgba(46,204,113,.05);">
+      <div class="ci g">&#128279;</div><div style="flex:1;"><div class="cn" style="color:var(--grn);">Update App</div><div class="cs">Saves your data to cloud, then reloads the latest version</div></div><span class="chv" style="color:var(--grn);">&#8250;</span>
     </button>
     <button class="cr" onclick="goV('vSP')">
       <div class="ci r">&#128682;</div><div style="flex:1;"><div class="cn">Sign Out</div></div><span class="chv">&#8250;</span>
@@ -8979,7 +9335,7 @@ function _loadAthletePortal(init) {
   var a = D.roster.find(function(r){ return r.init === init; });
   if (!a) return;
   D._currentAthInit = init;
-  D._currentAthIsCollege = (a.status === 'Graduated');
+  D._currentAthIsCollege = (a.status === 'Graduated' || a.status === 'Transfer Portal');
   if (!D.athProfile) D.athProfile = {};
   D.athProfile.name         = a.name;
   D.athProfile.sport        = a.sport || 'Baseball';
@@ -9198,147 +9554,241 @@ function _getCoordTasksForCurrentAth() {
 
 function renderSecuritySettings() {
   var isAdmin = !D._currentUser || D._currentUser.role === 'admin';
-  var cu = D._currentUser;
   var out = '';
 
-  function chBtn(type, id, label) {
-    return '<button class="btn bo bsm" onclick="openChangePinModal(\''+type+'\',\''+id+'\')">'+label+'</button>';
-  }
-
   if (isAdmin) {
-    out += '<div style="padding:16px 16px 6px;">';
-    out += '<div style="font-size:.63rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:10px;">Admin Access</div>';
-    out += '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;overflow:hidden;">';
-    out += '<div style="padding:13px 14px;display:flex;align-items:center;justify-content:space-between;">';
-    out += '<div><div style="font-size:.88rem;font-weight:600;color:var(--tx);">Admin PIN</div>';
-    out += '<div style="font-size:.7rem;color:var(--sub);">Dave Fisher \u00b7 Full access</div></div>';
-    out += chBtn('admin','DF','Change');
-    out += '</div></div></div>';
+    // ── ADMIN PIN ──
+    out += '<div style="padding:16px 16px 6px;">' +
+      '<div style="font-size:.63rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:10px;">Admin Access</div>' +
+      '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;padding:13px 14px;display:flex;align-items:center;justify-content:space-between;">' +
+      '<div>' +
+        '<div style="font-size:.88rem;font-weight:700;color:var(--tx);">Dave Fisher</div>' +
+        '<div style="font-size:.7rem;color:var(--sub);">Executive Director · Full Access</div>' +
+        '<div style="font-size:.7rem;color:var(--grn);margin-top:2px;">★ Admin PIN: ' +
+          '<span id="admin-pin-val" style="cursor:pointer;letter-spacing:.08em;" onclick="togglePinReveal(\'admin-pin-val\',\'' +
+          ((D.config&&D.config.adminPin)||'1234') + '\')">' +
+          '••••</span>' +
+        '</div>' +
+      '</div>' +
+      '<button class="btn bo bsm" onclick="openChangePinModal(\'admin\',\'DF\')">Change PIN</button>' +
+      '</div></div>';
 
-    out += '<div style="padding:0 16px 6px;">';
-    out += '<div style="font-size:.63rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:10px;">Coordinator PINs</div>';
-    out += '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;overflow:hidden;">';
-    (D.coordinators||[]).forEach(function(c,i) {
-      var has = c.pin && c.pin.length >= 4;
-      out += '<div style="padding:13px 14px;display:flex;align-items:center;justify-content:space-between;'+(i>0?'border-top:1px solid var(--b1);':'')+'">';
-      out += '<div style="flex:1;"><div style="font-size:.88rem;font-weight:600;color:var(--tx);">'+c.name+'</div>';
-      out += '<div style="font-size:.7rem;color:var(--sub);">'+c.role+'</div>';
-      out += '<div style="font-size:.7rem;color:'+(has?'var(--grn)':'var(--red)')+';">'+(has?'&#10003; PIN set':'&#9888; No PIN set')+'</div></div>';
-      out += '<div style="display:flex;gap:6px;">';
-      out += chBtn('coord',c.init,'Change');
-      out += '<button class="btn bsm" style="background:var(--rm);color:var(--red2);border:1px solid var(--red2);" onclick="openEditCoord('+i+')">✏️</button>';
-      // Only allow removing non-hardcoded coordinators (index > 2 = beyond DF/MK/KV)
-      if (i > 2) out += '<button class="btn bsm" style="background:var(--rm);color:var(--red2);border:1px solid var(--red2);" onclick="removeCoord('+i+')">✕</button>';
-      out += '</div></div>';
-    });
-    out += '</div>';
-    out += '<button class="btn br3 bsm" style="margin-top:8px;" onclick="openAddCoord()">+ Add Coordinator</button>';
-    out += '</div>';
+    // ── PEOPLE DIRECTORY ──
+    var people = D.people || [];
+    var ROLE_COLORS = {coordinator:'var(--blu)',board:'var(--pur)',devboard:'var(--grn)',advisor:'var(--yel)'};
+    var ROLE_LABELS2 = {coordinator:'Coordinator',board:'Board',devboard:'Dev Board',advisor:'Advisor'};
 
-    // ── Board of Directors ──    // ── Board of Directors ──
-    out += '<div style="padding:0 16px 6px;">';
-    out += '<div style="font-size:.63rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:10px;">Board of Directors <span style="font-weight:400;color:var(--sub);">(read-only access)</span></div>';
-    out += '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;overflow:hidden;">';
-    (D.boardMembers||[]).forEach(function(m,i) {
-      var has = m.pin && m.pin.length >= 4;
-      out += '<div style="padding:11px 14px;display:flex;align-items:center;justify-content:space-between;'+(i>0?'border-top:1px solid var(--b1);':'')+'">'; 
-      out += '<div style="flex:1;"><div style="font-size:.86rem;font-weight:600;color:var(--tx);">'+m.name+'</div>';
-      out += '<div style="font-size:.68rem;color:var(--sub);">'+m.role+'</div>';
-      out += '<div style="font-size:.68rem;color:'+(has?'var(--grn)':'var(--red)')+';">'+(has?'&#10003; PIN set':'&#9888; No PIN')+'</div></div>';
-      out += '<div style="display:flex;gap:6px;align-items:center;">';
-      out += '<label style="font-size:.65rem;color:var(--sub);display:flex;align-items:center;gap:4px;"><input type="checkbox" onchange="toggleFinancialAccess(\'board\',\''+m.init+'\',this.checked)"'+(m.canEditFinancials?' checked':'')+'>Fin. Edit</label>';
-      out += '<button class="btn bo bsm" onclick="openChangePinModal(\'board\',\''+m.init+'\')">'+(has?'Change':'Set PIN')+'</button>';
-      out += '<button class="btn bsm" style="background:var(--rm);color:var(--red2);border:1px solid var(--red2);" onclick="openEditBoardUser(\'board\','+i+')">✏️</button>';
-      out += '</div></div>';
-    });
-    out += '</div>';
-    out += '<button class="btn br3 bsm" style="margin-top:8px;" onclick="openAddUser(\'board\')">+ Add Member</button>';
-    out += '</div>';
+    out += '<div style="padding:0 16px 6px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">' +
+      '<div style="font-size:.63rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;">People & Access</div>' +
+      '<button class="btn br3 bsm" onclick="openAddPerson()">+ Add Person</button>' +
+      '</div>';
 
-    // ── College Advisors ──
-    out += '<div style="padding:0 16px 6px;">';
-    out += '<div style="font-size:.63rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:10px;">College Advisory Board <span style="font-weight:400;color:var(--sub);">(assigned athletes only)</span></div>';
-    if ((D.collegeAdvisors||[]).length === 0) {
-      out += '<div style="font-size:.82rem;color:var(--sub);padding:10px 0;">No advisors yet.</div>';
+    if (people.length === 0) {
+      out += '<div style="font-size:.82rem;color:var(--sub);padding:10px 0;">No people added yet. Tap + Add Person.</div>';
     } else {
       out += '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;overflow:hidden;">';
-      (D.collegeAdvisors||[]).forEach(function(m,i) {
-        var has = m.pin && m.pin.length >= 4;
-        out += '<div style="padding:11px 14px;display:flex;align-items:center;justify-content:space-between;'+(i>0?'border-top:1px solid var(--b1);':'')+'">'; 
-        out += '<div style="flex:1;"><div style="font-size:.86rem;font-weight:600;color:var(--tx);">'+m.name+'</div>';
-        out += '<div style="font-size:.68rem;color:var(--sub);">'+m.role+(m.assignedAthletes&&m.assignedAthletes.length?' · '+(m.assignedAthletes.length)+' athletes':'')+'</div>';
-        out += '<div style="font-size:.68rem;color:'+(has?'var(--grn)':'var(--red)')+';">'+(has?'&#10003; PIN set':'&#9888; No PIN')+'</div></div>';
-        out += '<div style="display:flex;gap:6px;">';
-        out += '<button class="btn bo bsm" onclick="openChangePinModal(\'advisor\',\''+m.init+'\')">'+(has?'Change':'Set PIN')+'</button>';
-        out += '<button class="btn bsm" style="background:var(--rm);color:var(--red2);border:1px solid var(--red2);" onclick="openEditBoardUser(\'advisor\','+i+')">✏️</button>';
-        out += '<button class="btn bsm" style="background:var(--rm);color:var(--red2);border:1px solid var(--red2);" onclick="removeUser(\'advisor\','+i+')">✕</button>';
+      people.forEach(function(p, pi) {
+        var hasPin = p.pin && p.pin.length >= 4;
+        var roles = p.roles || [];
+        out += '<div style="padding:13px 14px;'+(pi>0?'border-top:1px solid var(--b1);':'')+'">';
+        // Name + title
+        out += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">';
+        out += '<div style="flex:1;">';
+        out += '<div style="font-size:.9rem;font-weight:700;color:var(--tx);">'+p.name+'</div>';
+        out += '<div style="font-size:.72rem;color:var(--sub);">'+(p.title||roles.join(', '))+'</div>';
+        // Role chips
+        out += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">';
+        roles.forEach(function(r) {
+          out += '<span style="font-size:.62rem;padding:2px 7px;border-radius:6px;background:var(--card2);color:'+(ROLE_COLORS[r]||'var(--sub)')+';font-weight:700;">'+(ROLE_LABELS2[r]||r)+'</span>';
+        });
+        out += '</div>';
+        // Financial edit toggle
+        if (roles.includes('board') || roles.includes('devboard')) {
+          var finLabel = roles.includes('devboard') && !roles.includes('board')
+            ? 'Can edit fundraising data'
+            : 'Can edit financials';
+          out += '<label style="display:flex;align-items:center;gap:5px;margin-top:5px;font-size:.72rem;color:var(--tx2);cursor:pointer;">' +
+            '<input type="checkbox" onchange="togglePersonFinancials('+pi+',this.checked)"'+(p.canEditFinancials?' checked':'')+' style="accent-color:var(--grn);"> '+finLabel+'</label>';
+        }
+        // PIN display — admin can see/reveal any PIN
+        out += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">';
+        out += '<span style="font-size:.7rem;color:'+(hasPin?'var(--grn)':'var(--red2)')+';font-weight:700;">'+(hasPin?'✓':'⚠')+' PIN</span>';
+        if (hasPin) {
+          out += '<span id="pin-'+pi+'" style="font-size:.78rem;font-family:monospace;cursor:pointer;color:var(--sub);background:var(--card2);padding:1px 8px;border-radius:6px;letter-spacing:.1em;" ' +
+            'onclick="togglePinReveal(\'pin-'+pi+'\',\''+p.pin+'\')" title="Click to reveal PIN">••••</span>';
+        }
+        out += '</div>';
+        out += '</div>';
+        // Action buttons
+        out += '<div style="display:flex;gap:6px;flex-shrink:0;flex-direction:column;align-items:flex-end;">';
+        out += '<button class="btn bo bsm" onclick="openChangePinModal(\'person\',\''+pi+'\')">'+(hasPin?'Change':'Set')+'&nbsp;PIN</button>';
+        out += '<button class="btn bsm" style="background:var(--card2);border:1px solid var(--b1);" onclick="openEditPerson('+pi+')">✏️ Edit</button>';
+        out += '<button class="btn bsm" style="background:var(--rm);color:var(--red2);border:1px solid var(--red2);" onclick="removePerson('+pi+')">✕</button>';
+        out += '</div>';
         out += '</div></div>';
       });
       out += '</div>';
     }
-    out += '<button class="btn br3 bsm" style="margin-top:8px;" onclick="openAddUser(\'advisor\')">+ Add Advisor</button>';
     out += '</div>';
 
-    // ── Development Board ──
-    out += '<div style="padding:0 16px 6px;">';
-    out += '<div style="font-size:.63rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:10px;">Development Board <span style="font-weight:400;color:var(--sub);">(fundraising access)</span></div>';
-    if ((D.devBoardMembers||[]).length === 0) {
-      out += '<div style="font-size:.82rem;color:var(--sub);padding:10px 0;">No dev board members yet.</div>';
-    } else {
-      out += '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;overflow:hidden;">';
-      (D.devBoardMembers||[]).forEach(function(m,i) {
-        var has = m.pin && m.pin.length >= 4;
-        out += '<div style="padding:11px 14px;display:flex;align-items:center;justify-content:space-between;'+(i>0?'border-top:1px solid var(--b1);':'')+'">'; 
-        out += '<div style="flex:1;"><div style="font-size:.86rem;font-weight:600;color:var(--tx);">'+m.name+'</div>';
-        out += '<div style="font-size:.68rem;color:var(--sub);">'+m.role+'</div>';
-        out += '<div style="font-size:.68rem;color:'+(has?'var(--grn)':'var(--red)')+';">'+(has?'&#10003; PIN set':'&#9888; No PIN')+'</div></div>';
-        out += '<div style="display:flex;gap:6px;align-items:center;">';
-        out += '<label style="font-size:.65rem;color:var(--sub);display:flex;align-items:center;gap:4px;"><input type="checkbox" onchange="toggleFinancialAccess(\'devboard\',\''+m.init+'\',this.checked)"'+(m.canEditFinancials?' checked':'')+'>Fin. Edit</label>';
-        out += '<button class="btn bo bsm" onclick="openChangePinModal(\'devboard\',\''+m.init+'\')">'+(has?'Change':'Set PIN')+'</button>';
-        out += '<button class="btn bsm" style="background:var(--rm);color:var(--red2);border:1px solid var(--red2);" onclick="openEditBoardUser(\'devboard\','+i+')">✏️</button>';
-        out += '<button class="btn bsm" style="background:var(--rm);color:var(--red2);border:1px solid var(--red2);" onclick="removeUser(\'devboard\','+i+')">✕</button>';
-        out += '</div></div>';
-      });
-      out += '</div>';
-    }
-    out += '<button class="btn br3 bsm" style="margin-top:8px;" onclick="openAddUser(\'devboard\')">+ Add Member</button>';
-    out += '</div>';
-
+    // ── ATHLETE PINs ──
     var portal = (D.roster||[]).filter(function(r){ return D.portalEnabled[r.init]; });
     var withPin = portal.filter(function(r){ return r.pin && r.pin.length>=4; });
     out += '<div style="padding:0 16px 6px;">';
-    out += '<div style="font-size:.63rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:6px;">Athlete PINs</div>';
+    out += '<div style="font-size:.63rem;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);font-weight:700;margin-bottom:6px;">Athlete Portal PINs</div>';
     out += '<div style="font-size:.72rem;color:var(--sub);margin-bottom:10px;">'+withPin.length+' / '+portal.length+' portal athletes have PINs</div>';
-    if (portal.length === 0) {
-      out += '<div style="font-size:.82rem;color:var(--sub);text-align:center;padding:16px;">No athletes in portal yet.</div>';
-    } else {
+    if (portal.length > 0) {
       out += '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;overflow:hidden;">';
-      portal.forEach(function(r,i) {
-        var has = r.pin && r.pin.length >= 4;
-        out += '<div style="padding:11px 14px;display:flex;align-items:center;justify-content:space-between;'+(i>0?'border-top:1px solid var(--b1);':'')+'">';
+      portal.forEach(function(r, ri) {
+        var hasP = r.pin && r.pin.length >= 4;
+        out += '<div style="padding:11px 14px;display:flex;align-items:center;justify-content:space-between;'+(ri>0?'border-top:1px solid var(--b1);':'')+'">';
         out += '<div style="display:flex;align-items:center;gap:10px;">';
         out += '<div style="width:34px;height:34px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;color:#fff;">'+r.init+'</div>';
         out += '<div><div style="font-size:.86rem;font-weight:600;color:var(--tx);">'+r.name+'</div>';
-        out += '<div style="font-size:.68rem;color:'+(has?'var(--grn)':'var(--red)')+';">'+(has?'&#10003; PIN set':'&#9888; No PIN yet')+'</div></div></div>';
-        out += chBtn('athlete',r.init,has?'Change':'Set PIN');
+        out += '<div style="display:flex;align-items:center;gap:6px;margin-top:2px;">';
+        out += '<span style="font-size:.68rem;color:'+(hasP?'var(--grn)':'var(--red2)')+';font-weight:700;">'+(hasP?'✓ PIN set':'⚠ No PIN')+'</span>';
+        if (hasP) {
+          out += '<span id="apin-'+ri+'" style="font-size:.75rem;font-family:monospace;cursor:pointer;color:var(--sub);background:var(--card2);padding:1px 7px;border-radius:5px;letter-spacing:.1em;" ' +
+            'onclick="togglePinReveal(\'apin-'+ri+'\',\''+r.pin+'\')" title="Click to reveal">••••</span>';
+        }
+        out += '</div></div></div>';
+        out += '<button class="btn bo bsm" onclick="openChangePinModal(\'athlete\',\''+r.init+'\')">'+( hasP?'Change':'Set PIN')+'</button>';
+        out += '<button class="btn bsm" style="background:var(--rm);color:var(--red2);border:1px solid var(--red2);margin-left:4px;" onclick="disableAthletePortal(\''+r.init+'\')" title="Remove from portal">✕</button>';
         out += '</div>';
       });
       out += '</div>';
     }
     out += '</div>';
+
   } else {
-    var myCoord = (D.coordinators||[]).find(function(c){ return cu && c.init===cu.init; });
-    if (myCoord) {
+    // Non-admin: show own PIN only
+    var me = (D.people||[]).find(function(p){ return D._currentUser && p.init===D._currentUser.init; });
+    if (me) {
       out += '<div style="padding:16px;">';
       out += '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;padding:16px;">';
-      out += '<div style="font-size:.95rem;font-weight:700;color:var(--tx);margin-bottom:4px;">'+myCoord.name+'</div>';
-      out += '<div style="font-size:.72rem;color:var(--sub);margin-bottom:14px;">'+myCoord.role+'</div>';
-      out += chBtn('coord',myCoord.init,'Change My PIN');
+      out += '<div style="font-size:.95rem;font-weight:700;color:var(--tx);margin-bottom:4px;">'+me.name+'</div>';
+      out += '<div style="font-size:.72rem;color:var(--sub);margin-bottom:14px;">'+(me.title||'')+'</div>';
+      out += '<button class="btn bo bsm" onclick="openChangePinModal(\'person\',\''+(D.people||[]).indexOf(me)+'\')">Change My PIN</button>';
       out += '</div></div>';
     }
   }
+
   out += '<div style="height:60px;"></div>';
   return out;
+}
+
+// Toggle PIN reveal
+function togglePinReveal(elId, pin) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  if (el.textContent === '••••') {
+    el.textContent = pin;
+    el.style.color = 'var(--tx)';
+    setTimeout(function(){ el.textContent = '••••'; el.style.color = 'var(--sub)'; }, 8000);
+  } else {
+    el.textContent = '••••';
+    el.style.color = 'var(--sub)';
+  }
+}
+
+
+// ── UNIFIED PEOPLE MANAGEMENT ──
+function openAddPerson() {
+  openMo('<div class="mt">Add Person</div>' +
+    '<div class="fg"><label class="fl">Full Name *</label><input class="fi" id="np-name" placeholder="First Last"></div>' +
+    '<div class="fg"><label class="fl">Title / Role Description</label><input class="fi" id="np-title" placeholder="e.g. Recruiting Coordinator"></div>' +
+    '<div class="fg"><label class="fl">PIN (4+ digits) *</label><input class="fi" id="np-pin" type="number" placeholder="e.g. 5678"></div>' +
+    '<div class="fg"><label class="fl">Roles (select all that apply)</label>' +
+    '<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">' +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;"><input type="checkbox" id="np-r-coord"> Recruiting Coordinator</label>' +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;"><input type="checkbox" id="np-r-board"> Board of Directors</label>' +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;"><input type="checkbox" id="np-r-devboard"> Development Board</label>' +
+    '</div></div>' +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;margin-bottom:12px;"><input type="checkbox" id="np-fin"> Can edit financials</label>' +
+    '<button class="btn br3 bf" onclick="saveAddPerson()">Add Person</button>');
+}
+function saveAddPerson() {
+  var name = (document.getElementById('np-name')||{}).value||'';
+  var pin  = (document.getElementById('np-pin')||{}).value||'';
+  if (!name.trim()) { toast('Name required'); return; }
+  if (!pin || pin.length < 4) { toast('PIN must be 4+ digits'); return; }
+  var roles = [];
+  if ((document.getElementById('np-r-coord')||{}).checked) roles.push('coordinator');
+  if ((document.getElementById('np-r-board')||{}).checked) roles.push('board');
+  if ((document.getElementById('np-r-devboard')||{}).checked) roles.push('devboard');
+  if (roles.includes('coordinator')) roles.push('advisor');
+  if (!roles.length) { toast('Select at least one role'); return; }
+  var init = name.trim().split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,3)||'??';
+  var base=init; var n=2;
+  while ((D.people||[]).some(function(p){return p.init===init;})) { init=base+n++; }
+  if (!D.people) D.people=[];
+  D.people.push({
+    name:name.trim(), init:init, pin:pin,
+    title:(document.getElementById('np-title')||{}).value||'',
+    roles:roles, canEditFinancials:!!(document.getElementById('np-fin')||{}).checked,
+    assignedAthletes:[]
+  });
+  saveAppData(); closeMo();
+  var body=document.getElementById('sec-body');
+  if (body) body.innerHTML=renderSecuritySettings();
+  toast(name.trim()+' added');
+}
+function openEditPerson(pi) {
+  _pendingUserIdx = pi;
+  var p=(D.people||[])[pi]; if(!p) return;
+  openMo('<div class="mt">Edit Person</div>' +
+    '<div class="fg"><label class="fl">Name</label><input class="fi" id="ep2-name" value="'+(p.name||'')+'"></div>' +
+    '<div class="fg"><label class="fl">Title</label><input class="fi" id="ep2-title" value="'+(p.title||'')+'"></div>' +
+    '<div class="fg"><label class="fl">Roles</label>' +
+    '<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">' +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;"><input type="checkbox" id="ep2-r-coord"'+((p.roles||[]).includes('coordinator')?' checked':'')+'>Recruiting Coordinator</label>' +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;"><input type="checkbox" id="ep2-r-board"'+((p.roles||[]).includes('board')?' checked':'')+'>Board of Directors</label>' +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;"><input type="checkbox" id="ep2-r-devboard"'+((p.roles||[]).includes('devboard')?' checked':'')+'>Development Board</label>' +
+    '</div></div>' +
+    '<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;margin-bottom:12px;"><input type="checkbox" id="ep2-fin"'+(p.canEditFinancials?' checked':'')+'>Can edit financials</label>' +
+    '<button class="btn br3 bf" onclick="saveEditPerson(_pendingUserIdx)">Save</button>');
+}
+function saveEditPerson(pi) {
+  var p=(D.people||[])[pi]; if(!p) return;
+  p.name  = (document.getElementById('ep2-name')||{}).value||p.name;
+  p.title = (document.getElementById('ep2-title')||{}).value||p.title;
+  var roles=[];
+  if ((document.getElementById('ep2-r-coord')||{}).checked) { roles.push('coordinator'); roles.push('advisor'); }
+  if ((document.getElementById('ep2-r-board')||{}).checked) roles.push('board');
+  if ((document.getElementById('ep2-r-devboard')||{}).checked) roles.push('devboard');
+  if (roles.length) p.roles=roles;
+  p.canEditFinancials=!!(document.getElementById('ep2-fin')||{}).checked;
+  saveAppData(); closeMo();
+  var body=document.getElementById('sec-body');
+  if (body) body.innerHTML=renderSecuritySettings();
+  toast('Updated');
+}
+function disableAthletePortal(init) {
+  var a = (D.roster||[]).find(function(r){ return r.init === init; });
+  if (!a) return;
+  if (!confirm('Remove ' + a.name + ' from the portal? Their PIN will be cleared.')) return;
+  D.portalEnabled[init] = false;
+  a.pin = '';
+  saveAppData();
+  var body = document.getElementById('sec-body');
+  if (body) body.innerHTML = renderSecuritySettings();
+  toast(a.name.split(' ')[0] + ' removed from portal');
+}
+function removePerson(pi) {
+  var p=(D.people||[])[pi]; if(!p) return;
+  if (!confirm('Remove '+p.name+'?')) return;
+  D.people.splice(pi,1);
+  saveAppData(); closeMo();
+  var body=document.getElementById('sec-body');
+  if (body) body.innerHTML=renderSecuritySettings();
+  toast('Removed');
+}
+function togglePersonFinancials(pi, val) {
+  var p=(D.people||[])[pi]; if(!p) return;
+  p.canEditFinancials=val;
+  saveAppData();
+  toast(val?'Financial edit enabled':'Financial edit removed');
 }
 
 // ── USER MANAGEMENT CRUD ──
@@ -9484,7 +9934,10 @@ var _pinType = '', _pinInit = '';
 function openChangePinModal(type, init) {
   _pinType = type; _pinInit = init;
   var label = '';
-  if (type==='board') label = ((D.boardMembers||[]).find(function(m){return m.init===init;})||{}).name || 'Board Member';
+  if (type==='person') {
+    var pi2 = parseInt(init);
+    label = ((D.people||[])[pi2]||{}).name || 'Person';
+  } else if (type==='board') label = ((D.boardMembers||[]).find(function(m){return m.init===init;})||{}).name || 'Board Member';
   else if (type==='advisor') label = ((D.collegeAdvisors||[]).find(function(m){return m.init===init;})||{}).name || 'Advisor';
   else if (type==='devboard') label = ((D.devBoardMembers||[]).find(function(m){return m.init===init;})||{}).name || 'Dev Board';
   else if (type==='admin') label = 'Admin';
@@ -9499,14 +9952,19 @@ function saveChangedPin(type, init) {
   var pin = ((document.getElementById('cpm-pin')||{}).value||'').trim();
   if (!pin || pin.length < 4) { toast('PIN must be 4+ digits'); return; }
   if (!/^\d+$/.test(pin)) { toast('Numbers only'); return; }
-  var arr = _getArray(type);
   if (type==='admin') {
     if (!D.config) D.config = {};
     D.config.adminPin = pin;
   } else if (type==='athlete') {
     var a = (D.roster||[]).find(function(r){return r.init===init;});
     if (a) a.pin = pin;
+  } else if (type==='person') {
+    // init is the array index for D.people
+    var pi = parseInt(init);
+    var p = (D.people||[])[pi];
+    if (p) p.pin = pin;
   } else {
+    var arr = _getArray(type);
     var m = arr.find(function(x){return x.init===init;});
     if (m) m.pin = pin;
   }
@@ -9963,6 +10421,7 @@ function renderAthProfile() {
     ['Position', p.position||'—'],
     ['Graduation', p.grad||'—'],
     ['GPA', p.gpa||'—'],
+    ['Desired Major', p.desiredMajor||'—'],
     ['Email', p.email||'—'],
     ['60-Yard Dash', p.dash60||'—'],
     ['Batting Avg', p.battingAvg||'—'],
@@ -10005,6 +10464,7 @@ function openEditAthProfile() {
     '<div class="fg"><label class="fl">Batting Average</label><input class="fi" id="ep-av" placeholder="e.g. .342" value="' + (p.battingAvg||'') + '"></div>' +
     '<div class="fg"><label class="fl">Highlight Reel URL</label><input class="fi" id="ep-vd" placeholder="YouTube or Hudl link" value="' + (p.video||'') + '"></div>' +
     '<div class="fg"><label class="fl">Email</label><input class="fi" id="ep-em" type="email" placeholder="your@email.com" value="' + (p.email||'') + '"></div>' +
+    '<div class="fg"><label class="fl">Desired Major</label><input class="fi" id="ep-major" placeholder="e.g. Business Administration" value="' + (p.desiredMajor||'') + '"></div>' +
     '<div class="fg"><label class="fl">About Me</label><textarea class="fi" id="ep-bi" style="resize:none;" placeholder="Write your bio here...">' + (p.bio||'') + '</textarea></div>' +
     '<button class="btn br3 bf" onclick="saveAthProfile()">Save Profile</button>');
 }
@@ -10020,6 +10480,7 @@ function saveAthProfile() {
   D.athProfile.video       = (document.getElementById('ep-vd')||{}).value || D.athProfile.video     || '';
   D.athProfile.bio         = (document.getElementById('ep-bi')||{}).value || D.athProfile.bio       || '';
   D.athProfile.email       = (document.getElementById('ep-em')||{}).value || D.athProfile.email     || '';
+  D.athProfile.desiredMajor = (document.getElementById('ep-major')||{}).value || D.athProfile.desiredMajor || '';
   // Sync key fields back to roster entry so admin view stays current
   var init = D._currentAthInit;
   if (init) {
@@ -10421,24 +10882,30 @@ function renderColleges() {
 }
 
 function recalcFitAll() {
-  // Recalculates fit for all athletes using current engine — no API calls
-  var count = 0;
+  // Recalculates fit for ALL athletes — pure math on stored profiles, no API calls
+  var athletes = 0, profiles = 0;
   Object.keys(D.playerColleges||{}).forEach(function(init) {
     var colleges = D.playerColleges[init] || [];
     var athlete = D.roster.find(function(r){ return r.init === init; });
     if (!athlete) return;
+    athletes++;
     colleges.forEach(function(c) {
-      if (c.profile) count++;
-      // fit is computed live from calcCollegeFit — no stored fit tag to update
-      // just ensure profileError is cleared if profile exists
-      if (c.profile && c.profileError) c.profileError = null;
+      if (c.profile) {
+        profiles++;
+        if (c.profileError) c.profileError = null; // clear stale errors on loaded profiles
+      }
     });
   });
   saveAppData();
-  // Re-render current view
-  var body = document.getElementById('asec-body') || document.getElementById('sec-body');
-  if (body && (curASec === 'colleges' || curSec === 'roster')) body.innerHTML = renderColleges();
-  toast('Fit recalculated for ' + count + ' school profiles ✓');
+  // Re-render whatever is currently open
+  var admBody = document.getElementById('vp-body');
+  var athBody = document.getElementById('asec-body');
+  if (admBody && D._playerIdx !== undefined) {
+    var a = D.roster[D._playerIdx];
+    if (a) admBody.innerHTML = renderPlayerColleges(D._playerIdx, a);
+  }
+  if (athBody) athBody.innerHTML = renderColleges();
+  toast('✓ Fit recalculated — ' + athletes + ' athletes, ' + profiles + ' school profiles');
 }
 function athUpdateCollegeStatus(i, val) {
   var athInit = D._currentAthInit || '';
@@ -11195,6 +11662,7 @@ function setFontSize(size, silent) {
 
 document.addEventListener('DOMContentLoaded', function(){
   loadAppData();
+  if (!D.people || D.people.length === 0) migrateToPeople();
   // Pull from cloud on startup — silently merges if cloud is newer
   setTimeout(function(){ syncPull(function(updated){
     if (updated) {
