@@ -4639,6 +4639,74 @@ function spqRestore() {
   } catch(e) { console.warn('SPQ restore failed:', e); }
 }
 
+// ── GLOBAL FIT REFRESH CONTROLS ──
+function refreshAllProfiles(forceRefetch) {
+  // Queue ALL college profiles across ALL active athletes for reload
+  var active = D.roster.filter(function(r){ return r.status === 'Active' || r.status === 'Committed'; });
+  var queued = 0;
+  active.forEach(function(a) {
+    var playerIdx = D.roster.indexOf(a);
+    var colleges = D.playerColleges[a.init] || [];
+    colleges.forEach(function(c, ci) {
+      if (forceRefetch) {
+        // Force re-fetch: clear profile and error so queue picks it up
+        c.profile = null;
+        c.profileLoading = false;
+        c.profileError = null;
+      }
+      if (!c.profile) {
+        var already = _spq.items.some(function(x){ return x.playerIdx===playerIdx && x.collegeIdx===ci && x.init===a.init; });
+        if (!already) {
+          _spq.items.push({playerIdx:playerIdx, init:a.init, collegeIdx:ci});
+          queued++;
+        }
+      }
+    });
+  });
+  if (forceRefetch) saveAppData();
+  if (queued === 0) { toast('All profiles already loaded'); return; }
+  spqRun();
+  toast('Queued ' + queued + ' profile' + (queued>1?'s':'') + ' for ' + (forceRefetch?'re-fetch':'load') + '...');
+}
+
+function refreshAllFit() {
+  // Recalculate fit scores for all athletes instantly (no API call — uses existing profiles)
+  // This just triggers a re-render of whichever athlete's college list is open
+  var body = document.getElementById('asec-body');
+  if (body && typeof renderColleges === 'function') {
+    body.innerHTML = renderColleges();
+    toast('Fit scores recalculated');
+  } else {
+    toast('Open an athlete college list to recalculate');
+  }
+}
+
+function refreshSingleAthleteProfiles(forceRefetch) {
+  // Refresh profiles for current athlete only
+  var init = D._currentAthInit;
+  if (!init) { toast('No athlete selected'); return; }
+  var playerIdx = D.roster.findIndex(function(r){ return r.init === init; });
+  var colleges = D.playerColleges[init] || [];
+  var queued = 0;
+  colleges.forEach(function(c, ci) {
+    if (forceRefetch) {
+      c.profile = null;
+      c.profileLoading = false;
+      c.profileError = null;
+    }
+    if (!c.profile) {
+      var already = _spq.items.some(function(x){ return x.playerIdx===playerIdx && x.collegeIdx===ci && x.init===init; });
+      if (!already) { _spq.items.push({playerIdx:playerIdx, init:init, collegeIdx:ci}); queued++; }
+    }
+  });
+  if (forceRefetch) saveAppData();
+  if (queued === 0) { toast('All profiles loaded for this athlete'); return; }
+  spqRun();
+  var body = document.getElementById('asec-body');
+  if (body) body.innerHTML = renderColleges();
+  toast('Queued ' + queued + ' profile refresh' + (queued>1?'es':'') + '...');
+}
+
 function spqEnqueue(playerIdx, init) {
   var colleges = D.playerColleges[init] || [];
   colleges.forEach(function(c, ci) {
@@ -5141,165 +5209,73 @@ function sendToDocAI(playerIdx, fileIdx) {
 
 
 function calcCollegeFit(a, college) {
-  // Returns {tag:'Reach'|'Fit'|'Safety'|'Conflict', score:0-100, reasons:[], warnings:[]}
+  // Single source of truth for fit — purely academic + athletic + financial
+  // Status/recruiting stage do NOT affect fit
   if (!college) return {tag:'Unknown', score:50, reasons:[], warnings:[]};
-  var tag = 'Fit';
-  var score = 50;
-  var reasons = [];
+
+  var profile = college.profile || null;
+
+  // Run the three fit engines
+  var acResult  = calcAcademicFitTag(a, profile);
+  var athResult = calcAthleticFitTag(a, profile);
+  var finResult = calcFinancialFitTag(a, profile);
+
+  // Combine: worst of AC + ATH drives overall (financial is advisory)
+  var order = {Conflict:0, Reach:1, Unknown:1, Fit:2, Safety:3};
+  var tags = [acResult.tag, athResult.tag];
+  tags.sort(function(a,b){ return order[a] - order[b]; });
+  var combined = tags[0]; // worst tag wins
+
+  // Financial can pull Safety down to Fit if Conflict/Reach, or boost to Safety if both AC+ATH are Safety
+  if (combined === 'Safety' && finResult.tag === 'Reach') combined = 'Fit';
+  if (combined === 'Safety' && finResult.tag === 'Conflict') combined = 'Reach';
+  if (combined === 'Fit' && finResult.tag === 'Safety' && acResult.tag === 'Safety' && athResult.tag === 'Safety') combined = 'Safety';
+
+  // Score for sorting (0-100)
+  var scoreMap = {Conflict:10, Reach:30, Unknown:30, Fit:60, Safety:85};
+  var score = scoreMap[combined] || 50;
+
+  var reasons  = [].concat(acResult.reasons||[]).concat(athResult.reasons||[]).concat(finResult.reasons||[]);
   var warnings = [];
+  if (acResult.tag  === 'Unknown') warnings.push('AC: ' + (acResult.reasons||['No academic data'])[0]);
+  if (athResult.tag === 'Unknown') warnings.push('ATH: ' + (athResult.reasons||['No athletic data'])[0]);
 
-  var gpa = parseFloat(a.gpa) || 0;
-  var div = (college.division || '').toUpperCase();
-  var status = college.status || 'Target';
-  var stage = a.recruitStage || '';
-
-  // ── GPA vs Division benchmarks ──
-  var gpaMin = {D1:3.0, D2:2.5, D3:2.5, NAIA:2.3, JUCO:2.0, 'JUCO D1':2.3, 'JUCO D2':2.0, 'JUCO D3':2.0, 'PREP SCHOOL':2.0};
-  var gpaIdeal = {D1:3.4, D2:3.0, D3:3.3, NAIA:2.8, JUCO:2.5, 'JUCO D1':2.5, 'JUCO D2':2.2, 'JUCO D3':2.0, 'PREP SCHOOL':2.5};
-  var divMin = gpaMin[div] || 2.0;
-  var divIdeal = gpaIdeal[div] || 2.5;
-
-  if (gpa > 0) {
-    if (gpa >= divIdeal + 0.3) {
-      score += 20;
-      reasons.push('GPA (' + gpa + ') is strong for ' + div);
-    } else if (gpa >= divMin) {
-      score += 10;
-      reasons.push('GPA (' + gpa + ') meets ' + div + ' standards');
-    } else if (gpa > 0 && gpa < divMin) {
-      score -= 25;
-      warnings.push('GPA (' + gpa + ') is below typical ' + div + ' minimum (' + divMin + ')');
-    }
-  }
-
-  // ── Recruiting stage vs Division ──
-  var stageScore = {
-    '':0, 'Early':1, 'Building List':2, 'In Contact':3,
-    'Visit/Showcase':4, 'Offer/Commit':5, 'Committed':6
-  };
-  var stageVal = stageScore[stage] || 0;
-
-  if (div === 'D1') {
-    if (stageVal >= 4) { score += 20; reasons.push('Active D1 recruiting contact'); }
-    else if (stageVal >= 3) { score += 10; reasons.push('In contact with D1 programs'); }
-    else { score -= 15; warnings.push('No D1 recruiting contact yet — high risk'); }
-  } else if (div === 'D2') {
-    if (stageVal >= 3) { score += 15; reasons.push('Good D2 recruiting progress'); }
-    else if (stageVal >= 2) { score += 5; }
-    else { score -= 8; warnings.push('Limited D2 contact so far'); }
-  } else if (div === 'D3' || div === 'NAIA') {
-    if (stageVal >= 2) { score += 15; reasons.push('D3/NAIA is realistic with current activity'); }
-    else { score += 5; }
-  } else if (div === 'JUCO') {
-    score += 10;
-    reasons.push('JUCO is accessible with current profile');
-  }
-
-  // ── College list status bonus ──
-  if (status === 'Offer' || status === 'Committed') {
-    score += 30;
-    reasons.push('Already has offer from this school');
-  } else if (status === 'Visit') {
-    score += 20;
-    reasons.push('Campus visit shows real interest');
-  } else if (status === 'In Contact') {
-    score += 10;
-    reasons.push('Active communication with program');
-  }
-
-  // ── Financial fit ──
-  // Check financial aid from D.acct if available
-  var totalSpend = 0;
-  if (D.acct && D.acct.ledger) {
-    D.acct.ledger.forEach(function(t) {
-      if (t.athlete && a.name && t.athlete.toLowerCase().indexOf(a.name.split(' ')[0].toLowerCase()) >= 0) {
-        if (t.amt < 0) totalSpend += Math.abs(t.amt);
-      }
-    });
-  }
-
-  // D3 typically no athletic scholarships — flag if financially needy
-  if (div === 'D3' && totalSpend > 0) {
-    warnings.push('D3 schools offer no athletic scholarships — financial aid only');
-  }
-
-  // ── Stored requirements check ──
-  if (college.requirements) {
-    var req = college.requirements.toLowerCase();
-    // Extract GPA requirement if mentioned
-    var gpaMatch = req.match(/minimum gpa[:\s]+([0-9.]+)/);
-    if (!gpaMatch) gpaMatch = req.match(/gpa[\s]+of[\s]+([0-9.]+)/);
-    if (!gpaMatch) gpaMatch = req.match(/([0-9.]+)[\s]+gpa/);
-    if (gpaMatch) {
-      var reqGpa = parseFloat(gpaMatch[1]);
-      if (reqGpa > 0 && gpa > 0) {
-        if (gpa >= reqGpa + 0.3) {
-          score += 15;
-          reasons.push('GPA exceeds ' + college.school + ' minimum (' + reqGpa + ')');
-        } else if (gpa >= reqGpa) {
-          score += 5;
-          reasons.push('GPA meets ' + college.school + ' minimum (' + reqGpa + ')');
-        } else {
-          score -= 20;
-          warnings.push('GPA (' + gpa + ') below ' + college.school + ' minimum (' + reqGpa + ') — actual requirement');
-        }
-      }
-    }
-    // No athletic scholarship warning for D3
-    if (req.indexOf('no athletic scholarship') >= 0 || (div === 'D3' && req.indexOf('need-based') >= 0)) {
-      warnings.push(college.school + ' offers no athletic scholarships — financial aid only');
-    }
-  }
-
-  // ── Grad year urgency ──
-  var gradYear = parseInt(a.grad) || 0;
-  var currentYear = new Date().getFullYear();
-  var yearsOut = gradYear - currentYear;
-  if (gradYear > 0) {
-    var currentYear = new Date().getFullYear();
-    var yearsOut2 = gradYear - currentYear;
-    // Note: gap year athletes may have graduated but still be actively recruiting - don't penalize
-    if (yearsOut2 === 1 && stageVal < 3) { warnings.push('Graduating in ' + gradYear + ' — step up D1 contact now'); }
-  }
-
-  // ── Final tag ──
-  score = Math.max(0, Math.min(100, score));
-  if (score >= 65) tag = 'Safety';
-  else if (score >= 40) tag = 'Fit';
-  else tag = 'Reach';
-
-  // Override: if offer exists, always Safety
-  if (status === 'Offer' || status === 'Committed') tag = 'Safety';
-  // Override: D1 with no contact and low GPA = Reach
-  if (div === 'D1' && stageVal < 3 && gpa < 3.0) tag = 'Reach';
-
-  return {tag: tag, score: score, reasons: reasons, warnings: warnings};
+  return {tag:combined, score:score, reasons:reasons, warnings:warnings,
+          acTag:acResult.tag, athTag:athResult.tag, finTag:finResult.tag};
 }
+
 
 function getFitSummary(a, colleges) {
   if (!colleges || colleges.length === 0) return null;
   var gpa = parseFloat(a.gpa) || 0;
-  var stage = a.recruitStage || '';
-  var stageScore = {'':0,'Early':1,'Building List':2,'In Contact':3,'Visit/Showcase':4,'Offer/Commit':5,'Committed':6};
-  var stageVal = stageScore[stage] || 0;
 
-  var reaches = colleges.filter(function(c){ return calcCollegeFit(a,c).tag==='Reach'; });
-  var fits    = colleges.filter(function(c){ return calcCollegeFit(a,c).tag==='Fit'; });
-  var safetys = colleges.filter(function(c){ return calcCollegeFit(a,c).tag==='Safety'; });
+  var fitResults = colleges.map(function(c){ return calcCollegeFit(a,c); });
+  var reaches = colleges.filter(function(c,i){ return fitResults[i].tag==='Reach'; });
+  var fits    = colleges.filter(function(c,i){ return fitResults[i].tag==='Fit'; });
+  var safetys = colleges.filter(function(c,i){ return fitResults[i].tag==='Safety'; });
+  var conflicts= colleges.filter(function(c,i){ return fitResults[i].tag==='Conflict'; });
+  var unknowns = colleges.filter(function(c,i){ return fitResults[i].tag==='Unknown'; });
 
   var lines = [];
   var alerts = [];
 
-  // Honest overall assessment
-  if (gpa >= 3.3 && stageVal >= 3) {
-    lines.push(a.name.split(' ')[0] + ' has a strong profile for D1/D2 programs.');
-  } else if (gpa >= 2.5 && stageVal >= 2) {
-    lines.push(a.name.split(' ')[0] + ' is a realistic D2/D3 candidate based on current GPA and recruiting activity.');
+  // Narrative based purely on fit results
+  var total = colleges.length;
+  var scored = reaches.length + fits.length + safetys.length + conflicts.length;
+  if (unknowns.length === total) {
+    lines.push('No school profiles loaded yet — fit cannot be calculated.');
+  } else if (conflicts.length > 0 && fits.length + safetys.length === 0) {
+    lines.push(a.name.split(' ')[0] + ' has conflicts with all evaluated schools — academic or athletic requirements not met.');
+    alerts.push('All ' + conflicts.length + ' evaluated schools show conflicts');
+  } else if (safetys.length >= 2 && fits.length >= 1) {
+    lines.push(a.name.split(' ')[0] + ' has a well-balanced list with ' + safetys.length + ' safety' + (safetys.length>1?'s':'') + ' and ' + fits.length + ' fit' + (fits.length>1?'s':'') + '.');
   } else if (gpa > 0 && gpa < 2.5) {
-    lines.push('GPA of ' + gpa + ' is below D1/D2 minimums. D3, NAIA, or JUCO are most realistic at this stage.');
+    lines.push('GPA of ' + gpa + ' is below D1/D2 minimums — D3, NAIA, or JUCO are most realistic.');
     alerts.push('GPA needs improvement to open D1/D2 doors');
+  } else if (scored > 0) {
+    lines.push(a.name.split(' ')[0] + '’s list: ' + conflicts.length + ' conflict, ' + reaches.length + ' reach, ' + fits.length + ' fit, ' + safetys.length + ' safety.');
   } else {
-    lines.push('More recruiting activity and academic data needed for an accurate assessment.');
+    lines.push('Load school profiles to calculate fit for each program on the list.');
   }
 
   if (reaches.length > 0 && fits.length === 0 && safetys.length === 0) {
@@ -5339,6 +5315,8 @@ function renderPlayerColleges(idx, a) {
     '<div style="display:flex;gap:6px;">' +
     (unloaded > 0 ? '<button class="btn br3 bsm" style="background:var(--rm);color:var(--red2);border:1px solid rgba(231,76,60,.3);" onclick="spqEnqueue('+idx+',\''+(a.init)+'\');playerTab(\'colleges\');toast(\'Loading '+unloaded+' profile'+(unloaded>1?'s':'')+' — one at a time...\')">↺ Load All</button>' : '') +
     '<button class="btn br3 bsm" onclick="openAddCollegeToPlayer('+idx+')">+ Add</button>' +
+    '<button class="btn br3 bsm" onclick="refreshSingleAthleteProfiles(false)" title="Load missing profiles">&#8635; Profiles</button>' +
+    '<button class="btn br3 bsm" style="background:rgba(231,76,60,.1);color:var(--red2);border:1px solid rgba(231,76,60,.3);" onclick="refreshSingleAthleteProfiles(true)" title="Force re-fetch all profiles">&#8635; Re-fetch</button>' +
     '</div></div>';
 
   // AI import banner
@@ -5400,10 +5378,11 @@ function renderPlayerColleges(idx, a) {
       divGroups[div].forEach(function(c, ci) {
         var realIdx = colleges.indexOf(c);
         var col = statusColors[c.status]||'var(--sub)';
-        // Profile-based fit
-        var acFit = c.profile ? calcAcademicFitTag(a, c.profile) : {tag:'Loading', reasons:[]};
-        var athFit = c.profile ? calcAthleticFitTag(a, c.profile) : {tag:'Loading', reasons:[]};
-        var combined = c.profile ? calcCombinedTag(acFit.tag, athFit.tag) : (c.profileLoading ? 'Loading' : 'Unknown');
+        // Profile-based fit — single source of truth
+        var fitR2   = calcCollegeFit(a, c);
+        var combined = c.profileLoading ? 'Loading' : fitR2.tag;
+        var acFit   = {tag: fitR2.acTag  || (c.profile ? 'Unknown' : (c.profileLoading ? 'Loading' : 'Unknown')), reasons:[]};
+        var athFit  = {tag: fitR2.athTag || (c.profile ? 'Unknown' : (c.profileLoading ? 'Loading' : 'Unknown')), reasons:[]};
         var tagColors2 = {Conflict:'#e74c3c', Reach:'#ff9500', Fit:'var(--blu)', Safety:'var(--grn)', Loading:'var(--sub)', Unknown:'var(--sub)'};
         var tagBgs2 = {Conflict:'rgba(231,76,60,.1)', Reach:'rgba(255,149,0,.1)', Fit:'rgba(52,152,219,.1)', Safety:'rgba(39,174,96,.1)', Loading:'var(--card2)', Unknown:'var(--card2)'};
         var cardBorder = combined==='Conflict' ? '1px solid rgba(231,76,60,.3)' : combined==='Reach' ? '1px solid rgba(255,149,0,.2)' : '1px solid var(--b1)';
@@ -5521,20 +5500,97 @@ function saveAddCollege(idx) {
 
 
 function calcAcademicFitTag(a, profile) {
-  if (!profile || !profile.academics) return {tag:'Unknown', reasons:[]};
   var gpa = parseFloat(a.gpa) || 0;
+
+  // No profile at all
+  if (!profile) return {tag:'Unknown', reasons:['No school profile loaded yet']};
+
+  // Profile loaded but no academics block
+  if (!profile.academics) {
+    // Fall back to division-level defaults
+    var divDefaults = {
+      'D1':3.0, 'D2':2.5, 'D3':2.5, 'NAIA':2.3,
+      'JUCO':2.0, 'JUCO D1':2.3, 'JUCO D2':2.0, 'JUCO D3':2.0
+    };
+    var div = (profile.division||'').toUpperCase().trim();
+    var defMin = divDefaults[div];
+    if (!defMin) return {tag:'Unknown', reasons:['No academic data returned for this school — verify manually']};
+    if (gpa <= 0) return {tag:'Unknown', reasons:['No GPA on file — enter GPA in athlete profile']};
+    if (gpa < defMin) return {tag:'Conflict', reasons:['GPA '+gpa+' is below typical '+div+' minimum ('+defMin+') — using division defaults, no school-specific data']};
+    if (gpa >= defMin + 0.5) return {tag:'Safety', reasons:['GPA '+gpa+' is well above '+div+' floor ('+defMin+') — using division defaults']};
+    return {tag:'Fit', reasons:['GPA '+gpa+' is above '+div+' floor ('+defMin+') — using division defaults, no school-specific data']};
+  }
+
+  // Profile has academics block
   var gpaMin = parseFloat(profile.academics.gpa_min) || 0;
   var gpaAvg = parseFloat(profile.academics.gpa_avg) || 0;
+
+  // Explicit conflicts from profile
   var conflicts = (profile.conflicts||[]).filter(function(c){return c.type==='academic';});
-  var hasConflict = conflicts.some(function(c){return c.severity==='conflict';});
-  if (hasConflict) return {tag:'Conflict', reasons: conflicts.map(function(c){return c.message;})};
-  if (gpa > 0 && gpaMin > 0) {
-    if (gpa < gpaMin) return {tag:'Conflict', reasons:['GPA '+gpa+' is below '+profile.division+' minimum of '+gpaMin]};
-    if (gpaAvg > 0 && gpa >= gpaAvg - 0.1) return {tag:'Safety', reasons:['GPA meets or exceeds avg admitted student']};
-    if (gpa >= gpaMin + 0.3) return {tag:'Fit', reasons:['GPA above minimum']};
-    return {tag:'Reach', reasons:['GPA close to minimum — limited buffer']};
+  if (conflicts.some(function(c){return c.severity==='conflict';})) {
+    return {tag:'Conflict', reasons: conflicts.map(function(c){return c.message;})};
   }
-  return {tag:'Fit', reasons:['Academic profile appears compatible']};
+
+  // No GPA data in profile despite having academics block
+  if (gpaMin === 0 && gpaAvg === 0) {
+    if (gpa <= 0) return {tag:'Unknown', reasons:['No GPA data from school or athlete — enter athlete GPA and retry profile']};
+    // Use division defaults as fallback
+    var divDef2 = {'D1':3.0,'D2':2.5,'D3':2.5,'NAIA':2.3,'JUCO':2.0,'JUCO D1':2.3,'JUCO D2':2.0};
+    var div2 = (profile.division||'').toUpperCase().trim();
+    var defMin2 = divDef2[div2] || 2.0;
+    if (gpa < defMin2) return {tag:'Conflict', reasons:['GPA '+gpa+' below typical '+div2+' minimum — school-specific data unavailable, using division defaults']};
+    return {tag:'Unknown', reasons:['School GPA data not available — profile loaded but no min/avg returned. Verify manually.']};
+  }
+
+  // No athlete GPA
+  if (gpa <= 0) return {tag:'Unknown', reasons:['No GPA on file — enter GPA in athlete profile for accurate academic fit']};
+
+  // Full calculation with real school data
+  if (gpa < gpaMin) return {tag:'Conflict', reasons:['GPA '+gpa+' is below '+profile.division+' minimum of '+gpaMin]};
+  if (gpaAvg > 0 && gpa >= gpaAvg - 0.1) return {tag:'Safety', reasons:['GPA '+gpa+' meets or exceeds average admitted student ('+gpaAvg+')']};
+  if (gpa >= gpaMin + 0.3) return {tag:'Fit', reasons:['GPA '+gpa+' comfortably above minimum ('+gpaMin+')']};
+  return {tag:'Reach', reasons:['GPA '+gpa+' is close to minimum ('+gpaMin+') — limited buffer']};
+}
+
+function calcFinancialFitTag(a, profile) {
+  // Returns {tag:'Safety'|'Fit'|'Reach'|'Conflict'|'Unknown', reasons:[]}
+  if (!profile || !profile.financials) return {tag:'Unknown', reasons:['No financial data available for this school']};
+
+  var f = profile.financials;
+  var schType = (f.athletic_scholarship||'').toLowerCase(); // 'full', 'partial', 'none'
+  var avgAid   = parseFloat(f.avg_athletic_aid) || 0;
+  var outCost  = parseFloat(f.outstate_total)   || 0;
+  var inCost   = parseFloat(f.instate_total)    || 0;
+  var cost = outCost || inCost || 0;
+
+  if (!schType && !avgAid && !cost) return {tag:'Unknown', reasons:['No financial data returned for this school']};
+
+  var score = 0;
+  var reasons = [];
+
+  // Scholarship availability
+  if (schType === 'full') { score += 3; reasons.push('Full athletic scholarships available'); }
+  else if (schType === 'partial') { score += 2; reasons.push('Partial athletic scholarships available'); }
+  else if (schType === 'none') { score -= 1; reasons.push('No athletic scholarships (academic aid only)'); }
+
+  // Avg aid vs cost
+  if (avgAid > 0 && cost > 0) {
+    var aidPct = avgAid / cost;
+    if (aidPct >= 0.5)       { score += 2; reasons.push('Avg aid covers ' + Math.round(aidPct*100) + '% of cost'); }
+    else if (aidPct >= 0.25) { score += 1; reasons.push('Avg aid covers ' + Math.round(aidPct*100) + '% of cost'); }
+    else                     { score -= 1; reasons.push('Avg aid covers only ' + Math.round(aidPct*100) + '% of cost'); }
+  }
+
+  // Raw cost as context (not penalized — just informational in reasons)
+  if (cost > 0) {
+    var costLabel = '$' + Math.round(cost/1000) + 'k/yr';
+    reasons.push('Cost of attendance: ' + costLabel);
+  }
+
+  if (score >= 4) return {tag:'Safety',   reasons:reasons};
+  if (score >= 2) return {tag:'Fit',      reasons:reasons};
+  if (score >= 0) return {tag:'Reach',    reasons:reasons};
+  return              {tag:'Conflict',    reasons:reasons};
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -5656,17 +5712,9 @@ function calcAthleticFitTag(a, profile) {
   var tier    = divisionToTier(div);
   var posGroup= athletePositionGroup(a);
 
-  // If we can't determine position, flag it clearly so admin knows
+  // Position not set — can't run athletic benchmarks
   if (!posGroup) {
-    var stageScore = {'':0,'Early':1,'Building List':2,'In Contact':3,'Visit/Showcase':4,'Offer/Commit':5,'Committed':6};
-    var sv = stageScore[a.recruitStage||'']||0;
-    var d  = (profile.division||'').toUpperCase();
-    if (d==='D1' && sv<2) return {tag:'Conflict', reasons:['No D1 recruiting contact']};
-    if (d==='D1' && sv<3) return {tag:'Reach',    reasons:['Limited D1 contact']};
-    if (d==='D1' && sv>=4)return {tag:'Fit',      reasons:['Active D1 recruiting']};
-    if (d==='D2' && sv>=3) return {tag:'Fit',     reasons:['Good D2 recruiting activity']};
-    if (d==='D2')          return {tag:'Reach',   reasons:['Limited D2 contact']};
-    return {tag:'Fit', reasons:[]};
+    return {tag:'Unknown', reasons:['Position not set — enter position in athlete profile to calculate athletic fit']};
   }
 
   // Find position benchmarks
@@ -5721,13 +5769,15 @@ function calcAthleticFitTag(a, profile) {
     }
   }
 
-  // No measurables — fall back to recruiting stage
+  // No measurables — show Unknown with clear explanation
   if (checks === 0) {
-    var stageScore2 = {'':0,'Early':1,'Building List':2,'In Contact':3,'Visit/Showcase':4,'Offer/Commit':5,'Committed':6};
-    var sv2 = stageScore2[a.recruitStage||'']||0;
-    if ((tier==='elite_d1'||tier==='mid_d1') && sv2<3) return {tag:'Reach', reasons:['No measurables — limited recruiting contact for this level']};
-    if ((tier==='elite_d1') && sv2>=4) return {tag:'Fit', reasons:['Active D1 recruiting process']};
-    return {tag:'Unknown', reasons:['Position not set — enter position in Measurables for accurate fit']};
+    var missingFields = [];
+    if (!m.sixty && !m.fbVelo) missingFields.push('60 time or FB velo');
+    if (!m.exitVelo) missingFields.push('exit velocity');
+    var whyMsg = missingFields.length > 0
+      ? 'Missing: ' + missingFields.join(', ') + '. Enter measurables for accurate athletic fit.'
+      : 'No measurables on file — enter stats in Measurables tab for accurate athletic fit.';
+    return {tag:'Unknown', reasons:[whyMsg]};
   }
 
   if (conflicts.length > 0) return {tag:'Conflict', reasons:conflicts.concat(warnings)};
@@ -5873,9 +5923,11 @@ function openSchoolProfile(playerIdx, collegeIdx) {
   if (!college) return;
   if (!college.profile) { toast('Profile still loading...'); return; }
   var p = college.profile;
-  var acFit = calcAcademicFitTag(a, p);
-  var athFit = calcAthleticFitTag(a, p);
-  var combined = calcCombinedTag(acFit.tag, athFit.tag);
+  var fitResult = calcCollegeFit(a, college);
+  var combined  = fitResult.tag;
+  var acFit     = {tag: fitResult.acTag  || 'Unknown', reasons: fitResult.reasons||[]};
+  var athFit    = {tag: fitResult.athTag || 'Unknown', reasons: fitResult.reasons||[]};
+  var finFit    = {tag: fitResult.finTag || 'Unknown', reasons: fitResult.reasons||[]};
   var tagColors = {Conflict:'#e74c3c', Reach:'#ff9500', Fit:'var(--blu)', Safety:'var(--grn)', Unknown:'var(--sub)'};
   var tagBgs = {Conflict:'rgba(231,76,60,.12)', Reach:'rgba(255,149,0,.12)', Fit:'rgba(52,152,219,.12)', Safety:'rgba(39,174,96,.12)', Unknown:'var(--card2)'};
 
@@ -5885,11 +5937,20 @@ function openSchoolProfile(playerIdx, collegeIdx) {
     // Combined fit badge
     '<div style="display:flex;gap:8px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--b1);">' +
     '<div style="flex:1;text-align:center;padding:10px;background:'+tagBgs[acFit.tag]+';border-radius:10px;">' +
-    '<div style="font-size:.6rem;color:var(--sub);font-weight:700;text-transform:uppercase;margin-bottom:3px;">Academic</div>' +
-    '<div style="font-size:.9rem;font-weight:800;color:'+tagColors[acFit.tag]+'">'+acFit.tag+'</div></div>' +
+    '<div style="font-size:.6rem;color:var(--sub);font-weight:700;text-transform:uppercase;margin-bottom:3px;">📚 Academic</div>' +
+    '<div style="font-size:.9rem;font-weight:800;color:'+tagColors[acFit.tag]+'">'+acFit.tag+'</div>' +
+    (acFit.tag==='Unknown'&&acFit.reasons&&acFit.reasons[0]?'<div style="font-size:.6rem;color:var(--sub);margin-top:3px;line-height:1.3;">'+acFit.reasons[0]+'</div>':'')+
+    '</div>' +
     '<div style="flex:1;text-align:center;padding:10px;background:'+tagBgs[athFit.tag]+';border-radius:10px;">' +
-    '<div style="font-size:.6rem;color:var(--sub);font-weight:700;text-transform:uppercase;margin-bottom:3px;">Athletic</div>' +
-    '<div style="font-size:.9rem;font-weight:800;color:'+tagColors[athFit.tag]+'">'+athFit.tag+'</div></div>' +
+    '<div style="font-size:.6rem;color:var(--sub);font-weight:700;text-transform:uppercase;margin-bottom:3px;">⚾ Athletic</div>' +
+    '<div style="font-size:.9rem;font-weight:800;color:'+tagColors[athFit.tag]+'">'+athFit.tag+'</div>' +
+    (athFit.tag==='Unknown'&&athFit.reasons&&athFit.reasons[0]?'<div style="font-size:.6rem;color:var(--sub);margin-top:3px;line-height:1.3;">'+athFit.reasons[0]+'</div>':'')+
+    '</div>' +
+    '<div style="flex:1;text-align:center;padding:10px;background:'+tagBgs[finFit.tag]+';border-radius:10px;">' +
+    '<div style="font-size:.6rem;color:var(--sub);font-weight:700;text-transform:uppercase;margin-bottom:3px;">💵 Financial</div>' +
+    '<div style="font-size:.9rem;font-weight:800;color:'+tagColors[finFit.tag]+'">'+finFit.tag+'</div>' +
+    (finFit.reasons&&finFit.reasons[0]?'<div style="font-size:.6rem;color:var(--sub);margin-top:3px;line-height:1.3;">'+finFit.reasons[0]+'</div>':'')+
+    '</div>' +
     '<div style="flex:1;text-align:center;padding:10px;background:'+tagBgs[combined]+';border-radius:10px;border:1px solid '+tagColors[combined]+';">' +
     '<div style="font-size:.6rem;color:var(--sub);font-weight:700;text-transform:uppercase;margin-bottom:3px;">Overall</div>' +
     '<div style="font-size:.9rem;font-weight:800;color:'+tagColors[combined]+'">'+combined+'</div></div>' +
@@ -6666,6 +6727,18 @@ function renderMore() {
       <div style="display:flex;gap:8px;">
         <button class="btn bf" style="flex:1;background:var(--blu);border-radius:10px;" onclick="syncPushManual()">&#8679; Push to Cloud</button>
         <button class="btn bf" style="flex:1;background:var(--pur);border-radius:10px;" onclick="syncPullManual()">&#8681; Pull from Cloud</button>
+      </div>
+    </div>
+  </div>
+  <div class="shdr"><span class="sti">Fit Engine</span></div>
+  <div style="margin:0 16px 16px;">
+    <div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;padding:14px;">
+      <div style="font-size:.82rem;font-weight:700;color:var(--tx);margin-bottom:4px;">Profile & Fit Refresh</div>
+      <div style="font-size:.72rem;color:var(--sub);margin-bottom:12px;">Run anytime school requirements change or new measurables are entered.</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn bf" style="width:100%;background:var(--blu);border-radius:10px;" onclick="refreshAllProfiles(false)">&#8635; Load Missing Profiles (All Athletes)</button>
+        <button class="btn bf" style="width:100%;background:var(--pur);border-radius:10px;" onclick="refreshAllProfiles(true)">&#8635; Force Re-Fetch All Profiles</button>
+        <button class="btn bf" style="width:100%;background:var(--grn);border-radius:10px;" onclick="refreshAllFit()">&#9733; Recalculate Fit (Current Athlete)</button>
       </div>
     </div>
   </div>
@@ -10177,9 +10250,12 @@ function renderColleges() {
       'Tap + Add Program to start building your list.</div>';
   } else {
     colleges.forEach(function(c, i) {
-      var acFit  = c.profile ? calcAcademicFitTag(athFitProfile, c.profile)  : {tag:'Unknown'};
-      var athFit = c.profile ? calcAthleticFitTag(athFitProfile, c.profile)  : {tag:'Unknown'};
-      var combined = c.profile ? calcCombinedTag(acFit.tag, athFit.tag) : (c.profileLoading ? 'Loading' : 'Unknown');
+      // Single call — calcCollegeFit is the one source of truth
+      var fitResult = calcCollegeFit(athFitProfile, c);
+      var combined  = c.profileLoading ? 'Loading' : fitResult.tag;
+      var acFit     = {tag: fitResult.acTag  || (c.profile ? 'Unknown' : (c.profileLoading ? 'Loading' : 'Unknown')), reasons: fitResult.reasons||[]};
+      var athFit    = {tag: fitResult.athTag || (c.profile ? 'Unknown' : (c.profileLoading ? 'Loading' : 'Unknown')), reasons: fitResult.reasons||[]};
+      var finFit    = {tag: fitResult.finTag || 'Unknown', reasons: fitResult.reasons||[]};
       var combinedColor = tagColors[combined] || 'var(--sub)';
       var combinedBg    = tagBgs[combined]    || 'var(--card2)';
       var statusCol = statusColors[c.status]  || 'var(--sub)';
@@ -10191,66 +10267,144 @@ function renderColleges() {
       var escapedSchool = (c.school||'').replace(/'/g, '&#39;');
       var safeIdx = i; // closure
 
-      out += '<div style="background:var(--card);'+cardBorder+';border-radius:10px;padding:11px 13px;margin:0 16px 7px;">' +
+      // Status config
+      var statusEmoji = {'Target':'🎯','In Contact':'📬','Visit':'✈️','Offer':'🏆','Committed':'✅','Not Interested':'❌'};
+      var statusBg = {'Target':'rgba(150,150,150,.1)','In Contact':'rgba(52,152,219,.12)','Visit':'rgba(155,89,182,.12)','Offer':'rgba(255,149,0,.15)','Committed':'rgba(39,174,96,.15)','Not Interested':'rgba(120,120,120,.08)'};
+      var statusBorder = {'Target':'rgba(150,150,150,.2)','In Contact':'rgba(52,152,219,.3)','Visit':'rgba(155,89,182,.3)','Offer':'rgba(255,149,0,.4)','Committed':'rgba(39,174,96,.4)','Not Interested':'rgba(120,120,120,.2)'};
+      var sEmoji = statusEmoji[c.status] || '🎯';
+      var sBg    = statusBg[c.status]    || 'rgba(150,150,150,.1)';
+      var sBdr   = statusBorder[c.status]|| 'rgba(150,150,150,.2)';
 
-        // Top row: school name + fit badge
-        '<div style="display:flex;align-items:flex-start;gap:8px;">' +
-        '<div style="flex:1;min-width:0;cursor:'+(c.profile?'pointer':'default')+';" '+(c.profile?'onclick="openAthSchoolProfile('+i+')"':'')+' >' +
-        '<div style="font-size:.9rem;font-weight:700;color:var(--tx);">' + (c.school||'Unknown') + '</div>' +
-        '<div style="font-size:.68rem;color:var(--sub);">' + (c.division||'') + (c.profile&&c.profile.conference?' · '+c.profile.conference:'') + '</div>' +
-        (c.coachName?'<div style="font-size:.7rem;color:var(--tx2);margin-top:2px;">👤 '+c.coachName+'</div>':'') +
-        (c.notes?'<div style="font-size:.68rem;color:var(--sub);margin-top:2px;font-style:italic;">'+c.notes+'</div>':'') +
-        '</div>' +
-        // Fit badge (right side)
-        '<div style="flex-shrink:0;text-align:center;">' +
-        '<div style="font-size:.68rem;padding:3px 9px;border-radius:10px;background:'+combinedBg+';color:'+combinedColor+';font-weight:800;min-width:54px;">'+combined+'</div>' +
-        '</div>' +
+      // Academic/Athletic/Financial fit pills
+      var acTag  = acFit.tag;
+      var athTag = athFit.tag;
+      var finTag = finFit.tag;
+      var finCol = tagColors[finTag] || 'var(--sub)';
+      var finBg  = tagBgs[finTag]   || 'var(--card2)';
+      var acCol  = tagColors[acTag]  || 'var(--sub)';
+      var athCol = tagColors[athTag] || 'var(--sub)';
+      var acBg   = tagBgs[acTag]     || 'var(--card2)';
+      var athBg  = tagBgs[athTag]    || 'var(--card2)';
+
+      // Key profile stats
+      var costIn  = c.profile && c.profile.cost_in  ? '$' + Math.round(c.profile.cost_in/1000)  + 'k/yr' : null;
+      var schPct  = c.profile && c.profile.ath_scholarship_pct ? c.profile.ath_scholarship_pct + '% ath. aid' : null;
+      var gpaMin  = c.profile && c.profile.gpa_min  ? 'GPA ' + c.profile.gpa_min + '+' : null;
+      var conf    = c.profile && c.profile.conference ? c.profile.conference : null;
+
+      out += '<div style="background:var(--card);border:'+cardBorder+';border-radius:14px;margin:0 14px 10px;overflow:hidden;">' +
+
+        // ── COLOR ACCENT BAR based on fit ──
+        '<div style="height:3px;background:'+(combined==='Conflict'?'#e74c3c':combined==='Reach'?'#ff9500':combined==='Fit'?'var(--blu)':combined==='Safety'?'var(--grn)':'var(--b1)')+';"></div>' +
+
+        // ── MAIN CARD BODY ──
+        '<div style="padding:12px 13px 0;">' +
+
+          // Row 1: School name + fit badge
+          '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">' +
+            '<div style="flex:1;min-width:0;">' +
+              '<div style="font-size:.95rem;font-weight:800;color:var(--tx);line-height:1.2;">'+(c.school||'Unknown')+'</div>' +
+              '<div style="font-size:.7rem;color:var(--sub);margin-top:2px;">' +
+                (c.division||'') +
+                (conf?' <span style="color:var(--tx2);">· '+conf+'</span>':'') +
+              '</div>' +
+            '</div>' +
+            // Fit badge — large and clear
+            '<div style="flex-shrink:0;background:'+combinedBg+';border:1px solid '+combinedColor+'44;border-radius:10px;padding:4px 10px;text-align:center;">' +
+              '<div style="font-size:.6rem;color:'+combinedColor+';font-weight:700;text-transform:uppercase;letter-spacing:.05em;">FIT</div>' +
+              '<div style="font-size:.82rem;font-weight:900;color:'+combinedColor+';">'+combined+'</div>' +
+            '</div>' +
+          '</div>' +
+
+          // Row 2: AC + ATH fit pills + key stats
+          '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">' +
+            '<span style="font-size:.65rem;padding:2px 8px;border-radius:10px;background:'+acBg+';color:'+acCol+';font-weight:700;">📚 AC: '+acTag+'</span>' +
+            '<span style="font-size:.65rem;padding:2px 8px;border-radius:10px;background:'+athBg+';color:'+athCol+';font-weight:700;">⚾ ATH: '+athTag+'</span>' +
+            (costIn?'<span style="font-size:.65rem;padding:2px 8px;border-radius:10px;background:var(--card2);color:var(--tx2);font-weight:600;">'+costIn+'</span>':'') +
+            (schPct?'<span style="font-size:.65rem;padding:2px 8px;border-radius:10px;background:rgba(39,174,96,.12);color:var(--grn);font-weight:600;">💰 '+schPct+'</span>':'') +
+            (gpaMin?'<span style="font-size:.65rem;padding:2px 8px;border-radius:10px;background:var(--card2);color:var(--sub);font-weight:600;">'+gpaMin+'</span>':'') +
+            '<span style="font-size:.65rem;padding:2px 8px;border-radius:10px;background:'+finBg+';color:'+finCol+';font-weight:700;">💵 FIN: '+finTag+'</span>' +
+          '</div>' +
+
+          // Row 3: Coach name + notes
+          (c.coachName?'<div style="font-size:.72rem;color:var(--tx2);margin-bottom:4px;">👤 '+c.coachName+'</div>':'') +
+          (c.notes?'<div style="font-size:.7rem;color:var(--sub);font-style:italic;margin-bottom:4px;">'+c.notes+'</div>':'') +
+
+          // Conflicts
+          (conflicts.length > 0 ?
+            '<div style="margin-bottom:6px;">' +
+            conflicts.slice(0,2).map(function(cf){
+              return '<div style="display:flex;gap:5px;align-items:flex-start;"><span>🚫</span><span style="font-size:.7rem;color:#e74c3c;">'+cf.message+'</span></div>';
+            }).join('') + '</div>' : '') +
+
+          // Profile load error
+          (c.profileError ?
+            '<div style="font-size:.68rem;color:var(--sub);font-style:italic;margin-bottom:4px;">⚠ '+c.profileError+'</div>' : '') +
+
         '</div>' +
 
-        // Status row + action buttons
-        '<div style="display:flex;align-items:center;gap:6px;margin-top:9px;padding-top:8px;border-top:1px solid var(--b1);">' +
-        // Status selector
-        '<select onchange="athUpdateCollegeStatus('+i+',this.value)" onclick="event.stopPropagation()" ' +
-        'style="font-size:.7rem;font-weight:700;color:'+statusCol+';background:var(--card2);border:1px solid var(--b1);border-radius:14px;padding:3px 8px;flex:1;max-width:150px;cursor:pointer;">' +
-        ['Target','In Contact','Visit','Offer','Committed','Not Interested'].map(function(s){
-          return '<option value="'+s+'"'+(c.status===s?' selected':'')+'>'+s+'</option>';
-        }).join('') +
-        '</select>' +
-        // Edit button
-        '<button onclick="athEditCollege('+i+')" style="font-size:.68rem;padding:3px 9px;background:var(--card2);border:1px solid var(--b1);border-radius:14px;color:var(--tx2);cursor:pointer;white-space:nowrap;">Edit</button>' +
-        // Profile/retry button
-        (c.profile ?
-          '<button onclick="openAthSchoolProfile('+i+')" style="font-size:.68rem;padding:3px 9px;background:rgba(52,152,219,.1);border:1px solid rgba(52,152,219,.3);border-radius:14px;color:var(--blu);cursor:pointer;white-space:nowrap;">Profile</button>' :
-          c.profileLoading ?
-          '<div style="display:flex;align-items:center;gap:4px;font-size:.68rem;color:var(--sub);"><div class="sp2" style="width:8px;height:8px;"></div>Loading...</div>' :
-          c.profileError ?
-          '<button onclick="athRetryProfile('+i+')" style="font-size:.68rem;padding:3px 9px;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:14px;color:#e74c3c;cursor:pointer;white-space:nowrap;">Retry</button>' :
-          '<div style="font-size:.68rem;color:var(--sub);">No profile</div>') +
-        // Remove button
-        '<button onclick="athRemoveCollege('+i+')" style="font-size:.75rem;padding:3px 7px;background:none;border:none;color:var(--sub);cursor:pointer;flex-shrink:0;">✕</button>' +
+        // ── STATUS + ACTION FOOTER ──
+        '<div style="display:flex;align-items:center;gap:6px;padding:8px 13px 10px;border-top:1px solid var(--b1);margin-top:8px;background:var(--card2);">' +
+
+          // Status pill (visual indicator + dropdown overlay)
+          '<div style="position:relative;flex:1;">' +
+            '<div style="display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:20px;background:'+sBg+';border:1px solid '+sBdr+';pointer-events:none;">' +
+              '<span style="font-size:.85rem;">'+sEmoji+'</span>' +
+              '<span style="font-size:.72rem;font-weight:800;color:'+statusCol+';">'+c.status+'</span>' +
+            '</div>' +
+            '<select onchange="athUpdateCollegeStatus('+i+',this.value)" onclick="event.stopPropagation()" ' +
+            'style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;">' +
+            ['Target','In Contact','Visit','Offer','Committed','Not Interested'].map(function(s){
+              return '<option value="'+s+'"'+(c.status===s?' selected':'')+'>'+s+'</option>';
+            }).join('') +
+            '</select>' +
+          '</div>' +
+
+          // Action buttons
+          (c.profile ?
+            '<button onclick="openAthSchoolProfile('+i+')" style="font-size:.68rem;padding:5px 10px;background:rgba(52,152,219,.1);border:1px solid rgba(52,152,219,.3);border-radius:20px;color:var(--blu);cursor:pointer;font-weight:700;white-space:nowrap;">View Profile</button>' :
+            c.profileLoading ?
+            '<div style="display:flex;align-items:center;gap:4px;font-size:.68rem;color:var(--sub);padding:5px 8px;"><div class="sp2" style="width:7px;height:7px;"></div>Loading...</div>' :
+            c.profileError ?
+            '<button onclick="athRetryProfile('+i+')" style="font-size:.68rem;padding:5px 10px;background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:20px;color:#e74c3c;cursor:pointer;font-weight:700;">↺ Retry</button>' :
+            '<div style="font-size:.68rem;color:var(--sub);padding:5px 0;">No profile</div>') +
+          '<button onclick="athEditCollege('+i+')" style="font-size:.78rem;padding:5px 8px;background:none;border:1px solid var(--b1);border-radius:20px;color:var(--sub);cursor:pointer;">✏️</button>' +
+          '<button onclick="athRemoveCollege('+i+')" style="font-size:.78rem;padding:5px 8px;background:none;border:none;color:var(--sub);cursor:pointer;">✕</button>' +
+
         '</div>' +
-
-        // Conflicts
-        (conflicts.length > 0 ?
-          '<div style="margin-top:7px;">' +
-          conflicts.slice(0,2).map(function(cf){
-            return '<div style="display:flex;gap:5px;align-items:flex-start;"><span style="font-size:.75rem;">🚫</span><span style="font-size:.7rem;color:#e74c3c;">'+cf.message+'</span></div>';
-          }).join('') + '</div>' : '') +
-
-        // Profile load error
-        (c.profileError ?
-          '<div style="margin-top:6px;font-size:.68rem;color:var(--sub);font-style:italic;">⚠ '+c.profileError+'</div>' : '') +
 
         '</div>';
     });
   }
 
-  out += '<div class="pad" style="margin-top:12px;margin-bottom:12px;">' +
-    '<button class="btn bo bf bsm" onclick="openAddCollege()">+ Add Program</button></div>' +
+  out += '<div class="pad" style="margin-top:12px;margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;">' +
+    '<button class="btn bo bf bsm" onclick="openAddCollege()">+ Add Program</button>' +
+    '<button class="btn bo bsm" onclick="refreshAllFit()">&#9733; Recalc Fit</button>' +
+    '</div>' +
     '<div style="height:24px;"></div>';
   return out;
 }
 
+function recalcFitAll() {
+  // Recalculates fit for all athletes using current engine — no API calls
+  var count = 0;
+  Object.keys(D.playerColleges||{}).forEach(function(init) {
+    var colleges = D.playerColleges[init] || [];
+    var athlete = D.roster.find(function(r){ return r.init === init; });
+    if (!athlete) return;
+    colleges.forEach(function(c) {
+      if (c.profile) count++;
+      // fit is computed live from calcCollegeFit — no stored fit tag to update
+      // just ensure profileError is cleared if profile exists
+      if (c.profile && c.profileError) c.profileError = null;
+    });
+  });
+  saveAppData();
+  // Re-render current view
+  var body = document.getElementById('asec-body') || document.getElementById('sec-body');
+  if (body && (curASec === 'colleges' || curSec === 'roster')) body.innerHTML = renderColleges();
+  toast('Fit recalculated for ' + count + ' school profiles ✓');
+}
 function athUpdateCollegeStatus(i, val) {
   var athInit = D._currentAthInit || '';
   var cols = D.playerColleges[athInit]; if (!cols || !cols[i]) return;
