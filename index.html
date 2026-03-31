@@ -4400,7 +4400,10 @@ function savePlayerInfo(idx) {
   if (cl) { a.courseLoad = cl; if (!a.courseLoadSource) a.courseLoadSource = 'manual'; }
   saveAppData();
   toast('Saved ✓');
-  playerTab('info');
+  // Update the player header name/status without full re-render
+  var nm = document.getElementById('vp-name');
+  var sb = document.getElementById('vp-sub');
+  if (nm) nm.textContent = a.name;
   rosterRefresh();
 }
 
@@ -4768,18 +4771,27 @@ function openUploadSchoolData() {
 
 
 function _refreshCollegeView(playerIdx) {
-  // Admin player tab
-  if (D._playerIdx === playerIdx && document.getElementById('vp-body')) {
-    playerTab('colleges');
+  // Admin player tab — only refresh if user is already on the colleges tab
+  // NEVER force a tab switch while the user is typing or on another tab
+  if (D._playerIdx === playerIdx) {
+    var body = document.getElementById('vp-body');
+    if (body) {
+      if (D._playerTab === 'colleges') {
+        // Already on colleges — update in place without switching
+        var a = D.roster[playerIdx];
+        if (a) body.innerHTML = renderPlayerColleges(playerIdx, a);
+      }
+      // If on info/contacts/files/etc — do NOT switch, just save data silently
+      saveAppData();
+    }
     return;
   }
-  // Athlete portal - check if colleges section is visible
+  // Athlete portal — only update if colleges section is currently visible
   var athBody = document.getElementById('asec-body');
   if (athBody) {
-    // Check if athlete college section is active
     var athInit = D._currentAthInit || '';
     var rosterIdx = D.roster.findIndex(function(r){ return r.init === athInit; });
-    if (rosterIdx === playerIdx) {
+    if (rosterIdx === playerIdx && D._athTab === 'colleges') {
       athBody.innerHTML = renderColleges();
     }
   }
@@ -4914,7 +4926,8 @@ var _spq = {
   running:     false,
   items:       [],   // [{playerIdx, collegeIdx, init}]
   startedAt:   null, // timestamp when current load started (for watchdog)
-  WATCHDOG_MS: 45000 // reset if stuck for 45s with no progress
+  WATCHDOG_MS: 45000, // reset if stuck for 45s with no progress
+  _batchStarted: false   // true while a batch is running
 };
 
 // ── Persist queue to localStorage ──
@@ -4951,6 +4964,7 @@ function spqRestore() {
 
 // ── GLOBAL FIT REFRESH CONTROLS ──
 function refreshAllProfiles(forceRefetch) {
+  _spq._batchStarted = true;
   // Queue ALL college profiles across ALL active athletes for reload
   var active = D.roster.filter(function(r){ return r.status === 'Active' || r.status === 'Committed'; });
   var queued = 0;
@@ -5020,6 +5034,7 @@ function refreshSingleAthleteProfiles(forceRefetch) {
 }
 
 function spqEnqueue(playerIdx, init) {
+  _spq._batchStarted = true;
   var colleges = D.playerColleges[init] || [];
   colleges.forEach(function(c, ci) {
     if (!c.profile && !c.profileError) {
@@ -5062,6 +5077,19 @@ function spqRun() {
   }
   if (_spq.items.length === 0) {
     spqSave(); // clear persisted queue when done
+    // Batch complete — count total loaded profiles
+    var totalProfiles = Object.values(D.playerColleges||{}).reduce(function(n,cs){
+      return n + cs.filter(function(c){return c.profile;}).length;
+    }, 0);
+    if (_spq._batchStarted) {
+      _spq._batchStarted = false;
+      toast('✅ Batch complete — ' + totalProfiles + ' school profiles loaded. You can start another batch or back up now.');
+      // Auto-push to cloud after batch finishes
+      setTimeout(function(){
+        syncPush(false);
+        toast('☁ Auto-saving to cloud...');
+      }, 1500);
+    }
     return;
   }
 
@@ -7181,34 +7209,53 @@ function openNotifSettings() {
 function exportAppData() {
   try {
     var snap = {
-      playerColleges: D.playerColleges,
-      config:         D.config,
-      coordinators:   D.coordinators,
-      assignments:    D.assignments,
-      portalEnabled:  D.portalEnabled,
-      collegeInfo:    D.collegeInfo,
-      roster:         D.roster,
-      aTasks:         D.aTasks,
-      athProfile:     D.athProfile,
-      txns:           D.txns,
-      tasks:          D.tasks,
-      donors:         D.donors,
-      contacts:       D.contacts,
-      coaches:        D.coaches,
-      schoolsDB:      D.schoolsDB,
-      goals:          D.goals,
-      events:         D.events,
-      acct:           D.acct,
-      offers:         D.offers,
-      scholarships:   D.scholarships,
-      athleteFiles:   D.athleteFiles,
-      commLog:        D.commLog,
-      visits:         D.visits,
-      measurables:    D.measurables,
-      eligibility:    D.eligibility,
-      specialEvents:  D.specialEvents,
-      devBoard:       D.devBoard,
-      fitBenchmarks:  D.fitBenchmarks
+      // ── Core data ──
+      roster:          D.roster,
+      playerColleges:  D.playerColleges,
+      portalEnabled:   D.portalEnabled,
+      collegeInfo:     D.collegeInfo,
+      // ── People & access ──
+      people:          D.people,
+      coordinators:    D.coordinators,
+      boardMembers:    D.boardMembers,
+      collegeAdvisors: D.collegeAdvisors,
+      devBoardMembers: D.devBoardMembers,
+      config:          D.config,
+      assignments:     D.assignments,
+      // ── Recruiting ──
+      commLog:         D.commLog,
+      visits:          D.visits,
+      measurables:     D.measurables,
+      eligibility:     D.eligibility,
+      offers:          D.offers,
+      scholarships:    D.scholarships,
+      coaches:         D.coaches,
+      schoolsDB:       D.schoolsDB,
+      fitBenchmarks:   D.fitBenchmarks,
+      // ── Operations ──
+      tasks:           D.tasks,
+      aTasks:          D.aTasks,
+      athProfile:      D.athProfile,
+      goals:           D.goals,
+      events:          D.events,
+      msgs:            D.msgs,
+      checkins:        D.checkins,
+      templates:       D.templates,
+      // ── Financial ──
+      txns:            D.txns,
+      acct:            D.acct,
+      donors:          D.donors,
+      devBoard:        D.devBoard,
+      specialEvents:   D.specialEvents,
+      // ── Files ──
+      files:           D.files,
+      athleteFiles:    D.athleteFiles,
+      contacts:        D.contacts,
+      // ── Metadata ──
+      _exportedAt:     new Date().toISOString(),
+      _version:        'bffsa-v6',
+      _rosterCount:    (D.roster||[]).length,
+      _profileCount:   Object.values(D.playerColleges||{}).reduce(function(n,cs){return n+cs.filter(function(c){return c.profile;}).length;},0)
     };
     var json = JSON.stringify(snap, null, 2);
     var blob = new Blob([json], {type: 'application/json'});
@@ -7220,7 +7267,11 @@ function exportAppData() {
     a.download = 'bffsa-backup-' + stamp + '.json';
     a.click();
     URL.revokeObjectURL(url);
-    toast('Backup downloaded ✓');
+    var rc = (D.roster||[]).length;
+    var pc = Object.values(D.playerColleges||{}).reduce(function(n,cs){return n+cs.filter(function(c){return c.profile;}).length;},0);
+    var dc = (D.donors||[]).length;
+    var tc = (D.txns||[]).length;
+    toast('✅ Backup saved — ' + rc + ' athletes, ' + pc + ' profiles, ' + dc + ' donors, ' + tc + ' transactions');
   } catch(e) { toast('Export failed: ' + e.message); }
 }
 
