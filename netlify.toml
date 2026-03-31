@@ -1,1 +1,11 @@
+[build]
+  publish = "."
 
+[functions]
+  node_bundler = "esbuild"
+
+[functions."sync"]
+  node_version = "18"
+
+[functions."claude"]
+  node_version = "18"
