@@ -443,10 +443,11 @@ body.bffsa-light .cl,body.ios-light .cl{box-shadow:0 2px 10px rgba(0,0,0,.07);}
       </div>
       <div style="flex:1;text-align:left;"><div class="cn" style="font-family:var(--HF);font-size:1.02rem;font-weight:600;letter-spacing:.02em;">Board &amp; Admin</div><div class="cs">Full control center access</div></div>
     </button>
-    <button class="cr a4" style="width:100%;border-radius:var(--r);margin-bottom:9px;border:1px solid var(--b2);" onclick="goV('vATHPICK');renderAthPicker();">
+    <button class="cr a4" style="width:100%;border-radius:var(--r);margin-bottom:9px;border:1px solid var(--b2);" onclick="openAthletePinPrompt()">
       <div class="ci" style="width:42px;height:42px;">&#9918;</div>
-      <div style="flex:1;text-align:left;"><div class="cn" style="font-family:var(--HF);font-size:1.02rem;font-weight:600;letter-spacing:.02em;">Student Athlete</div><div class="cs">Recruiting, tasks &amp; resources</div></div>
+      <div style="flex:1;text-align:left;"><div class="cn" style="font-family:var(--HF);font-size:1.02rem;font-weight:600;letter-spacing:.02em;">Student Athlete</div><div class="cs">Enter your PIN to access your portal</div></div>
     </button>
+    
     <button class="cr a5" style="width:100%;border-radius:var(--r);border:1px solid var(--b2);" onclick="goV('vPUB');pubTab('about')">
       <div class="ci" style="width:42px;height:42px;background:var(--bm);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;">&#127760;</div>
       <div style="flex:1;text-align:left;"><div class="cn" style="font-family:var(--HF);font-size:1.02rem;font-weight:600;letter-spacing:.02em;">General Public</div><div class="cs">Stories, news &amp; support</div></div>
@@ -1339,6 +1340,34 @@ function getPersonPermissions(person) {
     isDevBoard:        roles.includes('devboard'),
     assignedAthletes:  person.assignedAthletes || []
   };
+}
+
+function openAthletePinPrompt() {
+  openMo(
+    '<div class="mt">Student Athlete Login</div>' +
+    '<div style="font-size:.78rem;color:var(--sub);margin-bottom:14px;text-align:center;">Enter your personal PIN to access your portal.</div>' +
+    '<input type="password" class="fi" id="ath-direct-pin" placeholder="&bull;&bull;&bull;&bull;" maxlength="6" style="letter-spacing:.45em;text-align:center;font-size:1.5rem;" oninput="if(this.value.length>=4)checkAthDirectPin()">' +
+    '<button class="btn br3 bf" style="margin-top:10px;" onclick="checkAthDirectPin()">Enter</button>',
+    ' '
+  );
+  setTimeout(function(){ var el=document.getElementById('ath-direct-pin'); if(el) el.focus(); }, 200);
+}
+
+function checkAthDirectPin() {
+  var el = document.getElementById('ath-direct-pin');
+  if (!el) return;
+  var entered = el.value.trim();
+  if (!entered) return;
+  var athMatch = D.roster.find(function(a){ return a.pin && a.pin === entered; });
+  if (athMatch) {
+    closeMo();
+    _loadAthletePortal(athMatch.init);
+    return;
+  }
+  el.value = '';
+  el.style.borderColor = 'var(--red)';
+  setTimeout(function(){ el.style.borderColor = ''; }, 1000);
+  toast('Incorrect PIN');
 }
 
 function checkPin() {
@@ -9590,13 +9619,10 @@ function renderAthPicker() {
 function signInAsAthlete(init) {
   var a = D.roster.find(function(r){ return r.init === init; });
   if (!a) return;
+  // Admin (Dave) — no PIN required, direct access
   var isAdmin = !D._currentUser || D._currentUser.role === 'admin';
-  // Admin bypasses PIN — go straight in
-  if (isAdmin) {
-    _loadAthletePortal(init);
-    return;
-  }
-  // Non-admin: show PIN box
+  if (isAdmin) { _loadAthletePortal(init); return; }
+  // Everyone else must PIN in
   D._pendingAthInit = init;
   var pinBox = document.getElementById('ath-pin-box');
   var pinName = document.getElementById('ath-pin-name');
