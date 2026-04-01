@@ -1077,7 +1077,8 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
       <button class="ta" onclick="D._currentUser=null; goV('vSP');">Exit</button>
     </div>
   </div>
-  <div class="scr" style="background:radial-gradient(ellipse 80% 30% at 50% 14%,rgba(200,24,12,.055) 0%,transparent 70%)">
+  <div class="scr" id="adm-scr" style="background:radial-gradient(ellipse 80% 30% at 50% 14%,rgba(200,24,12,.055) 0%,transparent 70%)">
+    <div id="adm-home-content">
     <div style="padding:18px 16px 12px;" class="a1">
       <div style="font-family:var(--HF);font-size:2.1rem;font-weight:500;font-style:italic;color:var(--tx);letter-spacing:-.02em;"><span id="adm-greeting-txt">Good morning, Dave.</span></div>
       <div style="font-size:.8rem;color:var(--sub);margin-top:3px;">Foundation overview &middot; March 2026</div>
@@ -1172,13 +1173,26 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
     <div class="shdr a4"><span class="sti">Open Tasks</span><button class="slk" onclick="admSec('tasks')">View All</button></div>
     <div id="task-prev"></div>
     <div style="height:20px;"></div>
-  </div>
+    </div><!-- /adm-home-content -->
+    <div id="adm-sec-panel" style="display:none;height:100%;overflow-y:auto;">
+      <div style="display:flex;align-items:center;gap:12px;padding:16px 20px 12px;border-bottom:1px solid var(--b1);position:sticky;top:0;background:var(--bg);z-index:2;">
+        <button onclick="secGoBack()" style="background:var(--card2);border:1px solid var(--b2);border-radius:8px;padding:6px 12px;color:var(--tx3);font-size:.75rem;cursor:pointer;">&#8249; Back</button>
+        <div id="adm-sec-ttl" style="font-size:.95rem;font-weight:700;color:var(--tx);"></div>
+      </div>
+      <div id="adm-sec-body" style="min-height:100%;"></div>
+    </div>
+  </div><!-- /adm-scr -->
   <div class="bn" id="adm-bn">
     <button class="bb on" id="abn-home" onclick="admBnTab('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>Home</span></button>
     <button class="bb" id="abn-docs" onclick="admBnTab('docs')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg><span>Docs AI</span></button>
-    <button class="bb" id="abn-tasks" onclick="admBnTab('tasks')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span>Tasks</span></button>
     <button class="bb" id="abn-roster" onclick="admBnTab('roster')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg><span>Roster</span></button>
+    <button class="bb" id="abn-recruiting" onclick="admBnTab('recruiting')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span>Recruiting</span></button>
+    <button class="bb" id="abn-tasks" onclick="admBnTab('tasks')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span>Tasks</span></button>
+    <button class="bb" id="abn-cal" onclick="admBnTab('cal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Calendar</span></button>
+    <button class="bb" id="abn-donors" onclick="admBnTab('donors')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg><span>Donors</span></button>
+    <button class="bb" id="abn-acct" onclick="admBnTab('acct')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg><span>Accounting</span></button>
     <button class="bb" id="abn-meetings" onclick="admBnTab('meetings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><rect x="14" y="14" width="8" height="8" rx="1"/><path d="M22 16l-4 2 4 2"/></svg><span>Meetings</span></button>
+    <button class="bb" id="abn-goals" onclick="admBnTab('goals')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg><span>Goals</span></button>
     <button class="bb" onclick="goV('vATHPICK');renderAthPicker();"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/><path d="M18 14l2 2 4-4"/></svg><span>Athletes</span></button>
     <button class="bb" id="abn-more" onclick="admBnTab('more')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg><span>More</span></button>
   </div>
@@ -1409,7 +1423,9 @@ function toggleQA() {
   if (!grid || !btn) return;
   var collapsed = grid.classList.toggle('qa-collapsed');
   btn.textContent = collapsed ? 'Show More' : 'Show Less';
-  if (D.config) { D.config.qaCollapsed = collapsed; saveAppData(); }
+  if (!D.config) D.config = {};
+  D.config.qaCollapsed = collapsed;
+  saveAppData();
 }
 
 // ── DATA PERSISTENCE ──
@@ -2288,25 +2304,31 @@ function renderHomeQA() {
     devboard:    ['donors','goals','events','acct']
   };
   var allowed = qaAllowed[role];
-  var grid = document.querySelector('.qag.a2');
+  var grid = document.getElementById('qa-grid');
   if (!grid) return;
   var html = '';
+  var visibleCount = 0;
   items.forEach(function(id) {
     if (allowed && allowed.indexOf(id) < 0) return;
     var s = SECTIONS.find(function(x){return x.id===id;});
     if (!s) return;
     var cc = CAT_COLORS[s.cat];
-    html += '<button class="qa" data-sec="'+id+'" onclick="admSec(\''+id+'\')">' +
+    var extraClass = visibleCount >= 8 ? ' qa-extra' : '';
+    html += '<button class="qa'+extraClass+'" data-sec="'+id+'" onclick="admSec(\''+id+'\')">' +
       '<div style="width:42px;height:42px;border-radius:11px;background:'+cc.bg+';display:flex;align-items:center;justify-content:center;color:'+cc.col+';">' +
       '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="'+s.svgPath+'"/></svg>' +
       '</div><span class="ql">'+s.label+'</span></button>';
+    visibleCount++;
   });
-  // Add customize button
-  html += '<button class="qa" onclick="openCustomizeHome()" style="border:1px dashed var(--b2);">' +
+  // Customize button always shows (not counted in the 8)
+  html += '<button class="qa qa-extra" onclick="openCustomizeHome()" style="border:1px dashed var(--b2);">' +
     '<div style="width:42px;height:42px;border-radius:11px;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--sub);">' +
     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>' +
     '</div><span class="ql" style="color:var(--sub);">Customize</span></button>';
   grid.innerHTML = html;
+  // Show/hide toggle button based on whether there are extras
+  var qaBtn = document.getElementById('qa-toggle-btn');
+  if (qaBtn) qaBtn.style.display = visibleCount > 8 ? '' : 'none';
 }
 
 function renderAdmHome() {
@@ -2340,12 +2362,12 @@ function renderAdmHome() {
   renderHomeQA();
   renderAdmNav();
 
-  // Restore QA collapse state
+  // Restore QA collapse state — default to collapsed (show 8, expand to see more)
   var qaGrid = document.getElementById('qa-grid');
   var qaBtn  = document.getElementById('qa-toggle-btn');
   if (qaGrid && qaBtn) {
-    var collapsed = D.config && D.config.qaCollapsed;
-    qaGrid.classList.toggle('qa-collapsed', !!collapsed);
+    var collapsed = D.config ? (D.config.qaCollapsed !== false) : true;
+    qaGrid.classList.toggle('qa-collapsed', collapsed);
     qaBtn.textContent = collapsed ? 'Show More' : 'Show Less';
   }
 
@@ -2388,24 +2410,54 @@ function renderAdmHome() {
 
 // ── ADMIN BOTTOM NAV ──
 function admBnTab(tab) {
-  ['home','docs','tasks','roster','meetings','more'].forEach(function(t){
+  ['home','docs','tasks','roster','recruiting','cal','donors','acct','meetings','goals','more'].forEach(function(t){
     var el = document.getElementById('abn-' + t);
     if (el) el.classList.toggle('on', t === tab);
   });
-  if (tab === 'home') { goV('vADM'); renderAdmHome(); }
-  else admSec(tab);
+  if (tab === 'home') {
+    // Always go back to home view
+    var hp = document.getElementById('adm-home-content');
+    var sp = document.getElementById('adm-sec-panel');
+    if (hp) hp.style.display = '';
+    if (sp) sp.style.display = 'none';
+    goV('vADM'); renderAdmHome();
+  } else {
+    admSec(tab);
+  }
 }
 
 // ── ADMIN SECTIONS ──
 var curSec = '';
 var _prevView = 'vADM';
+function getSecBody() {
+  var isDesktop = window.innerWidth >= 768;
+  if (isDesktop) {
+    var p = document.getElementById('adm-sec-panel');
+    if (p && p.style.display !== 'none') return document.getElementById('adm-sec-body');
+  }
+  return document.getSecBody();
+}
+
 function secGoBack() {
-  goV(_prevView);
-  if (_prevView === 'vADM') renderAdmHome();
-  _prevView = 'vADM';
+  var isDesktop = window.innerWidth >= 768;
+  if (isDesktop && document.getElementById('adm-sec-panel')) {
+    var hp = document.getElementById('adm-home-content');
+    var sp = document.getElementById('adm-sec-panel');
+    sp.style.display = 'none';
+    hp.style.display = '';
+    // Reset sidebar active state to home
+    ['home','docs','tasks','roster','recruiting','cal','donors','acct','meetings','goals','more'].forEach(function(t){
+      var el = document.getElementById('abn-' + t);
+      if (el) el.classList.toggle('on', t === 'home');
+    });
+    renderAdmHome();
+  } else {
+    goV(_prevView);
+    if (_prevView === 'vADM') renderAdmHome();
+    _prevView = 'vADM';
+  }
 }
 function admSec(sec) {
-  _prevView = document.getElementById('vADM') && document.getElementById('vADM').style.display !== 'none' ? 'vADM' : 'vSEC';
   // Reset accounting filters when leaving accounting
   if (curSec === 'acct' && sec !== 'acct') {
     if (D.acct) { D.acct.txFilter='all'; D.acct.txSearch=''; D.acct.ledgerYear='all'; D.acct.ledgerCat=''; D.acct.ledgerSrc='all'; D.acct.ledgerSearch=''; }
@@ -2439,33 +2491,75 @@ function admSec(sec) {
   // Financial edit read-only flag
   D._acctReadOnly = role !== 'admin' && !(D._currentUser && D._currentUser.canEditFinancials);
   curSec = sec;
-  goV('vSEC');
   var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',files:'File Storage',contacts:'Coaches Database',schools:'Schools Database',more:'More Settings',events:'Special Events',devboard:'Development Board',benchmarks:'Fit Benchmarks',security:'Security'};
-  var ttl = document.getElementById('sec-ttl');
-  if (ttl) ttl.textContent = titles[sec] || sec;
-  var addb = document.getElementById('sec-add-btn');
-  if (addb) addb.style.display = ['tasks','goals','roster','files'].includes(sec) ? 'block' : 'none';
-  var body = document.getElementById('sec-body');
-  if (!body) return;
-  if (sec === 'docs') body.innerHTML = renderDocs();
-  else if (sec === 'acct') body.innerHTML = renderAcct();
-  else if (sec === 'msgs') body.innerHTML = renderMsgs();
-  else if (sec === 'tasks') body.innerHTML = renderTasks();
-  else if (sec === 'cal') body.innerHTML = renderCal();
-  else if (sec === 'events') body.innerHTML = renderSpecialEvents();
-  else if (sec === 'devboard') body.innerHTML = renderDevBoard();
-  else if (sec === 'benchmarks') body.innerHTML = renderFitBenchmarks();
-  else if (sec === 'goals') body.innerHTML = renderGoals();
-  else if (sec === 'roster') body.innerHTML = renderRoster();
-  else if (sec === 'donors') body.innerHTML = renderDonors();
-  else if (sec === 'reports') body.innerHTML = renderReports();
-  else if (sec === 'meetings') body.innerHTML = renderMeetings();
-  else if (sec === 'recruiting') body.innerHTML = renderCoordDashboard();
-  else if (sec === 'security') { migrateToPeople(); saveAppData(); body.innerHTML = renderSecuritySettings(); }
-  else if (sec === 'files') body.innerHTML = renderFiles();
-  else if (sec === 'contacts') body.innerHTML = renderAdminCoachesDB();
-  else if (sec === 'schools') body.innerHTML = renderSchoolsDB();
-  else body.innerHTML = renderMore();
+  var isDesktop = window.innerWidth >= 768;
+  var sp = document.getElementById('adm-sec-panel');
+  var hp = document.getElementById('adm-home-content');
+  if (isDesktop && sp && hp) {
+    // Desktop: render in panel, keep sidebar visible
+    goV('vADM');
+    hp.style.display = 'none';
+    sp.style.display = 'flex';
+    sp.style.flexDirection = 'column';
+    var dttl = document.getElementById('adm-sec-ttl');
+    if (dttl) dttl.textContent = titles[sec] || sec;
+    var body = document.getElementById('adm-sec-body');
+    if (!body) return;
+    // Update sidebar active state
+    ['home','docs','tasks','roster','recruiting','cal','donors','acct','meetings','goals','more'].forEach(function(t){
+      var el = document.getElementById('abn-' + t);
+      if (el) el.classList.toggle('on', t === sec);
+    });
+    if (sec === 'docs') body.innerHTML = renderDocs();
+    else if (sec === 'acct') body.innerHTML = renderAcct();
+    else if (sec === 'msgs') body.innerHTML = renderMsgs();
+    else if (sec === 'tasks') body.innerHTML = renderTasks();
+    else if (sec === 'cal') body.innerHTML = renderCal();
+    else if (sec === 'events') body.innerHTML = renderSpecialEvents();
+    else if (sec === 'devboard') body.innerHTML = renderDevBoard();
+    else if (sec === 'benchmarks') body.innerHTML = renderFitBenchmarks();
+    else if (sec === 'goals') body.innerHTML = renderGoals();
+    else if (sec === 'roster') body.innerHTML = renderRoster();
+    else if (sec === 'donors') body.innerHTML = renderDonors();
+    else if (sec === 'reports') body.innerHTML = renderReports();
+    else if (sec === 'meetings') body.innerHTML = renderMeetings();
+    else if (sec === 'recruiting') body.innerHTML = renderCoordDashboard();
+    else if (sec === 'security') { migrateToPeople(); saveAppData(); body.innerHTML = renderSecuritySettings(); }
+    else if (sec === 'files') body.innerHTML = renderFiles();
+    else if (sec === 'contacts') body.innerHTML = renderAdminCoachesDB();
+    else if (sec === 'schools') body.innerHTML = renderSchoolsDB();
+    else body.innerHTML = renderMore();
+    sp.scrollTop = 0;
+  } else {
+    // Mobile: navigate to vSEC as before
+    _prevView = document.getElementById('vADM') && document.getElementById('vADM').style.display !== 'none' ? 'vADM' : 'vSEC';
+    goV('vSEC');
+    var ttl = document.getElementById('sec-ttl');
+    if (ttl) ttl.textContent = titles[sec] || sec;
+    var addb = document.getElementById('sec-add-btn');
+    if (addb) addb.style.display = ['tasks','goals','roster','files'].includes(sec) ? 'block' : 'none';
+    var body = getSecBody();
+    if (!body) return;
+    if (sec === 'docs') body.innerHTML = renderDocs();
+    else if (sec === 'acct') body.innerHTML = renderAcct();
+    else if (sec === 'msgs') body.innerHTML = renderMsgs();
+    else if (sec === 'tasks') body.innerHTML = renderTasks();
+    else if (sec === 'cal') body.innerHTML = renderCal();
+    else if (sec === 'events') body.innerHTML = renderSpecialEvents();
+    else if (sec === 'devboard') body.innerHTML = renderDevBoard();
+    else if (sec === 'benchmarks') body.innerHTML = renderFitBenchmarks();
+    else if (sec === 'goals') body.innerHTML = renderGoals();
+    else if (sec === 'roster') body.innerHTML = renderRoster();
+    else if (sec === 'donors') body.innerHTML = renderDonors();
+    else if (sec === 'reports') body.innerHTML = renderReports();
+    else if (sec === 'meetings') body.innerHTML = renderMeetings();
+    else if (sec === 'recruiting') body.innerHTML = renderCoordDashboard();
+    else if (sec === 'security') { migrateToPeople(); saveAppData(); body.innerHTML = renderSecuritySettings(); }
+    else if (sec === 'files') body.innerHTML = renderFiles();
+    else if (sec === 'contacts') body.innerHTML = renderAdminCoachesDB();
+    else if (sec === 'schools') body.innerHTML = renderSchoolsDB();
+    else body.innerHTML = renderMore();
+  }
 }
 function secAddAction() {
   if (curSec === 'tasks') openAddTask();
@@ -2497,7 +2591,7 @@ function toggleAdmTask(id) {
   t.done = !t.done;
   saveAppData();
   renderTaskPrev();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body && curSec === 'tasks') body.innerHTML = renderTasks();
   toast(t.done ? 'Task complete!' : 'Reopened');
 }
@@ -2708,7 +2802,7 @@ function renderAcct() {
 
 function acctRefresh() {
   saveAppData();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body && curSec==='acct') body.innerHTML = renderAcct();
 }
 
@@ -3610,7 +3704,7 @@ function renderMsgs() {
 function deleteMsg(id) {
   D.msgs = D.msgs.filter(function(m){ return m.id !== id; });
   saveAppData();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderMsgs();
 }
 function sendMsg() {
@@ -3619,7 +3713,7 @@ function sendMsg() {
   D.msgs.unshift({id:Date.now(),from:'Dave Fisher',role:'Executive Director',time:'Just now',text:inp.value,init:'DF'});
   inp.value = '';
   saveAppData();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderMsgs();
   toast('Sent');
 }
@@ -3647,7 +3741,7 @@ function renderTasks() {
 function deleteTask(id) {
   D.tasks = D.tasks.filter(function(t){ return t.id !== id; });
   saveAppData();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderTasks();
 }
 function openEditTask(id) {
@@ -3675,7 +3769,7 @@ function saveEditTask(id) {
   t.pri  = (document.getElementById('et-p')||{}).value || t.pri;
   t.who  = (document.getElementById('et-w')||{}).value || t.who;
   saveAppData(); closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderTasks();
   toast('Task updated');
 }
@@ -3702,7 +3796,7 @@ function saveTask() {
     pri:(document.getElementById('nt-p')||{}).value||'med'});
   saveAppData();
   closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderTasks();
   toast('Task added!');
 }
@@ -3765,7 +3859,7 @@ function saveEvent() {
     type:(document.getElementById('ev-tp')||{}).value||'event'});
   saveAppData();
   closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderCal();
   toast('Event added');
 }
@@ -3792,14 +3886,14 @@ function saveEditEvent(idx) {
   e.loc   = (document.getElementById('ee-l')||{}).value || e.loc;
   e.type  = (document.getElementById('ee-tp')||{}).value || e.type;
   saveAppData(); closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderCal();
   toast('Event updated');
 }
 function deleteEvent(idx) {
   D.events.splice(idx, 1);
   saveAppData();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderCal();
 }
 
@@ -3987,7 +4081,7 @@ function seSave(idx) {
 
   saveAppData();
   closeMo();
-  var b = document.getElementById('sec-body');
+  var b = document.getSecBody();
   if (b) b.innerHTML = renderSpecialEvents();
   toast(idx!==null?'Event updated ✓':'Event created ✓');
 }
@@ -3997,7 +4091,7 @@ function seDelete(idx) {
   if (!confirm('Delete "'+e.name+'"?')) return;
   D.specialEvents.splice(idx,1);
   saveAppData();
-  var b=document.getElementById('sec-body');
+  var b=document.getSecBody();
   if (b) b.innerHTML=renderSpecialEvents();
 }
 
@@ -4572,7 +4666,7 @@ function dbSave(mi) {
     });
   }
   saveAppData(); closeMo();
-  var b=document.getElementById('sec-body');
+  var b=document.getSecBody();
   if (b) b.innerHTML=renderDevBoard();
   toast(mi!==null?'Updated ✓':'Member added ✓');
 }
@@ -4588,7 +4682,7 @@ function dbDelete(mi) {
     e.boardMembers = e.boardMembers.filter(function(bm){ return bm.name !== removedName; });
   });
   saveAppData();
-  var b=document.getElementById('sec-body');
+  var b=document.getSecBody();
   if (b) b.innerHTML=renderDevBoard();
   toast(removedName+' removed ✓');
 }
@@ -4644,7 +4738,7 @@ function saveEditGoal(name) {
   g.pct  = Math.min(100, Math.round(cur/tgt*100));
   g.due  = (document.getElementById('eg-du')||{}).value || g.due;
   saveAppData(); closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderGoals();
   toast('Goal updated');
 }
@@ -4658,14 +4752,14 @@ function saveGoal() {
     due:(document.getElementById('gl-du')||{}).value||'',cl:''});
   saveAppData();
   closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderGoals();
   toast('Goal added');
 }
 function deleteGoal(name) {
   D.goals = D.goals.filter(function(g){ return g.name !== name; });
   saveAppData();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderGoals();
   toast('Goal removed');
 }
@@ -4914,7 +5008,7 @@ function saveAddAthlete() {
 }
 
 function rosterRefresh() {
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body && curSec==='roster') body.innerHTML = renderRoster();
 }
 
@@ -5439,7 +5533,7 @@ function saveAddSchool() {
   };
   saveSchoolToDB(name.trim(), profile, 'manual');
   closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderSchoolsDB();
   toast(name.trim() + ' added to DB');
 }
@@ -5569,7 +5663,7 @@ function saveEditSchool(key) {
   s.cost_in            = parseFloat((document.getElementById('es-ci')||{}).value) || s.cost_in;
   s.cost_out           = parseFloat((document.getElementById('es-co')||{}).value) || s.cost_out;
   saveAppData(); closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderSchoolsDB();
   toast('School updated');
 }
@@ -7178,7 +7272,7 @@ function bmSaveMetric(posIdx, metricIdx) {
   }
   saveAppData();
   closeMo();
-  var b=document.getElementById('sec-body');
+  var b=document.getSecBody();
   if (b) b.innerHTML=renderFitBenchmarks();
   toast('Benchmark updated ✓');
 }
@@ -7187,7 +7281,7 @@ function bmReset() {
   if (!confirm('Reset all benchmarks to BFFSA defaults?')) return;
   D.fitBenchmarks = null;
   saveAppData();
-  var b=document.getElementById('sec-body');
+  var b=document.getSecBody();
   if (b) b.innerHTML=renderFitBenchmarks();
   toast('Reset to defaults ✓');
 }
@@ -7912,14 +8006,14 @@ function saveDonor() {
   D.donors.unshift({name:name.trim(),last:(document.getElementById('dn-d')||{}).value||'Today',total:amt,init:init});
   saveAppData();
   closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderDonors();
   toast('Donor added');
 }
 function deleteDonor(idx) {
   D.donors.splice(idx, 1);
   saveAppData();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderDonors();
   toast('Donor removed');
 }
@@ -7941,7 +8035,7 @@ function saveEditDonor(idx) {
   d.init  = d.name.trim().split(' ').map(function(w){ return w[0]||''; }).join('').toUpperCase().slice(0,2)||'?';
   saveAppData();
   closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderDonors();
   toast('Donor updated');
 }
@@ -8891,7 +8985,7 @@ function diRenderCompare() {
 
 // ── REFRESH UI ──
 function refreshDocUI() {
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body && curSec === 'docs') body.innerHTML = renderDocs();
 }
 
@@ -10679,7 +10773,7 @@ function saveAddPerson() {
     assignedAthletes:[]
   });
   saveAppData(); closeMo();
-  var body=document.getElementById('sec-body');
+  var body=document.getSecBody();
   if (body) body.innerHTML=renderSecuritySettings();
   toast(name.trim()+' added');
 }
@@ -10709,7 +10803,7 @@ function saveEditPerson(pi) {
   if (roles.length) p.roles=roles;
   p.canEditFinancials=!!(document.getElementById('ep2-fin')||{}).checked;
   saveAppData(); closeMo();
-  var body=document.getElementById('sec-body');
+  var body=document.getSecBody();
   if (body) body.innerHTML=renderSecuritySettings();
   toast('Updated');
 }
@@ -10720,7 +10814,7 @@ function disableAthletePortal(init) {
   D.portalEnabled[init] = false;
   a.pin = '';
   saveAppData();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderSecuritySettings();
   toast(a.name.split(' ')[0] + ' removed from portal');
 }
@@ -10729,7 +10823,7 @@ function removePerson(pi) {
   if (!confirm('Remove '+p.name+'?')) return;
   D.people.splice(pi,1);
   saveAppData(); closeMo();
-  var body=document.getElementById('sec-body');
+  var body=document.getSecBody();
   if (body) body.innerHTML=renderSecuritySettings();
   toast('Removed');
 }
@@ -10759,7 +10853,7 @@ function saveAddCoord() {
   if (!D.coordinators) D.coordinators = [];
   D.coordinators.push({name:name.trim(), init:init, role:(document.getElementById('ac-role')||{}).value||'Recruiting Coordinator', contact:'', pin:pin});
   saveAppData(); closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderSecuritySettings();
   toast(name.trim() + ' added');
 }
@@ -10776,7 +10870,7 @@ function saveEditCoord(idx) {
   c.name = (document.getElementById('ec-name')||{}).value || c.name;
   c.role = (document.getElementById('ec-role')||{}).value || c.role;
   saveAppData(); closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderSecuritySettings();
   toast('Updated');
 }
@@ -10785,7 +10879,7 @@ function removeCoord(idx) {
   if (!confirm('Remove ' + c.name + '?')) return;
   D.coordinators.splice(idx, 1);
   saveAppData(); closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderSecuritySettings();
   toast('Removed');
 }
@@ -12692,7 +12786,7 @@ function saveMeeting() {
     status: 'scheduled', minutes: null, duration: '', transcript: []
   });
   closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderMeetings();
   toast('Meeting scheduled');
 }
@@ -12745,7 +12839,7 @@ function openMeetingDetail(idx) {
 function deleteMeeting(idx) {
   MTG.meetings.splice(idx, 1);
   closeMo();
-  var body = document.getElementById('sec-body');
+  var body = document.getSecBody();
   if (body) body.innerHTML = renderMeetings();
   toast('Meeting deleted');
 }
@@ -13313,7 +13407,7 @@ function renderFiles() {
 
 function filesRefresh() {
   saveAppData();
-  var b = document.getElementById('sec-body'); if(b && curSec==='files') b.innerHTML = renderFiles();
+  var b = document.getSecBody(); if(b && curSec==='files') b.innerHTML = renderFiles();
 }
 
 function renderFolderGrid() {
