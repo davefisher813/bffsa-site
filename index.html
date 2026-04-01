@@ -2435,7 +2435,7 @@ function getSecBody() {
     var p = document.getElementById('adm-sec-panel');
     if (p && p.style.display !== 'none') return document.getElementById('adm-sec-body');
   }
-  return document.getSecBody();
+  return document.getElementById('sec-body');
 }
 
 function secGoBack() {
@@ -2591,7 +2591,7 @@ function toggleAdmTask(id) {
   t.done = !t.done;
   saveAppData();
   renderTaskPrev();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body && curSec === 'tasks') body.innerHTML = renderTasks();
   toast(t.done ? 'Task complete!' : 'Reopened');
 }
@@ -2802,7 +2802,7 @@ function renderAcct() {
 
 function acctRefresh() {
   saveAppData();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body && curSec==='acct') body.innerHTML = renderAcct();
 }
 
@@ -3704,7 +3704,7 @@ function renderMsgs() {
 function deleteMsg(id) {
   D.msgs = D.msgs.filter(function(m){ return m.id !== id; });
   saveAppData();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderMsgs();
 }
 function sendMsg() {
@@ -3713,7 +3713,7 @@ function sendMsg() {
   D.msgs.unshift({id:Date.now(),from:'Dave Fisher',role:'Executive Director',time:'Just now',text:inp.value,init:'DF'});
   inp.value = '';
   saveAppData();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderMsgs();
   toast('Sent');
 }
@@ -3741,7 +3741,7 @@ function renderTasks() {
 function deleteTask(id) {
   D.tasks = D.tasks.filter(function(t){ return t.id !== id; });
   saveAppData();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderTasks();
 }
 function openEditTask(id) {
@@ -3769,7 +3769,7 @@ function saveEditTask(id) {
   t.pri  = (document.getElementById('et-p')||{}).value || t.pri;
   t.who  = (document.getElementById('et-w')||{}).value || t.who;
   saveAppData(); closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderTasks();
   toast('Task updated');
 }
@@ -3796,7 +3796,7 @@ function saveTask() {
     pri:(document.getElementById('nt-p')||{}).value||'med'});
   saveAppData();
   closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderTasks();
   toast('Task added!');
 }
@@ -3859,7 +3859,7 @@ function saveEvent() {
     type:(document.getElementById('ev-tp')||{}).value||'event'});
   saveAppData();
   closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderCal();
   toast('Event added');
 }
@@ -3886,14 +3886,14 @@ function saveEditEvent(idx) {
   e.loc   = (document.getElementById('ee-l')||{}).value || e.loc;
   e.type  = (document.getElementById('ee-tp')||{}).value || e.type;
   saveAppData(); closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderCal();
   toast('Event updated');
 }
 function deleteEvent(idx) {
   D.events.splice(idx, 1);
   saveAppData();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderCal();
 }
 
@@ -4081,7 +4081,7 @@ function seSave(idx) {
 
   saveAppData();
   closeMo();
-  var b = document.getSecBody();
+  var b = getSecBody();
   if (b) b.innerHTML = renderSpecialEvents();
   toast(idx!==null?'Event updated ✓':'Event created ✓');
 }
@@ -4091,7 +4091,7 @@ function seDelete(idx) {
   if (!confirm('Delete "'+e.name+'"?')) return;
   D.specialEvents.splice(idx,1);
   saveAppData();
-  var b=document.getSecBody();
+  var b=getSecBody();
   if (b) b.innerHTML=renderSpecialEvents();
 }
 
@@ -4666,7 +4666,7 @@ function dbSave(mi) {
     });
   }
   saveAppData(); closeMo();
-  var b=document.getSecBody();
+  var b=getSecBody();
   if (b) b.innerHTML=renderDevBoard();
   toast(mi!==null?'Updated ✓':'Member added ✓');
 }
@@ -4682,7 +4682,7 @@ function dbDelete(mi) {
     e.boardMembers = e.boardMembers.filter(function(bm){ return bm.name !== removedName; });
   });
   saveAppData();
-  var b=document.getSecBody();
+  var b=getSecBody();
   if (b) b.innerHTML=renderDevBoard();
   toast(removedName+' removed ✓');
 }
@@ -4738,7 +4738,7 @@ function saveEditGoal(name) {
   g.pct  = Math.min(100, Math.round(cur/tgt*100));
   g.due  = (document.getElementById('eg-du')||{}).value || g.due;
   saveAppData(); closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderGoals();
   toast('Goal updated');
 }
@@ -4752,14 +4752,14 @@ function saveGoal() {
     due:(document.getElementById('gl-du')||{}).value||'',cl:''});
   saveAppData();
   closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderGoals();
   toast('Goal added');
 }
 function deleteGoal(name) {
   D.goals = D.goals.filter(function(g){ return g.name !== name; });
   saveAppData();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderGoals();
   toast('Goal removed');
 }
@@ -5008,7 +5008,7 @@ function saveAddAthlete() {
 }
 
 function rosterRefresh() {
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body && curSec==='roster') body.innerHTML = renderRoster();
 }
 
@@ -5533,7 +5533,7 @@ function saveAddSchool() {
   };
   saveSchoolToDB(name.trim(), profile, 'manual');
   closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderSchoolsDB();
   toast(name.trim() + ' added to DB');
 }
@@ -5663,7 +5663,7 @@ function saveEditSchool(key) {
   s.cost_in            = parseFloat((document.getElementById('es-ci')||{}).value) || s.cost_in;
   s.cost_out           = parseFloat((document.getElementById('es-co')||{}).value) || s.cost_out;
   saveAppData(); closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderSchoolsDB();
   toast('School updated');
 }
@@ -7272,7 +7272,7 @@ function bmSaveMetric(posIdx, metricIdx) {
   }
   saveAppData();
   closeMo();
-  var b=document.getSecBody();
+  var b=getSecBody();
   if (b) b.innerHTML=renderFitBenchmarks();
   toast('Benchmark updated ✓');
 }
@@ -7281,7 +7281,7 @@ function bmReset() {
   if (!confirm('Reset all benchmarks to BFFSA defaults?')) return;
   D.fitBenchmarks = null;
   saveAppData();
-  var b=document.getSecBody();
+  var b=getSecBody();
   if (b) b.innerHTML=renderFitBenchmarks();
   toast('Reset to defaults ✓');
 }
@@ -8006,14 +8006,14 @@ function saveDonor() {
   D.donors.unshift({name:name.trim(),last:(document.getElementById('dn-d')||{}).value||'Today',total:amt,init:init});
   saveAppData();
   closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderDonors();
   toast('Donor added');
 }
 function deleteDonor(idx) {
   D.donors.splice(idx, 1);
   saveAppData();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderDonors();
   toast('Donor removed');
 }
@@ -8035,7 +8035,7 @@ function saveEditDonor(idx) {
   d.init  = d.name.trim().split(' ').map(function(w){ return w[0]||''; }).join('').toUpperCase().slice(0,2)||'?';
   saveAppData();
   closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderDonors();
   toast('Donor updated');
 }
@@ -8985,7 +8985,7 @@ function diRenderCompare() {
 
 // ── REFRESH UI ──
 function refreshDocUI() {
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body && curSec === 'docs') body.innerHTML = renderDocs();
 }
 
@@ -10773,7 +10773,7 @@ function saveAddPerson() {
     assignedAthletes:[]
   });
   saveAppData(); closeMo();
-  var body=document.getSecBody();
+  var body=getSecBody();
   if (body) body.innerHTML=renderSecuritySettings();
   toast(name.trim()+' added');
 }
@@ -10803,7 +10803,7 @@ function saveEditPerson(pi) {
   if (roles.length) p.roles=roles;
   p.canEditFinancials=!!(document.getElementById('ep2-fin')||{}).checked;
   saveAppData(); closeMo();
-  var body=document.getSecBody();
+  var body=getSecBody();
   if (body) body.innerHTML=renderSecuritySettings();
   toast('Updated');
 }
@@ -10814,7 +10814,7 @@ function disableAthletePortal(init) {
   D.portalEnabled[init] = false;
   a.pin = '';
   saveAppData();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderSecuritySettings();
   toast(a.name.split(' ')[0] + ' removed from portal');
 }
@@ -10823,7 +10823,7 @@ function removePerson(pi) {
   if (!confirm('Remove '+p.name+'?')) return;
   D.people.splice(pi,1);
   saveAppData(); closeMo();
-  var body=document.getSecBody();
+  var body=getSecBody();
   if (body) body.innerHTML=renderSecuritySettings();
   toast('Removed');
 }
@@ -10853,7 +10853,7 @@ function saveAddCoord() {
   if (!D.coordinators) D.coordinators = [];
   D.coordinators.push({name:name.trim(), init:init, role:(document.getElementById('ac-role')||{}).value||'Recruiting Coordinator', contact:'', pin:pin});
   saveAppData(); closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderSecuritySettings();
   toast(name.trim() + ' added');
 }
@@ -10870,7 +10870,7 @@ function saveEditCoord(idx) {
   c.name = (document.getElementById('ec-name')||{}).value || c.name;
   c.role = (document.getElementById('ec-role')||{}).value || c.role;
   saveAppData(); closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderSecuritySettings();
   toast('Updated');
 }
@@ -10879,7 +10879,7 @@ function removeCoord(idx) {
   if (!confirm('Remove ' + c.name + '?')) return;
   D.coordinators.splice(idx, 1);
   saveAppData(); closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderSecuritySettings();
   toast('Removed');
 }
@@ -12786,7 +12786,7 @@ function saveMeeting() {
     status: 'scheduled', minutes: null, duration: '', transcript: []
   });
   closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderMeetings();
   toast('Meeting scheduled');
 }
@@ -12839,7 +12839,7 @@ function openMeetingDetail(idx) {
 function deleteMeeting(idx) {
   MTG.meetings.splice(idx, 1);
   closeMo();
-  var body = document.getSecBody();
+  var body = getSecBody();
   if (body) body.innerHTML = renderMeetings();
   toast('Meeting deleted');
 }
@@ -13407,7 +13407,7 @@ function renderFiles() {
 
 function filesRefresh() {
   saveAppData();
-  var b = document.getSecBody(); if(b && curSec==='files') b.innerHTML = renderFiles();
+  var b = getSecBody(); if(b && curSec==='files') b.innerHTML = renderFiles();
 }
 
 function renderFolderGrid() {
