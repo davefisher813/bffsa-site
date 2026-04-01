@@ -966,30 +966,13 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
   #ov{align-items:center;}
   #ov.show{align-items:center;}
 
-  /* Welcome/splash screen: override grid layout, center content */
-  #vSP.show{
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    padding:0;
-    background:var(--bg);
-  }
-  #vSP .a2,
-  #vSP .a3,
-  #vSP .a4,
-  #vSP .a5{
-    margin:0 0 10px;
-  }
-
 }
 
 @media (min-width: 1024px) {
   .qag{grid-template-columns:repeat(8,1fr);}
   .bn{width:240px;}
-  .V.show{grid-template-columns:240px 1fr;}
+  .V.show:not(#vSP):not(#vLGN):not(#vPUB):not(#vATH){grid-template-columns:240px 1fr;}
   .bb{font-size:.74rem;padding:12px 22px;}
-  #vSP.show{grid-template-columns:unset;display:flex;}
 }
 
 
