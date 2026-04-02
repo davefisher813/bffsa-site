@@ -3004,7 +3004,7 @@ function acctEditLedgerEntry(idx) {
     '<div class="fg"><label class="fl">Amount ($)</label><input class="fi" id="etx-a" type="number" step="0.01" value="'+Math.abs(t.amt)+'"></div>' +
     '<input type="hidden" id="etx-dt" value="'+t.date+'">' +
     '<div class="fg"><label class="fl">Date</label>' +
-    '<button onclick="_toggleCal(\'etx-dt\')" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="etx-dt" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="etx-dt-lbl">'+(_calDateDisplay(t.date)||'Pick a date')+'</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="etx-dt-wrap"></div></div>' +
     '</div>' +
@@ -3475,7 +3475,7 @@ function openAddReceipt() {
     '<div class="fg"><label class="fl">Amount ($)</label><input class="fi" id="rc-a" type="number" step="0.01" placeholder="0.00"></div>' +
     (function(){var _td=new Date().toISOString().split('T')[0];return '<input type="hidden" id="rc-dt" value="'+_td+'">' +
     '<div class="fg"><label class="fl">Date</label>' +
-    '<button onclick="_toggleCal(\'rc-dt\')" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="rc-dt" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="rc-dt-lbl">'+_calDateDisplay(_td)+'</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="rc-dt-wrap"></div></div>';})() +
     '</div>' +
@@ -3502,7 +3502,7 @@ function openEditReceipt(idx) {
     '<div class="fg"><label class="fl">Amount ($)</label><input class="fi" id="er-a" type="number" step="0.01" value="'+Math.abs(r.amt)+'"></div>' +
     '<input type="hidden" id="er-dt" value="'+r.date+'">' +
     '<div class="fg"><label class="fl">Date</label>' +
-    '<button onclick="_toggleCal(\'er-dt\')" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="er-dt" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="er-dt-lbl">'+(_calDateDisplay(r.date)||r.date)+'</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="er-dt-wrap"></div></div>' +
     '</div>' +
@@ -3719,7 +3719,7 @@ function openAddTxn(type) {
     '<div class="fg"><label class="fl">Amount ($)</label><input class="fi" id="tx-a" type="number" step="0.01" placeholder="0.00"></div>' +
     (function(){var _td=new Date().toISOString().split('T')[0];return '<input type="hidden" id="tx-dt" value="'+_td+'">' +
     '<div class="fg"><label class="fl">Date</label>' +
-    '<button onclick="_toggleCal(\'tx-dt\')" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="tx-dt" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="tx-dt-lbl">'+_calDateDisplay(_td)+'</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="tx-dt-wrap"></div></div>';})() +
     '</div>' +
@@ -3831,7 +3831,7 @@ function openEditTask(id) {
     '<div class="fg"><label class="fl">Task</label><input class="fi" id="et-t" value="' + t.text + '"></div>' +
     '<input type="hidden" id="et-d" value="' + rawDate + '">' +
     '<div class="fg"><label class="fl">Due Date</label>' +
-    '<button onclick="_toggleCal(\'et-d\')" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="et-d" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="et-d-lbl">' + dispDate + '</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="et-d-wrap"></div></div>' +
     '<div class="fr">' +
@@ -4058,7 +4058,7 @@ function openEditEvent(idx) {
     '<div class="fr">' +
     '<input type="hidden" id="ee-d" value="'+(e.date||'')+'">' +
     '<div class="fg"><label class="fl">Date</label>' +
-    '<button onclick="_toggleCal(\'ee-d\')" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="ee-d" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="ee-d-lbl">'+(_calDateDisplay((e.date||''))||'Pick a date')+'</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="ee-d-wrap"></div></div>' +
     '<div class="fg"><label class="fl">Month Label</label><input class="fi" id="ee-m" value="' + (e.mo||'') + '" placeholder="JAN"></div>' +
@@ -4199,13 +4199,13 @@ function seOpenEdit(idx) {
     '<div class="fr">' +
     '<input type="hidden" id="se-date" value="'+(e?e.date||'':'')+'">' +
     '<div class="fg"><label class="fl">Date</label>' +
-    '<button onclick="_toggleCal(\'se-date\')" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="se-date" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="se-date-lbl">'+(_calDateDisplay((e?e.date||'':''))||'Pick a date')+'</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="se-date-wrap"></div></div>' +
     '</div>' +
     '<input type="hidden" id="se-end" value="'+(e?e.endDate||'':'')+'">' +
     '<div class="fg"><label class="fl">End Date</label>' +
-    '<button onclick="_toggleCal(\'se-end\')" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="se-end" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="se-end-lbl">'+(_calDateDisplay((e?e.endDate||'':''))||'Pick a date')+'</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="se-end-wrap"></div></div>' +
     '</div>' +
@@ -4668,7 +4668,7 @@ function seAddTask(idx) {
     '<div class="fr">' +
     '<input type="hidden" id="set-due" value="">' +
     '<div class="fg"><label class="fl">Due Date</label>' +
-    '<button onclick="_toggleCal(\'set-due\')" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="set-due" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="set-due-lbl">Pick a date</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="set-due-wrap"></div></div>' +
     '<div class="fg"><label class="fl">Assign To</label><input class="fi" id="set-who" placeholder="Name"></div>' +
@@ -5481,7 +5481,7 @@ function renderPlayerInfo(idx, a) {
     '</select></div>' +
     '<input type="hidden" id="ap-joined" value="'+(a.joined||'')+'">' +
     '<div class="fg"><label class="fl">Joined Bridge</label>' +
-    '<button onclick="_toggleCal(\'ap-joined\');setTimeout(function(){var c=document.getElementById(\'cal-pk\');if(c){var orig=window._calPick;window._calPick=function(ds){orig(ds);savePlayerInfoDebounced('+idx+');window._calPick=orig;}}},50)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="ap-joined" onclick="_toggleCal(this.dataset.calid)";setTimeout(function(){var c=document.getElementById(\'cal-pk\');if(c){var orig=window._calPick;window._calPick=function(ds){orig(ds);savePlayerInfoDebounced('+idx+');window._calPick=orig;}}},50)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="ap-joined-lbl">'+((a.joined&&_calDateDisplay(a.joined))||a.joined||'Pick a date')+'</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="ap-joined-wrap"></div></div></div>' +
 
@@ -7853,7 +7853,7 @@ function openAddCommLog(idx) {
     '<div class="fr">' +
     (function(){var _td=new Date().toISOString().split('T')[0];return '<input type="hidden" id="cl-date" value="'+_td+'">' +
     '<div class="fg"><label class="fl">Date</label>' +
-    '<button onclick="_toggleCal(\'cl-date\')" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="cl-date" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="cl-date-lbl">'+_calDateDisplay(_td)+'</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="cl-date-wrap"></div></div>';})() +
     '' +
@@ -7947,7 +7947,7 @@ function openAddVisit(idx) {
     '<div class="fr">' +
     (function(){var _td=new Date().toISOString().split('T')[0];return '<input type="hidden" id="vt-date" value="'+_td+'">' +
     '<div class="fg"><label class="fl">Date</label>' +
-    '<button onclick="_toggleCal(\'vt-date\')" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="vt-date" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="vt-date-lbl">'+_calDateDisplay(_td)+'</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="vt-date-wrap"></div></div>';})() +
     '' +
@@ -10776,7 +10776,7 @@ function openAddCoordTask(playerIdx) {
     '<div class="mt">New Task — '+a.name.split(' ')[0]+'</div>'
     +'<div class="fg"><label class="fl">Task</label><input class="fi" id="ct-text" placeholder="What needs to be done?"></div>'
     +'<div class="fr">'
-    +'<div class="fg"><label class="fl">Due Date</label><input class="fi" id="ct-due" placeholder="Apr 15"></div>'
+    +'<input type="hidden" id="ct-due" value="">'+'<div class="fg"><label class="fl">Due Date</label>'+'<button data-calid="ct-due" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">'+'<span id="ct-due-lbl">Pick a date</span><span style="color:var(--sub);">&#128197;</span></button>'+'<div id="ct-due-wrap"></div></div>'
     +'<div class="fg"><label class="fl">Priority</label><select class="fi" id="ct-pri"><option value="med">Medium</option><option value="high">High</option><option value="low">Low</option></select></div>'
     +'</div>'
     +'<div class="fg"><label class="fl">Notes</label><input class="fi" id="ct-notes" placeholder="Additional context..."></div>',
@@ -10808,6 +10808,44 @@ function toggleCoordTask(init, taskId) {
   t.done = !t.done; saveAppData(); playerTab('info');
 }
 
+
+function openEditCoordTask(athInit, taskId) {
+  var asgn = D.assignments[athInit];
+  if (!asgn) return;
+  var t = (asgn.tasks||[]).find(function(x){ return x.id===taskId; });
+  if (!t) return;
+  _pendingUserIdx = {athInit:athInit, taskId:taskId};
+  var priH = t.priority==='high'?' selected':'';
+  var priM = (t.priority==='med'||!t.priority)?' selected':'';
+  var priL = t.priority==='low'?' selected':'';
+  openMo(
+    '<div class="mt">Edit Task</div>'    +'<div class="fg"><label class="fl">Task</label><input class="fi" id="ect-text" value="'+t.text+'"></div>'    +'<div class="fr">'    +'<input type="hidden" id="ect-due" value="'+(t.due||'')+'">'+'<div class="fg"><label class="fl">Due Date</label>'+'<button data-calid="ect-due" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">'+'<span id="ect-due-lbl">'+(t.due?_calDateDisplay(t.due):'Pick a date')+'</span><span style="color:var(--sub);">&#128197;</span></button>'+'<div id="ect-due-wrap"></div></div>'    +'<div class="fg"><label class="fl">Priority</label><select class="fi" id="ect-pri"><option value="high"'+priH+'>High</option><option value="med"'+priM+'>Med</option><option value="low"'+priL+'>Low</option></select></div>'    +'</div>'    +'<div class="fg"><label class="fl">Notes</label><input class="fi" id="ect-notes" value="'+(t.notes||'')+'"></div>',
+    '<button class="btn br3 bf" style="flex:1;" onclick="saveEditCoordTask()">Save</button>'
+  );
+}
+function saveEditCoordTask() {
+  var ref = _pendingUserIdx;
+  if (!ref || !ref.athInit) return;
+  var asgn = D.assignments[ref.athInit];
+  if (!asgn) return;
+  var t = (asgn.tasks||[]).find(function(x){ return x.id===ref.taskId; });
+  if (!t) return;
+  var txt = (document.getElementById('ect-text')||{}).value||'';
+  if (!txt.trim()) { toast('Enter a task'); return; }
+  t.text     = txt.trim();
+  t.due      = (document.getElementById('ect-due')||{}).value||'';
+  t.priority = (document.getElementById('ect-pri')||{}).value||'med';
+  t.notes    = (document.getElementById('ect-notes')||{}).value||'';
+  closeMo(); saveAppData(); toast('Task updated ✓');
+  playerTab('info');
+}
+function deleteCoordTask(athInit, taskId) {
+  var asgn = D.assignments[athInit];
+  if (!asgn || !asgn.tasks) return;
+  asgn.tasks = asgn.tasks.filter(function(t){ return t.id !== taskId; });
+  saveAppData(); toast('Task removed');
+  playerTab('info');
+}
 function removeCoordTask(init, taskId) {
   var asgn = D.assignments[init]; if (!asgn) return;
   asgn.tasks = asgn.tasks.filter(function(x){ return x.id!==taskId; });
@@ -12653,16 +12691,9 @@ function renderAthTasks() {
       + '<div style="width:3px;height:14px;border-radius:2px;background:var(--red);flex-shrink:0;"></div>'
       + '<div style="font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--red);font-weight:700;">From '+(coord?coord.name:'Your Coordinator')+'</div></div>';
     coordSection += coordTasks.map(function(t) {
-      return '<div style="display:flex;align-items:flex-start;gap:10px;padding:11px 16px;background:var(--card);border-bottom:1px solid var(--b1);">'
-        + '<button onclick="toggleCoordTask(\''+init+'\','+t.id+')" style="width:22px;height:22px;border-radius:50%;border:2px solid '+(t.done?'var(--grn)':'var(--red)')+';background:'+(t.done?'var(--grn)':'transparent')+';flex-shrink:0;margin-top:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.7rem;">'+(t.done?'&#10003;':'')+'</button>'
-        + '<div style="flex:1;">'
-        + '<div class="tn '+(t.done?'done':'')+'">'+t.text+'</div>'
-        + (t.due?'<div class="tm">Due '+t.due+'</div>':'')
-        + (t.notes?'<div style="font-size:.7rem;color:var(--tx2);margin-top:2px;font-style:italic;">'+t.notes+'</div>':'')
-        + '</div>'
-        + '<div style="font-size:.58rem;padding:2px 6px;border-radius:20px;background:var(--card2);color:'+(priC[t.priority]||'var(--sub)')+';font-weight:700;text-transform:uppercase;flex-shrink:0;">'+t.priority+'</div>'
-        + '</div>';
-    }).join('') + '<div style="height:6px;background:var(--bg2);"></div>';
+      var chkStyle = 'width:22px;height:22px;border-radius:50%;border:2px solid '+(t.done?'var(--grn)':'var(--red)')+';background:'+(t.done?'var(--grn)':'transparent')+';flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.7rem;';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;background:var(--card);border-bottom:1px solid var(--b1);">'        + '<button data-init="'+init+'" data-tid="'+t.id+'" onclick="toggleCoordTask(this.dataset.init,+this.dataset.tid)" style="'+chkStyle+'">'+(t.done?'&#10003;':'')+'</button>'        + '<div style="flex:1;min-width:0;">'        + '<div class="tn '+(t.done?'done':'')+'">'+t.text+'</div>'        + '<div class="tm">'+(t.due?'Due '+t.due:'')+(t.notes?' &mdash; '+t.notes:'')+'</div>'        + '</div>'        + '<span style="font-size:.58rem;padding:2px 6px;border-radius:20px;background:var(--card2);color:'+(priC[t.priority]||'var(--sub)')+';font-weight:700;text-transform:uppercase;flex-shrink:0;">'+(t.priority||'med')+'</span>'        + '<button data-init="'+init+'" data-tid="'+t.id+'" onclick="openEditCoordTask(this.dataset.init,+this.dataset.tid)" style="padding:6px 8px;background:none;border:none;cursor:pointer;color:var(--sub);font-size:.85rem;flex-shrink:0;">&#9998;</button>'        + '<button data-init="'+init+'" data-tid="'+t.id+'" onclick="deleteCoordTask(this.dataset.init,+this.dataset.tid)" style="padding:6px 8px;background:none;border:none;cursor:pointer;color:var(--sub);font-size:1rem;flex-shrink:0;">&#215;</button>'        + '</div>';
+    }).join('') + '<div ="height:6px;background:var(--bg2);"></div>';
   }
   var open = D.aTasks.filter(function(t){ return !t.done; }).length + coordTasks.filter(function(t){ return !t.done; }).length;
   var rows = D.aTasks.length ? D.aTasks.map(function(t){
@@ -13781,7 +13812,7 @@ function openAddFile(folderId) {
     '<div class="fg"><label class="fl">Size</label><input class="fi" id="af-size" placeholder="e.g. 2.1 MB"></div>' +
     (function(){var _td=new Date().toISOString().split('T')[0];return '<input type="hidden" id="af-date" value="'+_td+'">' +
     '<div class="fg"><label class="fl">Date</label>' +
-    '<button onclick="_toggleCal(\'af-date\')" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
+    '<button data-calid="af-date" onclick="_toggleCal(this.dataset.calid)" style="width:100%;background:var(--card2);border:1px solid var(--b2);border-radius:10px;padding:11px 14px;text-align:left;color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:space-between;">' +
     '<span id="af-date-lbl">'+_calDateDisplay(_td)+'</span><span style="color:var(--sub);">&#128197;</span></button>' +
     '<div id="af-date-wrap"></div></div>';})() +
     '' +
