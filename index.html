@@ -358,7 +358,7 @@ body.bffsa-light .bk,body.ios-light .bk{background:var(--card2);border-color:var
 }
 .pnm{font-family:var(--HF);font-size:1.35rem;font-weight:600;color:var(--tx);letter-spacing:-.01em;}
 .psp{font-size:.56rem;font-weight:700;color:var(--red);letter-spacing:.15em;text-transform:uppercase;margin-top:3px;}
-.pst{font-size:.68rem;color:var(--tx);margin-top:3px;}
+.pst{font-size:.68rem;color:var(--tx3);margin-top:3px;}
 
 /* ── CARD ROWS ── */
 .cl{
@@ -966,6 +966,20 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
   #ov{align-items:center;}
   #ov.show{align-items:center;}
 
+
+  /* Ring cards desktop */
+  .ring-row{margin:0 24px 4px;gap:8px;}
+  .ring-wrap{width:68px;height:68px;}
+  .ring-wrap svg{width:68px;height:68px;}
+  .ring-num{font-size:1.2rem;}
+
+  /* QA strip desktop */
+  .qa-strip{padding:0 24px 4px;gap:12px;}
+  .qa-art{flex:0 0 140px;}
+
+  /* Apple Music headers desktop */
+  .shdr .sti{font-size:1.3rem;}
+
   /* Welcome, login & player screens: stay flex column, not grid */
   #vSP.show, #vLGN.show, #vPLAYER.show {
     display:flex;
@@ -980,12 +994,107 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
 }
 
 @media (min-width: 1024px) {
-  .qag{grid-template-columns:repeat(8,1fr);}
+  .qa-art{flex:0 0 160px;}
   .bn{width:240px;}
   .V.show{grid-template-columns:240px 1fr;}
   .bb{font-size:.74rem;padding:12px 22px;}
 }
 
+
+
+/* ═══ ROLE LINE ═══ */
+.role-line{
+  font-size:.55rem;font-weight:700;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--red);margin-top:4px;
+}
+
+/* ═══ SECTION HEADERS — Apple Music style ═══ */
+.shdr .sti{
+  font-size:1.15rem;font-weight:700;color:var(--tx);
+  letter-spacing:-.01em;text-transform:none;
+}
+.shdr .slk{
+  font-size:.72rem;font-weight:600;color:var(--red);
+  letter-spacing:.02em;
+}
+
+/* ═══ RING CARDS ═══ */
+.ring-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:0 20px 4px;}
+.ring-card{
+  display:flex;flex-direction:column;align-items:center;
+  padding:14px 8px 12px;border-radius:12px;
+  background:var(--card);border:1px solid var(--b1);
+}
+.ring-wrap{width:60px;height:60px;position:relative;margin-bottom:6px;}
+.ring-wrap svg{width:60px;height:60px;transform:rotate(-90deg);}
+.ring-wrap circle{fill:none;stroke-width:4.5;stroke-linecap:round;}
+.ring-bg{stroke:var(--b1);}
+.ring-num{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--HF);font-size:1.1rem;font-weight:700;line-height:1;
+  font-variant-numeric:tabular-nums;color:var(--tx);
+}
+.ring-lbl{font-size:.5rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--tx2);}
+.ring-goal{font-size:.5rem;font-weight:500;color:var(--tx3);margin-top:1px;}
+
+/* ═══ QA ALBUM ART TILES ═══ */
+.qa-strip{
+  display:flex;gap:10px;overflow-x:auto;padding:0 20px 4px;
+  -webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;
+  scrollbar-width:none;
+}
+.qa-strip::-webkit-scrollbar{display:none;}
+.qa-art{
+  flex:0 0 120px;scroll-snap-align:start;border-radius:14px;
+  overflow:hidden;position:relative;aspect-ratio:1/1;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+  transition:transform .15s cubic-bezier(.2,.9,.2,1);
+}
+.qa-art:active{transform:scale(.93);}
+.qa-art .qa-bg{position:absolute;inset:0;}
+.qa-cat-red .qa-bg{background:linear-gradient(140deg,var(--red),rgba(5,5,5,0.95) 75%);}
+.qa-cat-yellow .qa-bg{background:linear-gradient(140deg,#c9a800,rgba(5,5,5,0.95) 75%);}
+.qa-cat-green .qa-bg{background:linear-gradient(140deg,#27ae60,rgba(5,5,5,0.95) 75%);}
+body.bffsa-light .qa-cat-red .qa-bg,body.ios-light .qa-cat-red .qa-bg{background:linear-gradient(140deg,var(--red),rgba(244,242,239,0.97) 75%);}
+body.bffsa-light .qa-cat-yellow .qa-bg,body.ios-light .qa-cat-yellow .qa-bg{background:linear-gradient(140deg,#c9a800,rgba(244,242,239,0.97) 75%);}
+body.bffsa-light .qa-cat-green .qa-bg,body.ios-light .qa-cat-green .qa-bg{background:linear-gradient(140deg,#27ae60,rgba(244,242,239,0.97) 75%);}
+body.ios .qa-cat-red .qa-bg{background:linear-gradient(140deg,var(--red),rgba(0,0,0,0.95) 75%);}
+body.ios .qa-cat-yellow .qa-bg{background:linear-gradient(140deg,#c9a800,rgba(0,0,0,0.95) 75%);}
+body.ios .qa-cat-green .qa-bg{background:linear-gradient(140deg,#27ae60,rgba(0,0,0,0.95) 75%);}
+.qa-art::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(255,255,255,0.06) 0%,transparent 35%,rgba(0,0,0,0.5) 100%);
+  z-index:1;border-radius:14px;
+}
+body.bffsa-light .qa-art::before,body.ios-light .qa-art::before{
+  background:linear-gradient(180deg,rgba(255,255,255,0.12) 0%,transparent 35%,rgba(0,0,0,0.06) 100%);
+}
+.qa-art::after{
+  content:'';position:absolute;inset:0;border-radius:14px;
+  border:1px solid rgba(255,255,255,0.08);z-index:2;pointer-events:none;
+}
+body.bffsa-light .qa-art::after,body.ios-light .qa-art::after{border-color:rgba(0,0,0,0.07);}
+.qa-art-content{
+  position:relative;z-index:3;height:100%;
+  display:flex;flex-direction:column;justify-content:space-between;padding:12px;
+}
+.qa-art-icon svg{
+  width:22px;height:22px;stroke:#fff;fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round;
+  filter:drop-shadow(0 2px 6px rgba(0,0,0,0.4));
+}
+body.bffsa-light .qa-art-icon svg,body.ios-light .qa-art-icon svg{stroke:rgba(0,0,0,.7);}
+.qa-art-label{
+  font-family:var(--BF);font-size:9px;font-weight:800;letter-spacing:1.2px;
+  color:#fff;text-transform:uppercase;text-shadow:0 1px 4px rgba(0,0,0,0.5);
+}
+body.bffsa-light .qa-art-label,body.ios-light .qa-art-label{color:rgba(0,0,0,.85);text-shadow:none;}
+.qa-art-sub{
+  font-family:var(--BF);font-size:7px;font-weight:500;
+  color:rgba(255,255,255,0.85);margin-top:1px;letter-spacing:0.3px;
+}
+body.bffsa-light .qa-art-sub,body.ios-light .qa-art-sub{color:rgba(0,0,0,.65);}
 
 </style>
 
@@ -1092,21 +1201,40 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
     <div id="adm-home-content">
     <div style="padding:18px 16px 12px;" class="a1">
       <div style="font-family:var(--HF);font-size:2.1rem;font-weight:500;font-style:italic;color:var(--tx);letter-spacing:-.02em;"><span id="adm-greeting-txt">Good morning, Dave.</span></div>
-      <div style="font-size:.8rem;color:var(--sub);margin-top:3px;">Foundation overview &middot; March 2026</div>
+      <div class="role-line" id="adm-role-line">EXECUTIVE DIRECTOR &middot; CONTROL CENTER</div>
     </div>
-    <div class="ss a2">
-      <div class="sc" style="--accent-col:var(--red)"><span class="sn" id="stat-athletes">0</span><span class="sl">Athletes</span></div>
-      <div class="sc" style="--accent-col:rgba(255,255,255,.18)"><span class="sn" id="stat-placed">0</span><span class="sl">Placed</span></div>
-      <div class="sc" style="--accent-col:var(--grn)"><span class="sn" id="stat-raised" style="color:var(--grn);">$0</span><span class="sl">Raised</span></div>
-      <div class="sc" style="--accent-col:var(--yel)"><span class="sn" id="stat-tasks" style="color:var(--yel);">0</span><span class="sl">Open Tasks</span></div>
-      <div class="sc" style="--accent-col:var(--grn)"><span class="sn" id="stat-events" style="color:var(--grn);">0</span><span class="sl">Events</span></div>
-      <div class="sc" style="--accent-col:var(--grn)"><span class="sn" id="stat-donors" style="color:var(--grn);">0</span><span class="sl">Donors</span></div>
+    <div class="shdr a2"><span class="sti">Overview</span></div>
+    <div class="ring-row a2">
+      <div class="ring-card">
+        <div class="ring-wrap" id="ring-athletes">
+          <svg viewBox="0 0 60 60"><circle class="ring-bg" cx="30" cy="30" r="25"/><circle class="ring-fill" id="ring-athletes-fill" cx="30" cy="30" r="25" stroke="var(--red)" stroke-dasharray="157.1" stroke-dashoffset="157.1"/></svg>
+          <div class="ring-num" id="stat-athletes">0</div>
+        </div>
+        <div class="ring-lbl">Athletes</div>
+        <div class="ring-goal" id="ring-athletes-goal">/ 50 goal</div>
+      </div>
+      <div class="ring-card">
+        <div class="ring-wrap" id="ring-placed">
+          <svg viewBox="0 0 60 60"><circle class="ring-bg" cx="30" cy="30" r="25"/><circle class="ring-fill" id="ring-placed-fill" cx="30" cy="30" r="25" stroke="var(--tx)" stroke-dasharray="157.1" stroke-dashoffset="157.1"/></svg>
+          <div class="ring-num" id="stat-placed">0</div>
+        </div>
+        <div class="ring-lbl">Placed</div>
+        <div class="ring-goal" id="ring-placed-goal">0% rate</div>
+      </div>
+      <div class="ring-card">
+        <div class="ring-wrap" id="ring-raised">
+          <svg viewBox="0 0 60 60"><circle class="ring-bg" cx="30" cy="30" r="25"/><circle class="ring-fill" id="ring-raised-fill" cx="30" cy="30" r="25" stroke="var(--grn)" stroke-dasharray="157.1" stroke-dashoffset="157.1"/></svg>
+          <div class="ring-num" id="stat-raised" style="font-size:.95rem;">$0</div>
+        </div>
+        <div class="ring-lbl">Raised</div>
+        <div class="ring-goal" id="ring-raised-goal">/ $50K goal</div>
+      </div>
     </div>
     <div class="shdr a2">
       <span class="sti">Quick Actions</span>
-      <button class="slk" id="qa-toggle-btn" onclick="toggleQA()" style="font-size:.65rem;letter-spacing:.03em;">Show Less</button>
+      <button class="slk" id="qa-toggle-btn" onclick="toggleQA()">Show More</button>
     </div>
-    <div class="qag a2" id="qa-grid">
+    <div class="qa-strip a2" id="qa-grid">
       <button class="qa" data-sec="docs" onclick="admSec('docs')">
         <div style="width:42px;height:42px;border-radius:11px;background:rgba(52,130,219,.15);display:flex;align-items:center;justify-content:center;color:#3482db;">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
@@ -1479,9 +1607,7 @@ function saveAppData() {
         msgs:           D.msgs,
         checkins:       D.checkins,
         templates:      D.templates,
-        meetings:       MTG.meetings,
-        coordActivity:  D.coordActivity,
-        completedTasks: D.completedTasks
+        meetings:       MTG.meetings
       };
       localStorage.setItem('bffsa-data', JSON.stringify(snap));
       localStorage.setItem('bffsa-sync-ts', Date.now().toString());
@@ -1497,7 +1623,7 @@ function loadAppData() {
     var snap = JSON.parse(raw);
 
     // Restore all data EXCEPT roster — hardcoded roster is always source of truth
-    var keys = ['playerColleges','portalEnabled','roster','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','files','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents','devBoard','fitBenchmarks','msgs','checkins','templates','people','coordActivity','completedTasks'];
+    var keys = ['playerColleges','portalEnabled','roster','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','files','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents','devBoard','fitBenchmarks','msgs','checkins','templates','people'];
     if (snap.meetings) MTG.meetings = snap.meetings;
     keys.forEach(function(k) {
       if (snap[k] !== undefined) D[k] = snap[k];
@@ -1825,8 +1951,6 @@ var D = {
   ],
   files:       {folders:[], docs:[]},   // org-level file vault
   assignments: {},     // {playerInit: {coordInit, tasks:[{id,text,due,notes,priority,done,createdAt}]}}
-  coordActivity: [],   // [{id, coordInit, athInit, athName, taskText, ts, type}]
-  completedTasks: [],  // [{id, athInit, athName, taskText, completedAt, coordInit}]
   txns: [],
   msgs: [],
   goals: [],
@@ -2375,17 +2499,22 @@ function renderHomeQA() {
     if (!s) return;
     var cc = CAT_COLORS[s.cat];
     var extraClass = visibleCount >= 8 ? ' qa-extra' : '';
-    html += '<button class="qa'+extraClass+'" data-sec="'+id+'" onclick="admSec(\''+id+'\')">' +
-      '<div style="width:42px;height:42px;border-radius:11px;background:'+cc.bg+';display:flex;align-items:center;justify-content:center;color:'+cc.col+';">' +
-      '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="'+s.svgPath+'"/></svg>' +
-      '</div><span class="ql">'+s.label+'</span></button>';
+    var catClass = 'qa-cat-' + s.cat;
+    var subText = {docs:'Smart documents',tasks:'Action items',roster:'Athletes',recruiting:'College pipeline',goals:'Milestones',security:'Access control',benchmarks:'Performance',acct:'Financials',donors:'Giving',msgs:'Team comms',meetings:'Schedule & notes',events:'Calendar',cal:'Events & dates',files:'Documents',schools:'Search colleges',devboard:'Advisory'}[id]||'';
+    html += '<div class="qa-art '+catClass+'" data-sec="'+id+'" onclick="admSec(\''+id+'\')">' +
+      '<div class="qa-bg"></div>' +
+      '<div class="qa-art-content">' +
+      '<div class="qa-art-icon"><svg viewBox="0 0 24 24"><path d="'+s.svgPath+'"/></svg></div>' +
+      '<div><div class="qa-art-label">'+s.label.toUpperCase()+'</div><div class="qa-art-sub">'+subText+'</div></div>' +
+      '</div></div>';
     visibleCount++;
   });
   // Customize button always shows (not counted in the 8)
-  html += '<button class="qa qa-extra" onclick="openCustomizeHome()" style="border:1px dashed var(--b2);">' +
-    '<div style="width:42px;height:42px;border-radius:11px;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--sub);">' +
-    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>' +
-    '</div><span class="ql" style="color:var(--sub);">Customize</span></button>';
+  html += '<div class="qa-art" onclick="openCustomizeHome()" style="border:1px dashed var(--b2);background:var(--card2);border-radius:14px;">' +
+    '<div class="qa-art-content">' +
+    '<div class="qa-art-icon"><svg viewBox="0 0 24 24" style="opacity:.6;"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg></div>' +
+    '<div><div class="qa-art-label" style="opacity:.7;">CUSTOMIZE</div><div class="qa-art-sub" style="opacity:.7;">Edit layout</div></div>' +
+    '</div></div>';
   grid.innerHTML = html;
   // Show/hide toggle button based on whether there are extras
   var qaBtn = document.getElementById('qa-toggle-btn');
@@ -2399,6 +2528,9 @@ function renderAdmHome() {
   var name = (D._currentUser && D._currentUser.name) ? D._currentUser.name.split(' ')[0] : 'Dave';
   var greetEl = document.getElementById('adm-greeting-txt');
   if (greetEl) greetEl.textContent = word + ', ' + name + '.';
+  var roleLabels = {admin:'Executive Director',coordinator:'Recruiting Coordinator',board:'Board Member',advisor:'Advisory Board',devboard:'Development Board'};
+  var roleEl = document.getElementById('adm-role-line');
+  if (roleEl) roleEl.textContent = (roleLabels[role]||'Team Member').toUpperCase() + ' \u00B7 CONTROL CENTER';
 
   // Show/hide QA tiles based on role
   var role = D._currentUser ? D._currentUser.role : 'guest';
@@ -2417,20 +2549,7 @@ function renderAdmHome() {
 
   var feed = document.getElementById('act-feed');
   if (feed) {
-    var acts = D.coordActivity || [];
-    if (acts.length === 0) {
-      feed.innerHTML = '<div style="padding:16px;font-size:.82rem;color:var(--tx2);text-align:center;">No recent activity yet.</div>';
-    } else {
-      feed.innerHTML = acts.slice(0, 10).map(function(a) {
-        return '<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--card);border-radius:10px;margin-bottom:6px;">'
-          + '<div style="width:32px;height:32px;border-radius:50%;background:var(--grn);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.75rem;font-weight:700;flex-shrink:0;">&#10003;</div>'
-          + '<div style="flex:1;min-width:0;">'
-          + '<div style="font-size:.82rem;font-weight:600;color:var(--tx);">'+a.athName+' completed a task</div>'
-          + '<div style="font-size:.74rem;color:var(--tx2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+a.taskText+'</div>'
-          + '<div style="font-size:.68rem;color:var(--tx3);margin-top:2px;">'+new Date(a.ts).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+'</div>'
-          + '</div></div>';
-      }).join('');
-    }
+    feed.innerHTML = '<div style="padding:16px;font-size:.82rem;color:var(--tx2);text-align:center;">No recent activity yet.</div>';
   }
   renderTaskPrev();
   renderHomeQA();
@@ -2464,11 +2583,36 @@ function renderAdmHome() {
   var raisedFmt = totalRaised >= 1000000 ? '$' + (totalRaised/1000000).toFixed(1) + 'M' :
                   totalRaised >= 1000    ? '$' + Math.round(totalRaised/1000) + 'K' :
                   totalRaised > 0        ? '$' + Math.round(totalRaised) : '$0';
-  document.querySelectorAll('#stat-raised').forEach(function(el){ el.textContent = raisedFmt; el.style.color = 'var(--grn)'; });
+  document.querySelectorAll('#stat-raised').forEach(function(el){ el.textContent = raisedFmt; });
+
+  // ── RING ANIMATION ──
+  var circumference = 157.1; // 2 * PI * 25
+  var athleteGoal = (D.config && D.config.athleteGoal) || 50;
+  var raiseGoal = (D.config && D.config.raiseGoal) || 50000;
+  var totalAthletes = D.roster.length;
+  var athletePct = Math.min(totalAthletes / athleteGoal, 1);
+  var placedPct = totalAthletes > 0 ? Math.min(placedCount / totalAthletes, 1) : 0;
+  var raisedTotal = 0;
+  (D.donors||[]).forEach(function(d){(d.donations||[]).forEach(function(dn){raisedTotal+=(dn.amount||0);});});
+  var raisedPct = Math.min(raisedTotal / raiseGoal, 1);
+
+  var af = document.getElementById('ring-athletes-fill');
+  if(af) af.setAttribute('stroke-dashoffset', circumference * (1 - athletePct));
+  var pf = document.getElementById('ring-placed-fill');
+  if(pf) pf.setAttribute('stroke-dashoffset', circumference * (1 - placedPct));
+  var rf = document.getElementById('ring-raised-fill');
+  if(rf) rf.setAttribute('stroke-dashoffset', circumference * (1 - raisedPct));
+
+  var ag = document.getElementById('ring-athletes-goal');
+  if(ag) ag.textContent = '/ ' + athleteGoal + ' goal';
+  var pg = document.getElementById('ring-placed-goal');
+  if(pg) pg.textContent = Math.round(placedPct*100) + '% rate';
+  var rg = document.getElementById('ring-raised-goal');
+  if(rg) rg.textContent = '/ $' + (raiseGoal>=1000?(raiseGoal/1000)+'K':raiseGoal) + ' goal';
 
   // Open tasks
   var openTasks = (D.tasks||[]).filter(function(t){ return !t.done; }).length;
-  document.querySelectorAll('#stat-tasks').forEach(function(el){ el.textContent = openTasks; el.style.color = 'var(--yel)'; });
+  // stat-tasks moved to section
 
   // Upcoming events (today or future)
   var today = new Date(); today.setHours(0,0,0,0);
@@ -2476,10 +2620,10 @@ function renderAdmHome() {
     if (!ev.date) return false;
     var d = new Date(ev.date); return d >= today;
   }).length;
-  document.querySelectorAll('#stat-events').forEach(function(el){ el.textContent = upcomingEvents; });
+  // stat-events moved to section
 
   // Donors count
-  document.querySelectorAll('#stat-donors').forEach(function(el){ el.textContent = (D.donors||[]).length; el.style.color = 'var(--grn)'; });
+  // stat-donors moved to section
 }
 
 // ── ADMIN BOTTOM NAV ──
@@ -10829,53 +10973,7 @@ function saveCoordTask(playerIdx) {
 function toggleCoordTask(init, taskId) {
   var asgn = D.assignments[init]; if (!asgn) return;
   var t = asgn.tasks.find(function(x){ return x.id===taskId; }); if (!t) return;
-  var wasUndone = !t.done;
-  t.done = !t.done;
-
-  // If marking complete, log it
-  if (wasUndone) {
-    var ath = D.roster.find(function(r){ return r.init===init; });
-    var athName = ath ? ath.name : init;
-    var ts = Date.now();
-
-    // Log to completedTasks (persistent record)
-    if (!D.completedTasks) D.completedTasks = [];
-    D.completedTasks.unshift({
-      id: ts,
-      athInit: init,
-      athName: athName,
-      taskText: t.text,
-      completedAt: new Date(ts).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
-      coordInit: asgn.coordInit || ''
-    });
-
-    // Log to coordinator activity feed
-    if (!D.coordActivity) D.coordActivity = [];
-    D.coordActivity.unshift({
-      id: ts,
-      coordInit: asgn.coordInit || '',
-      athInit: init,
-      athName: athName,
-      taskText: t.text,
-      ts: ts,
-      type: 'task_complete'
-    });
-    // Keep feed to 50 entries max
-    if (D.coordActivity.length > 50) D.coordActivity = D.coordActivity.slice(0, 50);
-  }
-
-  saveAppData();
-
-  // Re-render depending on context
-  if (document.getElementById('asec-body') && typeof renderAthTasks === 'function') {
-    // Athlete portal context
-    var body = document.getElementById('asec-body');
-    if (body) body.innerHTML = renderAthTasks();
-    toast(wasUndone ? '✓ Task complete!' : 'Reopened');
-  } else {
-    // Admin/coord context
-    playerTab('info');
-  }
+  t.done = !t.done; saveAppData(); playerTab('info');
 }
 
 
@@ -11282,26 +11380,6 @@ function renderCoordDashboard() {
         + '<div style="flex:1;"><div style="font-size:.84rem;font-weight:700;color:var(--tx);">'+r.name+'</div>'
         + '<div style="font-size:.68rem;color:var(--tx3);">Class of '+r.grad+'</div></div>'
         + '<div style="font-size:.72rem;color:var(--red);font-weight:600;">Assign &rsaquo;</div></button>';
-    });
-    out += '</div>';
-  }
-
-  // Completed assignments log
-  var done = (D.completedTasks || []);
-  if (done.length > 0) {
-    out += '<div style="padding:0 16px 8px;display:flex;justify-content:space-between;align-items:center;">'
-      + '<div style="font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);font-weight:700;">Completed Assignments</div>'
-      + '<span style="font-size:.7rem;color:var(--grn);font-weight:700;">'+done.length+' total</span></div>';
-    out += '<div style="margin:0 16px 14px;background:var(--card);border:1px solid var(--b1);border-radius:14px;overflow:hidden;">';
-    done.slice(0, 20).forEach(function(entry) {
-      out += '<div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--b1);">'
-        + '<div style="width:28px;height:28px;border-radius:50%;background:var(--grn);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.7rem;font-weight:700;flex-shrink:0;">&#10003;</div>'
-        + '<div style="flex:1;min-width:0;">'
-        + '<div style="font-size:.82rem;font-weight:600;color:var(--tx);">'+entry.athName+'</div>'
-        + '<div style="font-size:.73rem;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+entry.taskText+'</div>'
-        + '</div>'
-        + '<div style="font-size:.67rem;color:var(--tx3);flex-shrink:0;">'+entry.completedAt+'</div>'
-        + '</div>';
     });
     out += '</div>';
   }
