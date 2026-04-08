@@ -1036,6 +1036,11 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
 }
 .ring-lbl{font-size:.5rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--tx2);}
 .ring-goal{font-size:.5rem;font-weight:500;color:var(--tx3);margin-top:1px;}
+/* Ring stroke colors per theme */
+#ring-placed-fill{stroke:#fff;}
+body.bffsa-light #ring-placed-fill,body.ios-light #ring-placed-fill{stroke:#000;}
+body.bffsa-light #ring-athletes-fill,body.ios-light #ring-athletes-fill{stroke:#c8150a;}
+body.bffsa-light #ring-raised-fill,body.ios-light #ring-raised-fill{stroke:#16a34a;}
 
 /* ═══ QA ALBUM ART TILES ═══ */
 .qa-strip{
@@ -1207,7 +1212,7 @@ body.bffsa-light .qa-art-sub,body.ios-light .qa-art-sub{color:rgba(0,0,0,.65);}
     <div class="ring-row a2">
       <div class="ring-card">
         <div class="ring-wrap" id="ring-athletes">
-          <svg viewBox="0 0 60 60"><circle class="ring-bg" cx="30" cy="30" r="25"/><circle class="ring-fill" id="ring-athletes-fill" cx="30" cy="30" r="25" stroke="var(--red)" stroke-dasharray="157.1" stroke-dashoffset="157.1"/></svg>
+          <svg viewBox="0 0 60 60"><circle class="ring-bg" cx="30" cy="30" r="25"/><circle class="ring-fill" id="ring-athletes-fill" cx="30" cy="30" r="25" stroke="#c8180c" stroke-dasharray="157.1" stroke-dashoffset="157.1"/></svg>
           <div class="ring-num" id="stat-athletes">0</div>
         </div>
         <div class="ring-lbl">Athletes</div>
@@ -1215,7 +1220,7 @@ body.bffsa-light .qa-art-sub,body.ios-light .qa-art-sub{color:rgba(0,0,0,.65);}
       </div>
       <div class="ring-card">
         <div class="ring-wrap" id="ring-placed">
-          <svg viewBox="0 0 60 60"><circle class="ring-bg" cx="30" cy="30" r="25"/><circle class="ring-fill" id="ring-placed-fill" cx="30" cy="30" r="25" stroke="var(--tx)" stroke-dasharray="157.1" stroke-dashoffset="157.1"/></svg>
+          <svg viewBox="0 0 60 60"><circle class="ring-bg" cx="30" cy="30" r="25"/><circle class="ring-fill" id="ring-placed-fill" cx="30" cy="30" r="25" stroke="#ffffff" stroke-dasharray="157.1" stroke-dashoffset="157.1"/></svg>
           <div class="ring-num" id="stat-placed">0</div>
         </div>
         <div class="ring-lbl">Placed</div>
@@ -1223,7 +1228,7 @@ body.bffsa-light .qa-art-sub,body.ios-light .qa-art-sub{color:rgba(0,0,0,.65);}
       </div>
       <div class="ring-card">
         <div class="ring-wrap" id="ring-raised">
-          <svg viewBox="0 0 60 60"><circle class="ring-bg" cx="30" cy="30" r="25"/><circle class="ring-fill" id="ring-raised-fill" cx="30" cy="30" r="25" stroke="var(--grn)" stroke-dasharray="157.1" stroke-dashoffset="157.1"/></svg>
+          <svg viewBox="0 0 60 60"><circle class="ring-bg" cx="30" cy="30" r="25"/><circle class="ring-fill" id="ring-raised-fill" cx="30" cy="30" r="25" stroke="#32d74b" stroke-dasharray="157.1" stroke-dashoffset="157.1"/></svg>
           <div class="ring-num" id="stat-raised" style="font-size:.95rem;">$0</div>
         </div>
         <div class="ring-lbl">Raised</div>
