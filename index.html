@@ -330,7 +330,7 @@ body.bffsa-light .bk,body.ios-light .bk{background:var(--card2);border-color:var
 /* ── SECTION HEADER ── */
 .shdr{
   display:flex;align-items:center;justify-content:space-between;
-  padding:24px 20px 10px;
+  padding:22px 20px 10px;
   position:relative;
 }
 .sti{
@@ -357,7 +357,7 @@ body.bffsa-light .bk,body.ios-light .bk{background:var(--card2);border-color:var
   box-shadow:var(--glow-red),0 1px 0 rgba(255,255,255,.15) inset;
 }
 .pnm{font-family:var(--HF);font-size:1.35rem;font-weight:600;color:var(--tx);letter-spacing:-.01em;}
-.psp{font-size:.56rem;font-weight:700;color:var(--red);letter-spacing:.15em;text-transform:uppercase;margin-top:3px;}
+.psp{font-size:.7rem;font-weight:700;color:var(--red);letter-spacing:.15em;text-transform:uppercase;margin-top:3px;}
 .pst{font-size:.68rem;color:var(--tx3);margin-top:3px;}
 
 /* ── CARD ROWS — iOS grouped inset ── */
@@ -385,8 +385,8 @@ body.bffsa-light .bk,body.ios-light .bk{background:var(--card2);border-color:var
   box-shadow:var(--glow-card);
 }
 .ci{width:40px;height:40px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.1rem;}
-.cn{font-size:1rem;font-weight:500;color:var(--tx);letter-spacing:-.01em;line-height:1.4;}
-.cs{font-size:.82rem;color:var(--tx2);margin-top:2px;line-height:1.4;}
+.cn{font-size:1.02rem;font-weight:600;color:var(--tx);letter-spacing:-.01em;line-height:1.4;}
+.cs{font-size:.85rem;font-weight:500;color:var(--tx2);margin-top:2px;line-height:1.4;}
 .chv{color:var(--tx2);font-size:.8rem;margin-left:auto;flex-shrink:0;}
 
 /* ── QUICK ACTIONS GRID ── */
@@ -453,7 +453,7 @@ body.bffsa-light .bk,body.ios-light .bk{background:var(--card2);border-color:var
   width:100%;padding:12px 14px;
   background:var(--card);
   border:none;
-  border-radius:10px;color:var(--tx);font-size:1rem;
+  border-radius:10px;color:var(--tx);font-size:1rem;font-weight:500;
   outline:none;-webkit-appearance:none;appearance:none;
   transition:box-shadow .15s;
   line-height:1.5;
@@ -472,7 +472,7 @@ body.bffsa-light .fi:focus,body.ios-light .fi:focus{
   box-shadow:0 0 0 2px rgba(200,21,10,.4);
 }
 .fl{
-  display:block;font-size:.78rem;font-weight:600;
+  display:block;font-size:.88rem;font-weight:600;
   letter-spacing:-.01em;text-transform:none;
   color:var(--tx2);margin-bottom:6px;
 }
@@ -483,7 +483,7 @@ body.bffsa-light .fi:focus,body.ios-light .fi:focus{
 .btn{
   display:flex;align-items:center;justify-content:center;gap:7px;
   padding:14px 22px;border-radius:12px;
-  font-size:1rem;font-weight:600;letter-spacing:-.01em;
+  font-size:1rem;font-weight:700;letter-spacing:-.01em;
   color:var(--tx);
   transition:opacity .1s;border:none;
 }
@@ -511,7 +511,7 @@ body.bffsa-light .fi:focus,body.ios-light .fi:focus{
 .bd{
   display:inline-flex;align-items:center;
   padding:3px 10px;border-radius:6px;
-  font-size:.75rem;font-weight:700;letter-spacing:.01em;
+  font-size:.78rem;font-weight:700;letter-spacing:.01em;
   white-space:nowrap;
 }
 .br2{background:var(--rm2);color:var(--red);}
@@ -622,9 +622,9 @@ body.bffsa-light .fi:focus,body.ios-light .fi:focus{
   background:var(--grn);border-color:var(--grn);color:#fff;
   box-shadow:0 0 10px rgba(50,215,75,.3);
 }
-.tn{font-size:1rem;font-weight:400;color:var(--tx);line-height:1.4;}
+.tn{font-size:1rem;font-weight:500;color:var(--tx);line-height:1.4;}
 .tn.done{text-decoration:line-through;color:var(--sub);}
-.tm{font-size:.78rem;color:var(--tx2);margin-top:2px;}
+.tm{font-size:.85rem;font-weight:500;color:var(--tx2);margin-top:2px;}
 
 /* ── INFO GRID ── */
 .ig{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 20px 18px;}
@@ -635,11 +635,11 @@ body.bffsa-light .fi:focus,body.ios-light .fi:focus{
   box-shadow:none;
 }
 .ik{
-  font-size:.78rem;font-weight:600;
+  font-size:.85rem;font-weight:600;
   letter-spacing:0;text-transform:none;
   color:var(--tx2);margin-bottom:4px;
 }
-.iv{font-size:1.05rem;font-weight:600;color:var(--tx);line-height:1.4;}
+.iv{font-size:1.1rem;font-weight:700;color:var(--tx);line-height:1.4;}
 
 /* ── FONT SIZE ── */
 body.fs-sm{font-size:13px;}
@@ -920,6 +920,7 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
   .bb.on{
     background:var(--rm);
     color:var(--red);
+    border-radius:10px;
   }
 
   /* Scroll area = main content */
@@ -928,6 +929,7 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
     grid-row:2;
     height:100%;
     overflow-y:auto;
+    max-width:900px;
   }
 
   /* Wider content padding on desktop */
@@ -940,11 +942,13 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
   .ss{margin:0 24px 24px;}
   .cl{margin:0 24px 12px;}
   .ig{padding:0 24px 18px;}
-  .shdr{padding:24px 24px 10px;}
+  .shdr{padding:18px 24px 10px;}
   .al{margin:4px 24px;}
 
   /* Greeting bigger on desktop */
-  #adm-greeting-txt{font-size:2.6rem;}
+  #adm-greeting-txt{font-size:2.4rem;}
+  .role-line{font-size:.85rem !important;}
+  .a1{padding-left:24px !important;padding-right:24px !important;}
 
   /* Stats numbers bigger */
   .sn{font-size:2.6rem;}
@@ -956,21 +960,33 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
 
 
   /* Activity rings desktop */
-  .activity-wrap{gap:36px;padding:12px 24px 4px;}
+  .activity-wrap{gap:40px;padding:8px 24px 12px;}
   .activity-rings{width:160px;height:160px;}
   .activity-rings svg{width:160px;height:160px;}
-  .al-num{font-size:1.9rem;}
+  .al-num{font-size:2rem;}
+  .al-label{font-size:.88rem;}
+  .al-goal{font-size:.88rem;}
+  .al-dot{width:8px;height:8px;}
+  .activity-legend{gap:6px;}
 
   /* QA strip → grid on desktop */
-  .qa-strip{display:grid !important;grid-template-columns:repeat(4,1fr);gap:10px;padding:0 24px 4px;overflow:visible !important;}
-  .qa-art{flex:none !important;}
+  .qa-strip{display:grid !important;grid-template-columns:repeat(3,1fr);gap:10px;padding:0;overflow:visible !important;}
+  .qa-art{flex:none !important;height:90px !important;}
+  .qa-art-icon{width:36px !important;height:36px !important;}
+  .qa-art-icon svg{width:16px !important;height:16px !important;}
+
+  /* Two-column dashboard layout */
+  .dash-top{display:grid !important;grid-template-columns:1fr 1fr;gap:28px;padding:0 24px;}
+  .dash-top .shdr{padding:0 0 8px !important;}
+  .dash-top .activity-wrap{padding:0 !important;justify-content:flex-start !important;}
+  .dash-top .qa-strip{padding:0 !important;}
 
   /* Apple Music headers desktop */
   .shdr .sti{font-size:1.3rem;}
 
   /* Dashboard columns */
-  .dash-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-  .dash-cols .shdr{padding:28px 0 14px;}
+  .dash-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:0 24px;}
+  .dash-cols .shdr{padding:16px 0 8px;}
 
   /* Welcome, login & player screens: stay flex column, not grid */
   #vSP.show, #vLGN.show, #vPLAYER.show {
@@ -986,7 +1002,7 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
 }
 
 @media (min-width: 1024px) {
-  .qa-strip{grid-template-columns:repeat(4,1fr) !important;}
+  .qa-strip{grid-template-columns:repeat(3,1fr) !important;}
   .bn{width:240px;}
   .V.show{grid-template-columns:240px 1fr;}
   .bb{font-size:.74rem;padding:12px 22px;}
@@ -998,22 +1014,23 @@ body.bffsa-light .to.on,body.ios-light .to.on{background:var(--rm);color:var(--r
 .role-line{font-size:.55rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--red);margin-top:4px;}
 
 /* ═══ SECTION HEADERS — Apple Music ═══ */
-.shdr .sti{font-size:1.15rem;font-weight:700;color:var(--tx);letter-spacing:-.01em;text-transform:none;}
+.shdr .sti{font-size:1.1rem;font-weight:700;color:var(--tx);letter-spacing:-.01em;text-transform:none;}
 .shdr .slk{font-size:.72rem;font-weight:600;color:var(--red);letter-spacing:.02em;}
 
 /* ═══ ACTIVITY RINGS (concentric) ═══ */
-.activity-wrap{display:flex;align-items:center;justify-content:center;gap:28px;padding:8px 20px 4px;}
-.activity-rings{position:relative;width:140px;height:140px;flex-shrink:0;}
-.activity-rings svg{width:140px;height:140px;transform:rotate(-90deg);}
+.activity-wrap{display:flex;align-items:center;gap:22px;padding:4px 20px 8px;}
+.activity-rings{position:relative;width:120px;height:120px;flex-shrink:0;}
+.activity-rings svg{width:120px;height:120px;transform:rotate(-90deg);}
 .activity-rings circle{fill:none;stroke-linecap:round;}
 .ar-bg{stroke:rgba(255,255,255,.05);}
 body.bffsa-light .ar-bg,body.ios-light .ar-bg{stroke:rgba(0,0,0,.06);}
-.activity-legend{display:flex;flex-direction:column;gap:12px;}
-.al-item{display:flex;align-items:center;gap:8px;}
-.al-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
-.al-num{font-family:var(--HF);font-size:1.7rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;min-width:55px;}
-.al-label{font-size:.7rem;font-weight:700;color:var(--tx);}
-.al-goal{font-size:.58rem;font-weight:500;color:var(--tx);}
+.activity-legend{display:flex;flex-direction:column;gap:4px;}
+.al-item{display:flex;align-items:baseline;gap:6px;flex-wrap:nowrap;white-space:nowrap;}
+.al-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;position:relative;top:-2px;}
+.al-num{font-family:var(--HF);font-size:1.8rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;}
+.al-num .unit{font-size:1.2rem;}
+.al-label{font-size:.82rem;font-weight:700;color:var(--tx);}
+.al-goal{font-size:.82rem;font-weight:500;color:var(--tx);display:inline;}
 
 /* Ring stroke colors — hardcoded, !important for SVG */
 #ring-athletes-fill{stroke:#c8180c !important;filter:drop-shadow(0 0 6px rgba(200,24,12,.4));}
@@ -1035,7 +1052,7 @@ body.bffsa-light #ring-num-raised,body.ios-light #ring-num-raised{color:#16a34a;
 /* ═══ QA ALBUM ART TILES ═══ */
 .qa-strip{display:flex;gap:10px;overflow-x:auto;padding:0 20px 4px;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;scrollbar-width:none;}
 .qa-strip::-webkit-scrollbar{display:none;}
-.qa-art{flex:0 0 120px;scroll-snap-align:start;border-radius:14px;overflow:hidden;position:relative;aspect-ratio:1/1;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:transform .15s cubic-bezier(.2,.9,.2,1);}
+.qa-art{flex:0 0 120px;scroll-snap-align:start;border-radius:16px;overflow:hidden;position:relative;height:120px;aspect-ratio:auto;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:transform .15s cubic-bezier(.2,.9,.2,1);}
 .qa-art:active{transform:scale(.93);}
 .qa-art .qa-bg{position:absolute;inset:0;}
 .qa-cat-red .qa-bg{background:linear-gradient(140deg,var(--red),rgba(5,5,5,0.95) 75%);}
@@ -1051,13 +1068,15 @@ body.ios .qa-cat-green .qa-bg{background:linear-gradient(140deg,#27ae60,rgba(0,0
 body.bffsa-light .qa-art::before,body.ios-light .qa-art::before{background:linear-gradient(180deg,rgba(255,255,255,0.12) 0%,transparent 35%,rgba(0,0,0,0.06) 100%);}
 .qa-art::after{content:'';position:absolute;inset:0;border-radius:14px;border:1px solid rgba(255,255,255,0.08);z-index:2;pointer-events:none;}
 body.bffsa-light .qa-art::after,body.ios-light .qa-art::after{border-color:rgba(0,0,0,0.07);}
-.qa-art-content{position:relative;z-index:3;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:12px;}
-.qa-art-icon svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.4));}
-body.bffsa-light .qa-art-icon svg,body.ios-light .qa-art-icon svg{stroke:rgba(0,0,0,.7);}
-.qa-art-label{font-family:var(--BF);font-size:9px;font-weight:800;letter-spacing:1.2px;color:#fff;text-transform:uppercase;text-shadow:0 1px 4px rgba(0,0,0,0.5);}
-body.bffsa-light .qa-art-label,body.ios-light .qa-art-label{color:rgba(0,0,0,.85);text-shadow:none;}
-.qa-art-sub{font-family:var(--BF);font-size:7px;font-weight:500;color:rgba(255,255,255,0.85);margin-top:1px;letter-spacing:0.3px;}
-body.bffsa-light .qa-art-sub,body.ios-light .qa-art-sub{color:rgba(0,0,0,.65);}
+.qa-art-content{position:relative;z-index:3;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px;}
+.qa-art-icon{width:48px;height:48px;border-radius:50%;background:rgba(0,0,0,.35);border:2px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}
+.qa-art-icon svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+body.bffsa-light .qa-art-icon,body.ios-light .qa-art-icon{background:rgba(0,0,0,.08);border-color:rgba(0,0,0,.12);}
+body.bffsa-light .qa-art-icon svg,body.ios-light .qa-art-icon svg{stroke:rgba(0,0,0,.7);fill:none;}
+.qa-art-label{font-family:var(--BF);font-size:.78rem;font-weight:700;color:#fff;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,0.5);letter-spacing:0;text-transform:none;}
+body.bffsa-light .qa-art-label,body.ios-light .qa-art-label{color:rgba(0,0,0,.9);text-shadow:none;}
+.qa-art-sub{display:none;}
+body.bffsa-light .qa-art-sub,body.ios-light .qa-art-sub{color:rgba(0,0,0,.85);}
 
 </style>
 
@@ -1162,10 +1181,12 @@ body.bffsa-light .qa-art-sub,body.ios-light .qa-art-sub{color:rgba(0,0,0,.65);}
   </div>
   <div class="scr" id="adm-scr" style="background:radial-gradient(ellipse 80% 30% at 50% 14%,rgba(200,24,12,.055) 0%,transparent 70%)">
     <div id="adm-home-content">
-    <div style="padding:18px 16px 12px;" class="a1">
+    <div style="padding:18px 20px 16px;" class="a1">
       <div style="font-family:var(--HF);font-size:2.1rem;font-weight:500;font-style:italic;color:var(--tx);letter-spacing:-.02em;"><span id="adm-greeting-txt">Good morning, Dave.</span></div>
       <div class="role-line" id="adm-role-line">EXECUTIVE DIRECTOR &middot; CONTROL CENTER</div>
     </div>
+    <div class="dash-top">
+    <div>
     <div class="shdr a2"><span class="sti">Overview</span></div>
     <div class="activity-wrap a2">
       <div class="activity-rings">
@@ -1181,21 +1202,25 @@ body.bffsa-light .qa-art-sub,body.ios-light .qa-art-sub{color:rgba(0,0,0,.65);}
       <div class="activity-legend">
         <div class="al-item">
           <div class="al-dot" style="background:#c8180c;box-shadow:0 0 8px rgba(200,24,12,.5);"></div>
-          <div class="al-num" id="ring-num-athletes" style="color:#c8180c;"><span id="stat-athletes">0</span></div>
-          <div><div class="al-label">Athletes</div><div class="al-goal" id="ring-athletes-goal">of 50 goal</div></div>
+          <span class="al-num" id="ring-num-athletes" style="color:#c8180c;"><span id="stat-athletes">0</span></span>
+          <span class="al-label">Athletes</span>
+          <span class="al-goal" id="ring-athletes-goal">of 50</span>
         </div>
         <div class="al-item">
           <div class="al-dot" style="background:#FFD60A;box-shadow:0 0 8px rgba(255,214,10,.5);"></div>
-          <div class="al-num" id="ring-num-placed" style="color:#FFD60A;"><span id="stat-placed">0</span></div>
-          <div><div class="al-label">Placed</div><div class="al-goal" id="ring-placed-goal">0% rate</div></div>
+          <span class="al-num" id="ring-num-placed" style="color:#FFD60A;"><span id="stat-placed">0</span></span>
+          <span class="al-label" id="ring-placed-label">Athletes Placed</span>
         </div>
         <div class="al-item">
           <div class="al-dot" style="background:#30D158;box-shadow:0 0 8px rgba(48,209,88,.5);"></div>
-          <div class="al-num" id="ring-num-raised" style="color:#30D158;"><span id="stat-raised">$0</span></div>
-          <div><div class="al-label">Raised</div><div class="al-goal" id="ring-raised-goal">of $50K goal</div></div>
+          <span class="al-num" id="ring-num-raised" style="color:#30D158;"><span id="stat-raised">$0</span></span>
+          <span class="al-label">Raised</span>
+          <span class="al-goal" id="ring-raised-goal">of $50K</span>
         </div>
       </div>
     </div>
+    </div><!-- /overview column -->
+    <div><!-- QA column -->
     <div class="shdr a2">
       <span class="sti">Quick Actions</span>
       <button class="slk" id="qa-toggle-btn" onclick="toggleQA()">Show More</button>
@@ -1273,7 +1298,9 @@ body.bffsa-light .qa-art-sub,body.ios-light .qa-art-sub{color:rgba(0,0,0,.65);}
         <span class="ql">Recruiting</span>
       </button>
     </div>
-    <div id="home-sections" class="a3"></div>
+    </div><!-- /QA column -->
+    </div><!-- /dash-top --><div style="height:16px;"></div>
+    <div id="home-sections" class="a3 dash-cols"></div>
     <div style="height:20px;"></div>
     </div><!-- /adm-home-content -->
     <div id="adm-sec-panel" style="display:none;height:100%;overflow-y:auto;">
@@ -2438,20 +2465,20 @@ function renderHomeSections() {
   var html = '';
   secs.forEach(function(id) {
     if (id === 'activity') {
-      html += '<div class="shdr"><span class="sti">Recent Activity</span></div>' +
-        '<div class="cl" style="margin:0 16px 16px;" id="act-feed">' +
-        '<div style="padding:16px;font-size:.82rem;color:var(--tx2);text-align:center;">No recent activity yet.</div></div>';
+      html += '<div class="dash-section"><div class="shdr"><span class="sti">Recent Activity</span></div>' +
+        '<div class="cl" style="margin:0 16px 20px;" id="act-feed">' +
+        '<div style="padding:16px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;">No recent activity yet.</div></div></div>';
     } else if (id === 'tasks') {
-      html += '<div class="shdr"><span class="sti">Open Tasks</span><button class="slk" onclick="admSec(\'tasks\')">View All</button></div>' +
-        '<div id="task-prev"></div>';
+      html += '<div class="dash-section"><div class="shdr"><span class="sti">Open Tasks</span><button class="slk" onclick="admSec(\'tasks\')">View All</button></div>' +
+        '<div id="task-prev"></div></div>';
     } else if (id === 'events') {
-      html += '<div class="shdr"><span class="sti">Upcoming Events</span><button class="slk" onclick="admSec(\'events\')">View All</button></div>' +
-        '<div id="events-prev"></div>';
+      html += '<div class="dash-section"><div class="shdr"><span class="sti">Upcoming Events</span><button class="slk" onclick="admSec(\'events\')">View All</button></div>' +
+        '<div id="events-prev"></div></div>';
     } else if (id === 'donors') {
-      html += '<div class="shdr"><span class="sti">Recent Donors</span><button class="slk" onclick="admSec(\'donors\')">View All</button></div>' +
-        '<div id="donors-prev"></div>';
+      html += '<div class="dash-section"><div class="shdr"><span class="sti">Recent Donors</span><button class="slk" onclick="admSec(\'donors\')">View All</button></div>' +
+        '<div id="donors-prev"></div></div>';
     } else if (id === 'goals') {
-      html += '<div class="shdr"><span class="sti">Goals Progress</span><button class="slk" onclick="admSec(\'goals\')">View All</button></div>' +
+      html += '<div class="dash-section"><div class="shdr"><span class="sti">Goals Progress</span><button class="slk" onclick="admSec(\'goals\')">View All</button></div>' +
         '<div id="goals-prev"></div>';
     }
   });
@@ -2485,7 +2512,7 @@ function renderEventsPrev() {
   var upcoming = (D.events||[]).filter(function(ev) { return ev.date >= now; })
     .sort(function(a,b) { return a.date > b.date ? 1 : -1; }).slice(0,3);
   if (!upcoming.length) {
-    el.innerHTML = '<div style="padding:16px 20px;font-size:.82rem;color:var(--tx2);text-align:center;">No upcoming events.</div>';
+    el.innerHTML = '<div style="padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;">No upcoming events.</div>';
     return;
   }
   el.innerHTML = upcoming.map(function(ev) {
@@ -2502,7 +2529,7 @@ function renderDonorsPrev() {
   if (!el) return;
   var donors = (D.donors||[]).slice(-4).reverse();
   if (!donors.length) {
-    el.innerHTML = '<div style="padding:16px 20px;font-size:.82rem;color:var(--tx2);text-align:center;">No donors yet.</div>';
+    el.innerHTML = '<div style="padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;">No donors yet.</div>';
     return;
   }
   el.innerHTML = donors.map(function(d) {
@@ -2519,7 +2546,7 @@ function renderGoalsPrev() {
   if (!el) return;
   var goals = (D.goals||[]).slice(0,3);
   if (!goals.length) {
-    el.innerHTML = '<div style="padding:16px 20px;font-size:.82rem;color:var(--tx2);text-align:center;">No goals set.</div>';
+    el.innerHTML = '<div style="padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;">No goals set.</div>';
     return;
   }
   el.innerHTML = goals.map(function(g) {
@@ -2758,10 +2785,10 @@ function renderAdmHome() {
     return s + n;
   }, 0);
   var totalRaised = txIncome + donorTotal;
-  var raisedFmt = totalRaised >= 1000000 ? '$' + (totalRaised/1000000).toFixed(1) + 'M' :
-                  totalRaised >= 1000    ? '$' + Math.round(totalRaised/1000) + 'K' :
+  var raisedFmt = totalRaised >= 1000000 ? '$' + (totalRaised/1000000).toFixed(1) + '<span class="unit">M</span>' :
+                  totalRaised >= 1000    ? '$' + Math.round(totalRaised/1000) + '<span class="unit">K</span>' :
                   totalRaised > 0        ? '$' + Math.round(totalRaised) : '$0';
-  document.querySelectorAll('#stat-raised').forEach(function(el){ el.textContent = raisedFmt; });
+  document.querySelectorAll('#stat-raised').forEach(function(el){ el.innerHTML = raisedFmt; });
 
   // ── RING ANIMATION (concentric) ──
   var athleteGoal = (D.config && D.config.athleteGoal) || 50;
@@ -2779,11 +2806,10 @@ function renderAdmHome() {
   if(rf) rf.setAttribute('stroke-dashoffset', 219.9 * (1 - raisedPct));
 
   var ag = document.getElementById('ring-athletes-goal');
-  if(ag) ag.textContent = 'of ' + athleteGoal + ' goal';
-  var pg = document.getElementById('ring-placed-goal');
-  if(pg) pg.textContent = Math.round(placedPct*100) + '% rate';
+  if(ag) ag.textContent = 'of ' + athleteGoal;
+  // Placed label is inline — no separate goal element needed
   var rg = document.getElementById('ring-raised-goal');
-  if(rg) rg.textContent = 'of $' + (raiseGoal>=1000?(raiseGoal/1000)+'K':raiseGoal) + ' goal';
+  if(rg) rg.textContent = 'of $' + (raiseGoal>=1000?(raiseGoal/1000)+'K':raiseGoal);
 
   // Open tasks
   var openTasks = (D.tasks||[]).filter(function(t){ return !t.done; }).length;
@@ -5592,7 +5618,7 @@ function rosterRows(list, selectMode, selected) {
         '</div>' +
         '<div style="flex-shrink:0;text-align:right;">' +
         '<div style="font-size:.62rem;font-weight:700;letter-spacing:.04em;padding:3px 9px 3px 8px;border-radius:20px;background:var(--pill-bg,linear-gradient(135deg,rgba(255,255,255,.07) 0%,rgba(0,0,0,.3) 100%));border:1px solid '+sc+';border-left:2.5px solid '+sc+';color:'+sc+';box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 2px 8px rgba(0,0,0,.4);white-space:nowrap;">'+a.status+'</div>' +
-        (D.portalEnabled[a.init]?'<div style="margin-top:3px;font-size:.56rem;font-weight:700;letter-spacing:.04em;padding:2px 7px 2px 6px;border-radius:20px;background:linear-gradient(135deg,rgba(255,255,255,.06) 0%,rgba(0,0,0,.3) 100%);border:1px solid var(--grn);border-left:2px solid var(--grn);color:var(--grn);box-shadow:0 1px 0 rgba(255,255,255,.06) inset;white-space:nowrap;">Portal ✓</div>':'') +
+        (D.portalEnabled[a.init]?'<div style="margin-top:3px;font-size:.7rem;font-weight:700;letter-spacing:.04em;padding:2px 7px 2px 6px;border-radius:20px;background:linear-gradient(135deg,rgba(255,255,255,.06) 0%,rgba(0,0,0,.3) 100%);border:1px solid var(--grn);border-left:2px solid var(--grn);color:var(--grn);box-shadow:0 1px 0 rgba(255,255,255,.06) inset;white-space:nowrap;">Portal ✓</div>':'') +
         '</div></div>';
     }
 
@@ -5605,7 +5631,7 @@ function rosterRows(list, selectMode, selected) {
       '</div>' +
       '<div style="flex-shrink:0;text-align:right;">' +
       '<div style="font-size:.62rem;font-weight:700;letter-spacing:.04em;padding:3px 9px 3px 8px;border-radius:20px;background:var(--pill-bg,linear-gradient(135deg,rgba(255,255,255,.07) 0%,rgba(0,0,0,.3) 100%));border:1px solid '+sc+';border-left:2.5px solid '+sc+';color:'+sc+';box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 2px 8px rgba(0,0,0,.4);white-space:nowrap;">'+a.status+'</div>' +
-      (D.portalEnabled[a.init]?'<div style="margin-top:3px;font-size:.56rem;font-weight:700;letter-spacing:.04em;padding:2px 7px 2px 6px;border-radius:20px;background:linear-gradient(135deg,rgba(255,255,255,.06) 0%,rgba(0,0,0,.3) 100%);border:1px solid var(--grn);border-left:2px solid var(--grn);color:var(--grn);box-shadow:0 1px 0 rgba(255,255,255,.06) inset;white-space:nowrap;">Portal</div>':'') +
+      (D.portalEnabled[a.init]?'<div style="margin-top:3px;font-size:.7rem;font-weight:700;letter-spacing:.04em;padding:2px 7px 2px 6px;border-radius:20px;background:linear-gradient(135deg,rgba(255,255,255,.06) 0%,rgba(0,0,0,.3) 100%);border:1px solid var(--grn);border-left:2px solid var(--grn);color:var(--grn);box-shadow:0 1px 0 rgba(255,255,255,.06) inset;white-space:nowrap;">Portal</div>':'') +
       (a.recruitStage?'<div style="font-size:.6rem;color:var(--tx3);margin-top:3px;">'+a.recruitStage+'</div>':'') +
       '</div></button>';
   }).join('');
@@ -8671,6 +8697,11 @@ function renderMore() {
 
   return `<div class="shdr"><span class="sti">All Sections</span></div>
   <div class="cl" style="margin:0 16px 16px;">
+    <button class="cr" onclick="closeMo();openCustomizeHome()">
+      <div class="ci r">&#9881;</div>
+      <div style="flex:1;"><div class="cn">Customize Home</div><div class="cs">Tiles, nav bar & dashboard sections</div></div>
+      <span class="chv">&#8250;</span>
+    </button>
     ${[['&#128176;','g','acct','Accounting'],['&#128172;','r','msgs','Message Board'],['&#127919;','y','goals','Goals'],['&#129309;','g','donors','Donor CRM'],['&#128202;','r','reports','Reports'],['&#127909;','r','meetings','Board Meetings'],['&#127891;','r','schools','Schools DB'],['&#127775;','g','events','Special Events'],['&#128101;','r','devboard','Dev Board'],['&#127919;','y','benchmarks','Fit Benchmarks'],['&#128274;','r','security','Security'],['&#10067;','g','help','Help Guide']].map(function(it){
       return `<button class="cr" onclick="admSec('${it[2]}')">
         <div class="ci ${it[1]}">${it[0]}</div>
@@ -11498,9 +11529,9 @@ function renderCoordDashboard() {
   var assignedCount = Object.keys(D.assignments).filter(function(k){ return D.assignments[k].coordInit; }).length;
 
   var out = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--b1);margin:16px;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.15);">'
-    + '<div style="background:var(--card);padding:14px 10px;text-align:center;"><div style="font-family:var(--HF);font-size:1.8rem;font-weight:700;color:var(--red);">'+assignedCount+'</div><div style="font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);margin-top:4px;font-weight:600;">Assigned</div></div>'
-    + '<div style="background:var(--card);padding:14px 10px;text-align:center;"><div style="font-family:var(--HF);font-size:1.8rem;font-weight:700;color:var(--yel);">'+openTasks+'</div><div style="font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);margin-top:4px;font-weight:600;">Open Tasks</div></div>'
-    + '<div style="background:var(--card);padding:14px 10px;text-align:center;"><div style="font-family:var(--HF);font-size:1.8rem;font-weight:700;color:var(--grn);">'+(allTasks.length-openTasks)+'</div><div style="font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);margin-top:4px;font-weight:600;">Done</div></div>'
+    + '<div style="background:var(--card);padding:14px 10px;text-align:center;"><div style="font-family:var(--HF);font-size:1.8rem;font-weight:700;color:var(--red);">'+assignedCount+'</div><div style="font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);margin-top:4px;font-weight:600;">Assigned</div></div>'
+    + '<div style="background:var(--card);padding:14px 10px;text-align:center;"><div style="font-family:var(--HF);font-size:1.8rem;font-weight:700;color:var(--yel);">'+openTasks+'</div><div style="font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);margin-top:4px;font-weight:600;">Open Tasks</div></div>'
+    + '<div style="background:var(--card);padding:14px 10px;text-align:center;"><div style="font-family:var(--HF);font-size:1.8rem;font-weight:700;color:var(--grn);">'+(allTasks.length-openTasks)+'</div><div style="font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);margin-top:4px;font-weight:600;">Done</div></div>'
     + '</div>';
 
   out += '<div style="padding:0 16px 10px;display:flex;justify-content:space-between;align-items:center;">'
