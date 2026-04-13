@@ -927,9 +927,9 @@ body.light .to.on{background:var(--rm);color:var(--red);}
   .activity-wrap{gap:40px;padding:8px 24px 12px;}
   .activity-rings{width:160px;height:160px;}
   .activity-rings svg{width:160px;height:160px;}
-  .al-num{font-size:2rem;}
-  .al-label{font-size:.88rem;}
-  .al-goal{font-size:.88rem;}
+  .al-num{font-family:var(--BF);font-size:.9rem;font-weight:800;}
+  .al-label{font-size:.9rem;font-weight:800;}
+  .al-goal{font-size:.9rem;font-weight:800;}
   .al-dot{width:8px;height:8px;}
   .activity-legend{gap:6px;}
 
@@ -988,13 +988,13 @@ body.light .to.on{background:var(--rm);color:var(--red);}
 .activity-rings circle{fill:none;stroke-linecap:round;}
 .ar-bg{stroke:rgba(255,255,255,.05);}
 body.light .ar-bg{stroke:rgba(0,0,0,.06);}
-.activity-legend{display:flex;flex-direction:column;gap:4px;}
-.al-item{display:flex;align-items:baseline;gap:6px;flex-wrap:nowrap;white-space:nowrap;}
+.activity-legend{display:flex;flex-direction:column;gap:6px;}
+.al-item{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap;margin-bottom:4px;}
 .al-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;position:relative;top:-2px;}
-.al-num{font-family:var(--HF);font-size:1.8rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;}
+.al-num{font-family:var(--BF);font-size:.9rem;font-weight:800;line-height:1.2;font-variant-numeric:tabular-nums;}
 .al-num .unit{font-size:1.2rem;}
-.al-label{font-size:.82rem;font-weight:700;color:var(--tx);}
-.al-goal{font-size:.82rem;font-weight:500;color:var(--tx);display:inline;}
+.al-label{font-size:.9rem;font-weight:800;color:var(--tx);}
+.al-goal{font-size:.9rem;font-weight:800;color:var(--tx);display:inline;}
 
 /* Ring stroke colors — hardcoded, !important for SVG */
 #ring-athletes-fill{stroke:#c8180c !important;filter:drop-shadow(0 0 6px rgba(200,24,12,.4));}
