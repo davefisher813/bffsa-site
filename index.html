@@ -1566,12 +1566,27 @@ function loadAppData() {
     if (!raw) return;
     var snap = JSON.parse(raw);
 
+    // Capture default seeds BEFORE they get overwritten by saved data.
+    // Used below to auto-restore if saved copy is empty (one-time seed migration).
+    var _seedSpecialEvents = (D.specialEvents || []).slice();
+
     // Restore all data EXCEPT roster — hardcoded roster is always source of truth
     var keys = ['playerColleges','portalEnabled','roster','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','files','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents','devBoard','fitBenchmarks','msgs','checkins','templates','people'];
     if (snap.meetings) MTG.meetings = snap.meetings;
     keys.forEach(function(k) {
       if (snap[k] !== undefined) D[k] = snap[k];
     });
+
+    // Seed migration: if user has empty specialEvents but we have seeds, restore them.
+    // Guarded by a flag so we don't re-seed after a user intentionally deletes all events.
+    if ((!D.specialEvents || D.specialEvents.length === 0) &&
+        _seedSpecialEvents.length > 0 &&
+        !(D.config && D.config.specialEventsSeeded)) {
+      D.specialEvents = _seedSpecialEvents;
+      if (!D.config) D.config = {};
+      D.config.specialEventsSeeded = true;
+      console.log('Seeded specialEvents with ' + _seedSpecialEvents.length + ' default events');
+    }
 
     // Merge saved per-athlete data (pin, portalEnabled) onto hardcoded roster by init
     if (snap.roster && Array.isArray(snap.roster)) {
