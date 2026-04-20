@@ -1971,7 +1971,73 @@ var D = {
   msgs: [],
   goals: [],
   events: [],
-  specialEvents: [],
+  specialEvents: [
+    {
+      name:'The Bridge Invitational: Swing for Scholarships',
+      type:'Golf Tournament',
+      status:'Planning',
+      date:'2026-08-13',
+      endDate:'',
+      venue:'Sterling Farms Golf Course, Stamford, CT',
+      goalRevenue:0,
+      actualRevenue:0,
+      ticketPrice:200,
+      tablePrice:800,
+      ticketCapacity:0,
+      ticketsSold:0,
+      budget:0,
+      expenses:0,
+      notes:'INAUGURAL EVENT. 8:00 AM shotgun. Includes: 18 Holes + Cart, Food & Drinks, Contests & Prizes, Custom Swag, Range Balls. Every dollar raised goes straight to the Student Athletes in our program.',
+      sponsors:[],
+      tasks:[],
+      guests:[],
+      vendors:[],
+      revenueLines:[
+        {source:'Foursome (Group of 4)', cat:'Tickets', amount:800},
+        {source:'Single Player', cat:'Tickets', amount:200},
+        {source:'Platinum Sponsorship (Top Tier)', cat:'Sponsorship', amount:2500},
+        {source:'Gold Sponsorship', cat:'Sponsorship', amount:2000},
+        {source:'Silver Sponsorship', cat:'Sponsorship', amount:1500},
+        {source:'Bronze Sponsorship', cat:'Sponsorship', amount:1000},
+        {source:'Food & Beverage (À La Carte)', cat:'Sponsorship', amount:2000},
+        {source:'Putting Green (À La Carte)', cat:'Sponsorship', amount:500},
+        {source:'Tee Box (À La Carte)', cat:'Sponsorship', amount:250}
+      ]
+    },
+    {
+      name:'The Bridge Summer Classic',
+      type:'Other',
+      status:'Planning',
+      date:'2026-06-01',
+      endDate:'',
+      venue:'Stamford, CT',
+      goalRevenue:0,
+      actualRevenue:0,
+      ticketPrice:75,
+      tablePrice:0,
+      ticketCapacity:0,
+      ticketsSold:0,
+      budget:0,
+      expenses:0,
+      notes:'FEATURED / RETURNING EVENT. Date TBD by Board Vote (June 2026). A day of tournaments, games, and community built around the 2026 FIFA World Cup. Includes: Wiffle Ball Tournament (8 teams, 5-6 players, round-robin into single elimination, trophies for 1st/2nd/MVP), 3v3 Soccer Tournament (Youth + Adult, country draft format), Field Day Stations, World Cup Watch Party. Every dollar raised goes straight to our Student Athletes.',
+      sponsors:[],
+      tasks:[],
+      guests:[],
+      vendors:[],
+      revenueLines:[
+        {source:'Wiffle Ball Team', cat:'Tickets', amount:75},
+        {source:'3v3 Soccer — Youth', cat:'Tickets', amount:75},
+        {source:'3v3 Soccer — Adult', cat:'Tickets', amount:75},
+        {source:'Platinum Sponsorship (TBD)', cat:'Sponsorship', amount:0},
+        {source:'Gold Sponsorship (TBD)', cat:'Sponsorship', amount:0},
+        {source:'Silver Sponsorship (TBD)', cat:'Sponsorship', amount:0},
+        {source:'Bronze Sponsorship (TBD)', cat:'Sponsorship', amount:0},
+        {source:'Field Day Station (À La Carte, TBD)', cat:'Sponsorship', amount:0},
+        {source:'Tournament Trophy (À La Carte, TBD)', cat:'Sponsorship', amount:0},
+        {source:'Watch Party (À La Carte, TBD)', cat:'Sponsorship', amount:0}
+      ]
+    }
+  ],
   devBoard: [],  // [{name, title, email, phone, notes}]
   fitBenchmarks: null,  // null = use defaults; set to custom object to override
   roster: [
@@ -2400,7 +2466,7 @@ function getNavItems() {
   return D.config.navItems || DEFAULT_NAV.slice();
 }
 
-var DEFAULT_SECTIONS = ['activity','tasks'];
+var DEFAULT_SECTIONS = ['activity','tasks','events'];
 var HOME_SECTION_DEFS = [
   {id:'activity', label:'Recent Activity',  icon:'M22 12h-4l-3 9L9 3l-3 9H2'},
   {id:'tasks',    label:'Open Tasks',        icon:'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11'},
@@ -2410,7 +2476,15 @@ var HOME_SECTION_DEFS = [
 ];
 function getHomeSections() {
   if (!D.config) D.config = {};
-  return D.config.homeSections || DEFAULT_SECTIONS.slice();
+  var secs = D.config.homeSections || DEFAULT_SECTIONS.slice();
+  // Auto-include events section if missing (so existing users get it too)
+  if (secs.indexOf('events') < 0) {
+    secs = secs.slice();
+    var taskIdx = secs.indexOf('tasks');
+    if (taskIdx >= 0) secs.splice(taskIdx + 1, 0, 'events');
+    else secs.push('events');
+  }
+  return secs;
 }
 
 function renderHomeSections() {
@@ -2422,19 +2496,19 @@ function renderHomeSections() {
     if (id === 'activity') {
       html += '<div class="dash-section"><div class="shdr"><span class="sti">Recent Activity</span></div>' +
         '<div class="cl" style="margin:0 16px 20px;" id="act-feed">' +
-        '<div style="padding:16px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;">No recent activity yet.</div></div></div>';
+        '<div style="padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;">No recent activity yet.</div></div></div>';
     } else if (id === 'tasks') {
       html += '<div class="dash-section"><div class="shdr"><span class="sti">Open Tasks</span><button class="slk" onclick="admSec(\'tasks\')">View All</button></div>' +
-        '<div id="task-prev"></div></div>';
+        '<div class="cl" style="margin:0 16px 20px;" id="task-prev"></div></div>';
     } else if (id === 'events') {
       html += '<div class="dash-section"><div class="shdr"><span class="sti">Upcoming Events</span><button class="slk" onclick="admSec(\'events\')">View All</button></div>' +
-        '<div id="events-prev"></div></div>';
+        '<div class="cl" style="margin:0 16px 20px;" id="events-prev"></div></div>';
     } else if (id === 'donors') {
       html += '<div class="dash-section"><div class="shdr"><span class="sti">Recent Donors</span><button class="slk" onclick="admSec(\'donors\')">View All</button></div>' +
-        '<div id="donors-prev"></div></div>';
+        '<div class="cl" style="margin:0 16px 20px;" id="donors-prev"></div></div>';
     } else if (id === 'goals') {
       html += '<div class="dash-section"><div class="shdr"><span class="sti">Goals Progress</span><button class="slk" onclick="admSec(\'goals\')">View All</button></div>' +
-        '<div id="goals-prev"></div>';
+        '<div class="cl" style="margin:0 16px 20px;" id="goals-prev"></div></div>';
     }
   });
   container.innerHTML = html;
@@ -2464,7 +2538,13 @@ function renderEventsPrev() {
   var el = document.getElementById('events-prev');
   if (!el) return;
   var now = new Date().toISOString().slice(0,10);
-  var upcoming = (D.events||[]).filter(function(ev) { return ev.date >= now; })
+  var simple = (D.events||[]).map(function(ev){
+    return {title:ev.title||ev.name||'Event', date:ev.date||'', location:ev.location||'', special:false};
+  });
+  var special = (D.specialEvents||[]).map(function(ev){
+    return {title:ev.name||'Event', date:ev.date||'', location:ev.venue||'', special:true};
+  });
+  var upcoming = simple.concat(special).filter(function(ev){ return ev.date && ev.date >= now; })
     .sort(function(a,b) { return a.date > b.date ? 1 : -1; }).slice(0,3);
   if (!upcoming.length) {
     el.innerHTML = '<div style="padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;">No upcoming events.</div>';
@@ -2474,7 +2554,7 @@ function renderEventsPrev() {
     return '<div style="padding:10px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:12px;">' +
       '<div style="width:40px;height:40px;border-radius:10px;background:rgba(39,174,96,.12);display:flex;align-items:center;justify-content:center;">' +
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>' +
-      '<div style="flex:1;"><div style="font-size:.82rem;font-weight:600;color:var(--tx);">' + (ev.title||ev.name||'Event') + '</div>' +
+      '<div style="flex:1;"><div style="font-size:.82rem;font-weight:600;color:var(--tx);">' + ev.title + '</div>' +
       '<div style="font-size:.7rem;color:var(--tx2);">' + ev.date + (ev.location ? ' · ' + ev.location : '') + '</div></div></div>';
   }).join('');
 }
@@ -2555,14 +2635,27 @@ function openCustomizeHome() {
     '';
   // Dashboard sections picker
   html += '<div style="font-size:.65rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--tx);margin-bottom:8px;">DASHBOARD SECTIONS</div>' +
-    '<div style="font-size:.72rem;color:var(--tx2);margin-bottom:8px;">Choose what appears below Quick Actions.</div>' +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;">';
+    '<div style="font-size:.72rem;color:var(--tx2);margin-bottom:8px;">Choose what appears below Quick Actions. Use the arrows to reorder.</div>' +
+    '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">';
   var curSections = getHomeSections();
+  // Show enabled sections in current order, with up/down arrows
+  curSections.forEach(function(sid, i) {
+    var def = HOME_SECTION_DEFS.find(function(d){ return d.id === sid; });
+    if (!def) return;
+    var isFirst = i === 0, isLast = i === curSections.length - 1;
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--card2);border-radius:8px;border:1px solid var(--red);">' +
+      '<input type="checkbox" data-section="'+def.id+'" checked onchange="sectionCustomToggle(\''+def.id+'\',this.checked)" style="accent-color:var(--red);width:16px;height:16px;">' +
+      '<span style="font-size:.78rem;font-weight:600;color:var(--tx);flex:1;">'+def.label+'</span>' +
+      '<button onclick="sectionMove(\''+def.id+'\',-1)" '+(isFirst?'disabled':'')+' style="width:28px;height:28px;border-radius:6px;border:1px solid var(--b1);background:var(--card);color:var(--tx);cursor:pointer;font-size:.9rem;opacity:'+(isFirst?'0.3':'1')+';">&#9650;</button>' +
+      '<button onclick="sectionMove(\''+def.id+'\',1)" '+(isLast?'disabled':'')+' style="width:28px;height:28px;border-radius:6px;border:1px solid var(--b1);background:var(--card);color:var(--tx);cursor:pointer;font-size:.9rem;opacity:'+(isLast?'0.3':'1')+';">&#9660;</button>' +
+      '</div>';
+  });
+  // Show disabled sections at bottom (no arrows)
   HOME_SECTION_DEFS.forEach(function(s) {
-    var on = curSections.indexOf(s.id) >= 0;
-    html += '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--card2);border-radius:8px;cursor:pointer;border:1px solid '+(on?'var(--red)':'var(--b1)') + ';">' +
-      '<input type="checkbox" data-section="'+s.id+'" '+(on?'checked':'')+' onchange="sectionCustomToggle(\''+s.id+'\',this.checked)" style="accent-color:var(--red);width:16px;height:16px;">' +
-      '<span style="font-size:.78rem;font-weight:600;color:var(--tx);">'+s.label+'</span></label>';
+    if (curSections.indexOf(s.id) >= 0) return;
+    html += '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--card2);border-radius:8px;cursor:pointer;border:1px solid var(--b1);">' +
+      '<input type="checkbox" data-section="'+s.id+'" onchange="sectionCustomToggle(\''+s.id+'\',this.checked)" style="accent-color:var(--red);width:16px;height:16px;">' +
+      '<span style="font-size:.78rem;font-weight:600;color:var(--tx2);flex:1;">'+s.label+'</span></label>';
   });
   html += '</div>';
 
@@ -2571,11 +2664,27 @@ function openCustomizeHome() {
 
 function sectionCustomToggle(id, checked) {
   if (!D.config) D.config = {};
-  var secs = getHomeSections();
+  var secs = getHomeSections().slice();
   var idx = secs.indexOf(id);
   if (checked && idx < 0) secs.push(id);
   if (!checked && idx >= 0) secs.splice(idx, 1);
   D.config.homeSections = secs;
+  saveAppData();
+  openCustomizeHome();
+}
+
+function sectionMove(id, dir) {
+  if (!D.config) D.config = {};
+  var secs = getHomeSections().slice();
+  var idx = secs.indexOf(id);
+  if (idx < 0) return;
+  var newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= secs.length) return;
+  secs.splice(idx, 1);
+  secs.splice(newIdx, 0, id);
+  D.config.homeSections = secs;
+  saveAppData();
+  openCustomizeHome();
 }
 
 function homeCustomToggle(id) {
@@ -2950,6 +3059,10 @@ function renderTaskPrev() {
   var el = document.getElementById('task-prev');
   if (!el) return;
   var open = D.tasks.filter(function(t){ return !t.done; }).slice(0,4);
+  if (!open.length) {
+    el.innerHTML = '<div style="padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;">No open tasks.</div>';
+    return;
+  }
   el.innerHTML = open.map(function(t){
     var pc = t.pri==='high' ? 'br2' : t.pri==='med' ? 'by' : 'bgr';
     return `<button class="trow" onclick="toggleAdmTask(${t.id})">
