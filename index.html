@@ -2562,15 +2562,17 @@ function renderEventsPrev() {
   var upcoming = simple.concat(special).filter(function(ev){ return ev.date && ev.date >= now; })
     .sort(function(a,b) { return a.date > b.date ? 1 : -1; }).slice(0,3);
   if (!upcoming.length) {
-    el.innerHTML = '<div style="padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;">No upcoming events.</div>';
+    el.innerHTML = '<button onclick="admSec(\'events\')" style="width:100%;padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;background:transparent;border:none;cursor:pointer;">No upcoming events.</button>';
     return;
   }
   el.innerHTML = upcoming.map(function(ev) {
-    return '<div style="padding:10px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:12px;">' +
-      '<div style="width:40px;height:40px;border-radius:10px;background:rgba(39,174,96,.12);display:flex;align-items:center;justify-content:center;">' +
+    var sec = ev.special ? 'events' : 'events';
+    return '<button onclick="admSec(\''+sec+'\')" style="width:100%;padding:10px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:12px;background:transparent;border-left:none;border-right:none;border-top:none;cursor:pointer;text-align:left;">' +
+      '<div style="width:40px;height:40px;border-radius:10px;background:rgba(39,174,96,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>' +
-      '<div style="flex:1;"><div style="font-size:.82rem;font-weight:600;color:var(--tx);">' + ev.title + '</div>' +
-      '<div style="font-size:.7rem;color:var(--tx2);">' + ev.date + (ev.location ? ' · ' + ev.location : '') + '</div></div></div>';
+      '<div style="flex:1;min-width:0;"><div style="font-size:.82rem;font-weight:600;color:var(--tx);">' + ev.title + '</div>' +
+      '<div style="font-size:.7rem;color:var(--tx2);">' + ev.date + (ev.location ? ' · ' + ev.location : '') + '</div></div>' +
+      '<span style="color:var(--tx3);font-size:1.1rem;flex-shrink:0;">&#8250;</span></button>';
   }).join('');
 }
 
@@ -2579,15 +2581,16 @@ function renderDonorsPrev() {
   if (!el) return;
   var donors = (D.donors||[]).slice(-4).reverse();
   if (!donors.length) {
-    el.innerHTML = '<div style="padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;">No donors yet.</div>';
+    el.innerHTML = '<button onclick="admSec(\'donors\')" style="width:100%;padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;background:transparent;border:none;cursor:pointer;">No donors yet.</button>';
     return;
   }
   el.innerHTML = donors.map(function(d) {
-    return '<div style="padding:10px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:12px;">' +
-      '<div style="width:40px;height:40px;border-radius:10px;background:rgba(200,24,12,.1);display:flex;align-items:center;justify-content:center;">' +
+    return '<button onclick="admSec(\'donors\')" style="width:100%;padding:10px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:12px;background:transparent;border-left:none;border-right:none;border-top:none;cursor:pointer;text-align:left;">' +
+      '<div style="width:40px;height:40px;border-radius:10px;background:rgba(200,24,12,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c8180c" stroke-width="1.8"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></div>' +
-      '<div style="flex:1;"><div style="font-size:.82rem;font-weight:600;color:var(--tx);">' + (d.name||'Donor') + '</div>' +
-      '<div style="font-size:.7rem;color:var(--tx2);">' + (d.total ? '$' + d.total : '') + '</div></div></div>';
+      '<div style="flex:1;min-width:0;"><div style="font-size:.82rem;font-weight:600;color:var(--tx);">' + (d.name||'Donor') + '</div>' +
+      '<div style="font-size:.7rem;color:var(--tx2);">' + (d.total ? '$' + d.total : '') + '</div></div>' +
+      '<span style="color:var(--tx3);font-size:1.1rem;flex-shrink:0;">&#8250;</span></button>';
   }).join('');
 }
 
@@ -2596,16 +2599,16 @@ function renderGoalsPrev() {
   if (!el) return;
   var goals = (D.goals||[]).slice(0,3);
   if (!goals.length) {
-    el.innerHTML = '<div style="padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;">No goals set.</div>';
+    el.innerHTML = '<button onclick="admSec(\'goals\')" style="width:100%;padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;background:transparent;border:none;cursor:pointer;">No goals set.</button>';
     return;
   }
   el.innerHTML = goals.map(function(g) {
     var pct = g.target > 0 ? Math.min(Math.round((g.current||0)/g.target*100),100) : 0;
-    return '<div style="padding:10px 20px;border-bottom:1px solid var(--b1);">' +
-      '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:.82rem;font-weight:600;color:var(--tx);">' + (g.name||'Goal') + '</span>' +
-      '<span style="font-size:.75rem;font-weight:700;color:var(--red);">' + pct + '%</span></div>' +
+    return '<button onclick="admSec(\'goals\')" style="width:100%;padding:10px 20px;border-bottom:1px solid var(--b1);background:transparent;border-left:none;border-right:none;border-top:none;cursor:pointer;text-align:left;display:block;">' +
+      '<div style="display:flex;justify-content:space-between;margin-bottom:4px;align-items:center;"><span style="font-size:.82rem;font-weight:600;color:var(--tx);">' + (g.name||'Goal') + '</span>' +
+      '<span style="font-size:.75rem;font-weight:700;color:var(--red);">' + pct + '% <span style="color:var(--tx3);font-weight:500;margin-left:4px;">&#8250;</span></span></div>' +
       '<div style="height:4px;border-radius:2px;background:var(--b1);overflow:hidden;">' +
-      '<div style="height:100%;width:' + pct + '%;background:var(--red);border-radius:2px;"></div></div></div>';
+      '<div style="height:100%;width:' + pct + '%;background:var(--red);border-radius:2px;"></div></div></button>';
   }).join('');
 }
 
@@ -3075,7 +3078,7 @@ function renderTaskPrev() {
   if (!el) return;
   var open = D.tasks.filter(function(t){ return !t.done; }).slice(0,4);
   if (!open.length) {
-    el.innerHTML = '<div style="padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;">No open tasks.</div>';
+    el.innerHTML = '<button onclick="admSec(\'tasks\')" style="width:100%;padding:16px 20px;font-size:.95rem;font-weight:500;color:var(--tx2);text-align:center;background:transparent;border:none;cursor:pointer;">No open tasks.</button>';
     return;
   }
   el.innerHTML = open.map(function(t){
