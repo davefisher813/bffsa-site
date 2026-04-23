@@ -1733,11 +1733,18 @@ function syncPush(silent) {
 }
 
 // Pull latest data from Supabase and merge into local
-function syncPull(onDone) {
+function syncPull(onDone, _isRetry) {
   syncUpdateIndicator('pulling', 'Syncing...');
   fetch('/.netlify/functions/sync', { method: 'GET' })
   .then(function(r){
-    if (!r.ok) throw new Error('HTTP '+r.status);
+    if (!r.ok) {
+      // Transient 404 = cold start; retry once silently before warning
+      if (r.status === 404 && !_isRetry) {
+        setTimeout(function() { syncPull(onDone, true); }, 2000);
+        throw new Error('__RETRY__');
+      }
+      throw new Error('HTTP '+r.status);
+    }
     return r.text().then(function(txt){
       try { return JSON.parse(txt); }
       catch(e) { throw new Error('Invalid response from sync function — check Netlify logs'); }
@@ -1770,6 +1777,7 @@ function syncPull(onDone) {
   })
   .catch(function(e){
     var msg = (e&&e.message)||'';
+    if (msg === '__RETRY__') return; // retry scheduled, stay quiet
     var isOffline = msg.indexOf('fetch') >= 0 || msg.indexOf('network') >= 0 || msg.indexOf('Failed to fetch') >= 0;
     var isFnError = msg.indexOf('<!DOCTYPE') >= 0 || msg.indexOf('not valid JSON') >= 0 || msg.indexOf('Unexpected token') >= 0;
     if (isFnError) {
@@ -6799,6 +6807,168 @@ function spqEnqueueAfterImport(init) {
 // PER-ATHLETE FILE VAULT
 // ══════════════════════════════════════════════════════════════════
 
+// ── SUPABASE STORAGE HELPERS (Phase 1) ──
+// Files live in Supabase Storage buckets (athlete-files, board-files).
+// Entries cache a signed URL + expiration; helpers refresh on demand.
+
+// Upload a File to Supabase via a two-step signed URL flow.
+// Bypasses Netlify's 6MB payload limit by PUTing directly to Supabase.
+// scope: 'athlete' or 'board'
+// scopeParams: { athleteInit } or { folderId }
+// Returns: { bucket, storagePath }
+async function supaFileUpload(scope, scopeParams, file, fileId) {
+  var initRes = await fetch('/.netlify/functions/files-upload-init', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      scope: scope,
+      athleteInit: scopeParams.athleteInit || null,
+      folderId: scopeParams.folderId || null,
+      fileName: file.name,
+      fileId: fileId
+    })
+  });
+  if (!initRes.ok) {
+    var initErr = await initRes.text().catch(function(){return '';});
+    throw new Error('init ' + initRes.status + ': ' + initErr.slice(0, 200));
+  }
+  var initData = await initRes.json();
+  // PUT directly to Supabase. The signed URL has the auth token in the query
+  // string already — do NOT add Authorization header (it would collide with
+  // Supabase's JWT validator and reject the upload).
+  var uploadRes = await fetch(initData.uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'x-upsert': 'true',
+      'Content-Type': file.type || 'application/octet-stream'
+    },
+    body: file
+  });
+  if (!uploadRes.ok) {
+    var upErr = await uploadRes.text().catch(function(){return '';});
+    throw new Error('upload ' + uploadRes.status + ': ' + upErr.slice(0, 200));
+  }
+  return { bucket: initData.bucket, storagePath: initData.storagePath };
+}
+
+// Get a fresh signed read URL. ttlSec defaults to 1h.
+// If downloadName is set, the URL forces a download with that filename.
+async function supaFileGetUrl(bucket, storagePath, ttlSec, downloadName) {
+  var res = await fetch('/.netlify/functions/files-get-url', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      bucket: bucket,
+      storagePath: storagePath,
+      ttl: ttlSec || 3600,
+      download: downloadName ? true : false,
+      fileName: downloadName || null
+    })
+  });
+  if (!res.ok) {
+    var errText = await res.text().catch(function(){return '';});
+    throw new Error('getUrl ' + res.status + ': ' + errText.slice(0, 200));
+  }
+  return await res.json();
+}
+
+// Delete from Supabase Storage.
+async function supaFileDelete(bucket, storagePath) {
+  var res = await fetch('/.netlify/functions/files-delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({bucket: bucket, storagePath: storagePath})
+  });
+  if (!res.ok) throw new Error('delete failed: ' + res.status);
+  return await res.json();
+}
+
+// Is this entry backed by Supabase (vs legacy data:/blob: URL)?
+function supaIsCloud(entry) {
+  return !!(entry && entry.supaBucket && entry.supaPath);
+}
+
+// Ensure entry has a fresh signed URL, refreshing if stale (<5min left).
+// Mutates entry in place. Returns URL string or null.
+async function supaEnsureUrl(entry, ttlSec) {
+  if (!supaIsCloud(entry)) return entry.url || null;
+  var now = Date.now();
+  var expires = entry.supaUrlExpiresAt || 0;
+  if (entry.supaUrl && expires > now + 5*60*1000) return entry.supaUrl;
+  try {
+    var result = await supaFileGetUrl(entry.supaBucket, entry.supaPath, ttlSec || 3600);
+    entry.supaUrl = result.signedUrl;
+    entry.supaUrlExpiresAt = result.expiresAt;
+    try { saveAppData(); } catch(e) {}
+    return entry.supaUrl;
+  } catch(e) {
+    console.warn('supaEnsureUrl failed:', e.message);
+    return null;
+  }
+}
+
+// Open an athlete file. Handles cloud, data URL, and orphan cases.
+async function athFileOpen(playerInit, fileIdx) {
+  var files = (D.athleteFiles && D.athleteFiles[playerInit]) || [];
+  var f = files[fileIdx];
+  if (!f) return;
+  if (supaIsCloud(f)) {
+    toast('Opening…');
+    var ttl = (f.category === 'film') ? 7*24*3600 : 3600;
+    var url = await supaEnsureUrl(f, ttl);
+    if (url) { window.open(url, '_blank'); }
+    else { toast('Could not open — check connection'); }
+    return;
+  }
+  if (f.url && f.url.indexOf('data:') === 0) { window.open(f.url, '_blank'); return; }
+  toast('File link expired. Please re-upload.');
+}
+
+// Open a board vault file.
+async function docFileOpen(docId) {
+  var doc = (D.files && D.files.docs || []).find(function(d){ return d.id === docId; });
+  if (!doc) return;
+  if (supaIsCloud(doc)) {
+    toast('Opening…');
+    var url = await supaEnsureUrl(doc, 3600);
+    if (url) { window.open(url, '_blank'); }
+    else { toast('Could not open — check connection'); }
+    return;
+  }
+  if (doc.url && doc.url.indexOf('data:') === 0) { window.open(doc.url, '_blank'); return; }
+  toast('File link expired. Please re-upload.');
+}
+
+// Share a cloud-stored athlete file via a 30-day signed URL.
+async function athFileShare(playerInit, fileIdx) {
+  var files = (D.athleteFiles && D.athleteFiles[playerInit]) || [];
+  var f = files[fileIdx];
+  if (!f) return;
+  if (!supaIsCloud(f)) { toast('Share is only available for cloud-stored files. Re-upload to enable.'); return; }
+  toast('Creating share link…');
+  try {
+    var result = await supaFileGetUrl(f.supaBucket, f.supaPath, 30*24*3600, f.name);
+    var copied = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(result.signedUrl);
+        copied = true;
+      }
+    } catch(e) {}
+    if (!copied) {
+      var ta = document.createElement('textarea');
+      ta.value = result.signedUrl;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); copied = true; } catch(e) {}
+      document.body.removeChild(ta);
+    }
+    toast(copied ? 'Share link copied — valid for 30 days' : 'Share link ready: ' + result.signedUrl);
+  } catch(e) {
+    toast('Share failed: ' + (e.message || 'unknown'));
+  }
+}
+
 var ATH_FILE_CATS = [
   {id:'transcript',  label:'Transcripts',       icon:'📄', color:'var(--blu)'},
   {id:'testscores',  label:'Test Scores',        icon:'📝', color:'var(--pur)'},
@@ -6858,7 +7028,13 @@ function renderPlayerFiles(idx, a) {
         (f.docAiResult ? '<div style="font-size:.68rem;color:var(--grn);margin-top:2px;">✓ AI processed</div>' : '') +
         '</div>' +
         '<div style="display:flex;gap:6px;">' +
-        (f.url ? '<a href="' + f.url + '" target="_blank" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border-radius:7px;text-decoration:none;font-weight:700;">Open</a>' : '') +
+        (supaIsCloud(f)
+          ? '<button onclick="athFileOpen(&quot;' + a.init + '&quot;,' + realIdx + ')" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border:none;border-radius:7px;font-weight:700;cursor:pointer;">Open</button>'
+          : (f.url && f.url.indexOf('data:') === 0)
+            ? '<a href="' + f.url + '" target="_blank" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border-radius:7px;text-decoration:none;font-weight:700;">Open</a>'
+            : (f.url && f.url.indexOf('blob:') === 0)
+              ? '<button onclick="openAthFileUpload(' + idx + ',&quot;' + f.category + '&quot;)" style="font-size:.7rem;padding:4px 9px;background:var(--rm);color:var(--red2);border:1px solid rgba(204,0,0,.2);border-radius:7px;font-weight:700;cursor:pointer;">Re-upload</button>'
+              : '') +
         '<button onclick="athFileOptions(' + idx + ',' + realIdx + ')" style="font-size:.7rem;padding:4px 9px;background:var(--card2);color:var(--sub);border:1px solid var(--b1);border-radius:7px;cursor:pointer;">⋯</button>' +
         '</div></div>' +
         (f.docAiResult ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1);font-size:.72rem;color:var(--tx2);line-height:1.5;">' + f.docAiResult.slice(0,200) + (f.docAiResult.length>200?'...':'') + '</div>' : '') +
@@ -6908,60 +7084,130 @@ function handleAthFileUpload(input, idx) {
   var cat = (document.getElementById('ath-cat')||{}).value || 'other';
   var notes = (document.getElementById('ath-notes')||{}).value || '';
   var fdate = new Date().toISOString().split('T')[0];
+  var MAX_BYTES = 500 * 1024 * 1024; // 500 MB — bucket cap
+  var FALLBACK_CAP = 3 * 1024 * 1024; // 3 MB — data URL fallback if cloud fails
+
+  function _detectCat(fn) {
+    fn = fn.toLowerCase();
+    if (fn.includes('transcript') || fn.includes('grades') || fn.includes('gpa')) return 'transcript';
+    if (fn.includes('sat') || fn.includes('act') || fn.includes('score') || fn.includes('test')) return 'testscores';
+    if (fn.includes('offer') || (fn.includes('scholarship') && fn.includes('award'))) return 'offer';
+    if (fn.includes('financial') || fn.includes('aid') || fn.includes('fafsa') || fn.includes('fasfa')) return 'finaid';
+    if (fn.includes('recommend') || fn.includes('letter')) return 'rec';
+    if (fn.includes('film') || fn.includes('highlight') || fn.includes('hudl') || fn.includes('video')) return 'film';
+    if (fn.includes('medical') || fn.includes('physical') || fn.includes('clearance')) return 'medical';
+    return cat;
+  }
+
+  if (!D.athleteFiles) D.athleteFiles = {};
+  if (!D.athleteFiles[a.init]) D.athleteFiles[a.init] = [];
+
+  // Pre-allocate unique IDs synchronously so concurrent uploads don't collide
+  // (Promise.all runs processOne bodies before any awaits resolve).
+  var baseMaxId = Object.values(D.athleteFiles).flat().reduce(function(m,f){ return Math.max(m, f.id||0); }, 0);
+  var preAllocIds = files.map(function(_, i) { return baseMaxId + i + 1; });
+
+  closeMo();
+  toast('Uploading ' + files.length + ' file' + (files.length===1?'':'s') + '…');
+
   var added = [];
+  var oversized = 0;
+  var uploadErrors = 0;
+  var fallbackCount = 0;
 
-  files.forEach(function(file) {
-    // Auto-detect category from filename
-    var fn = file.name.toLowerCase();
-    var detectedCat = cat;
-    if (fn.includes('transcript') || fn.includes('grades') || fn.includes('gpa')) detectedCat = 'transcript';
-    else if (fn.includes('sat') || fn.includes('act') || fn.includes('score') || fn.includes('test')) detectedCat = 'testscores';
-    else if (fn.includes('offer') || fn.includes('scholarship') && fn.includes('award')) detectedCat = 'offer';
-    else if (fn.includes('financial') || fn.includes('aid') || fn.includes('fafsa') || fn.includes('fasfa')) detectedCat = 'finaid';
-    else if (fn.includes('recommend') || fn.includes('letter')) detectedCat = 'rec';
-    else if (fn.includes('film') || fn.includes('highlight') || fn.includes('hudl') || fn.includes('video')) detectedCat = 'film';
-    else if (fn.includes('medical') || fn.includes('physical') || fn.includes('clearance')) detectedCat = 'medical';
+  // Process one file: try Supabase, fall back to data URL if small, else fail.
+  async function processOne(file, fileIndex) {
+    if (file.size > MAX_BYTES) { oversized++; return null; }
 
-    var url = URL.createObjectURL(file);
-    var maxId = Object.values(D.athleteFiles||{}).flat().reduce(function(m,f){ return Math.max(m, f.id||0); }, 0);
+    var nextId = preAllocIds[fileIndex];
 
     var entry = {
-      id: maxId + added.length + 1,
-      category: detectedCat,
+      id: nextId,
+      category: _detectCat(file.name),
       name: file.name,
       type: file.name.split('.').pop().toLowerCase() || 'other',
       size: file.size > 1048576 ? (file.size/1048576).toFixed(1)+' MB' : (file.size/1024).toFixed(0)+' KB',
       date: fdate,
       notes: notes,
-      url: url,
-      _blob: true,
+      url: '',
       processed: false,
-      docAiResult: null,
-      _fileRef: file
+      docAiResult: null
     };
 
-    if (!D.athleteFiles) D.athleteFiles = {};
-    if (!D.athleteFiles[a.init]) D.athleteFiles[a.init] = [];
+    // Primary path: upload to Supabase
+    try {
+      var result = await supaFileUpload('athlete', {athleteInit: a.init}, file, nextId);
+      entry.supaBucket = result.bucket;
+      entry.supaPath = result.storagePath;
+      // Pre-fetch a signed URL so the first Open is instant.
+      // Film gets 7-day URLs so shared links survive; docs get 1h.
+      var ttl = (entry.category === 'film') ? 7*24*3600 : 3600;
+      try {
+        var urlResult = await supaFileGetUrl(result.bucket, result.storagePath, ttl);
+        entry.supaUrl = urlResult.signedUrl;
+        entry.supaUrlExpiresAt = urlResult.expiresAt;
+      } catch(urlErr) { /* non-fatal — fetch on demand later */ }
+    } catch(uploadErr) {
+      // Cloud failed. Try data URL fallback if small enough.
+      console.warn('Supabase upload failed for', file.name, '-', uploadErr.message);
+      if (file.size <= FALLBACK_CAP) {
+        try {
+          var dataUrl = await new Promise(function(resolve, reject) {
+            var r = new FileReader();
+            r.onload = function(e) { resolve(e.target.result); };
+            r.onerror = reject;
+            r.readAsDataURL(file);
+          });
+          entry.url = dataUrl;
+          entry._fallback = true;
+          fallbackCount++;
+        } catch(e2) {
+          uploadErrors++;
+          return null;
+        }
+      } else {
+        uploadErrors++;
+        return null;
+      }
+    }
+
     D.athleteFiles[a.init].push(entry);
     added.push({entry: entry, file: file, idx: D.athleteFiles[a.init].length - 1});
-  });
-
-  saveAppData();
-  closeMo();
-  toast(added.length + ' file' + (added.length===1?'':'s') + ' added — AI processing...');
-  playerTab('files');
-
-  // Notify coordinator
-  var coord = D.assignments && D.assignments[a.init] ? D.assignments[a.init].coordInit : null;
-  if (coord) {
-    _addActivity('file_upload', a.name.split(' ')[0] + ' — ' + added.length + ' file' + (added.length===1?'':'s') + ' uploaded');
+    return entry;
   }
 
-  // Auto-process each file with Doc AI
-  added.forEach(function(item) {
-    setTimeout(function() {
-      autoProcessAthFile(idx, item.idx, item.file);
-    }, 500);
+  Promise.all(files.map(function(file, i) { return processOne(file, i); })).then(function() {
+    try {
+      saveAppData();
+    } catch(e) {
+      toast('⚠️ Storage issue — ' + (e.message || 'unknown'));
+    }
+
+    var msg;
+    if (added.length === 0) {
+      msg = 'Upload failed';
+      if (oversized > 0) msg += ' · ' + oversized + ' >500MB';
+      if (uploadErrors > 0) msg += ' · ' + uploadErrors + ' error' + (uploadErrors===1?'':'s');
+    } else {
+      msg = added.length + ' file' + (added.length===1?'':'s') + ' uploaded';
+      if (fallbackCount > 0) msg += ' · ' + fallbackCount + ' via local fallback';
+      if (oversized > 0) msg += ' · ' + oversized + ' skipped (>500MB)';
+      if (uploadErrors > 0) msg += ' · ' + uploadErrors + ' failed';
+    }
+    toast(msg);
+    playerTab('files');
+
+    var coord = D.assignments && D.assignments[a.init] ? D.assignments[a.init].coordInit : null;
+    if (coord && added.length > 0) {
+      _addActivity('file_upload', a.name.split(' ')[0] + ' — ' + added.length + ' file' + (added.length===1?'':'s') + ' uploaded');
+    }
+
+    // Auto-process with Doc AI (only successful uploads)
+    added.forEach(function(item) {
+      setTimeout(function() {
+        autoProcessAthFile(idx, item.idx, item.file);
+      }, 500);
+    });
   });
 }
 
@@ -7150,7 +7396,15 @@ function athFileOptions(playerIdx, fileIdx) {
     (f.docAiResult ? '<div style="font-size:.78rem;color:var(--tx2);background:var(--card2);padding:10px;border-radius:9px;margin-bottom:10px;line-height:1.6;">' + f.docAiResult + '</div>' : '') +
     (f.docAiFlags && f.docAiFlags.length > 0 ? '<div style="margin-bottom:10px;">' + f.docAiFlags.map(function(fl){ return '<div style="font-size:.72rem;color:#ff9500;display:flex;gap:5px;"><span>⚠️</span><span>' + fl + '</span></div>'; }).join('') + '</div>' : '') +
     '<div style="display:flex;flex-direction:column;gap:7px;">' +
-    (f.url ? '<a href="' + f.url + '" target="_blank" style="padding:11px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:9px;font-size:.82rem;font-weight:700;text-decoration:none;text-align:center;">🔗 Open / Download</a>' : '') +
+    (supaIsCloud(f)
+      ? '<button onclick="athFileOpen(&quot;' + a.init + '&quot;,' + fileIdx + ')" style="padding:11px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:9px;font-size:.82rem;font-weight:700;cursor:pointer;">🔗 Open / Download</button>' +
+        '<button onclick="athFileShare(&quot;' + a.init + '&quot;,' + fileIdx + ')" style="padding:11px;background:var(--card2);border:1px solid var(--b2);color:var(--tx);border-radius:9px;font-size:.82rem;font-weight:600;cursor:pointer;">📤 Copy share link (30 days)</button>'
+      : (f.url && f.url.indexOf('data:') === 0)
+        ? '<a href="' + f.url + '" target="_blank" style="padding:11px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:9px;font-size:.82rem;font-weight:700;text-decoration:none;text-align:center;">🔗 Open / Download</a>' +
+          '<div style="padding:8px 11px;background:var(--card2);border:1px solid var(--b2);color:var(--tx3);border-radius:9px;font-size:.72rem;text-align:center;line-height:1.4;">Share link unavailable for local-fallback files. Re-upload to enable.</div>'
+        : (f.url && f.url.indexOf('blob:') === 0)
+          ? '<div style="padding:11px;background:var(--rm);border:1px solid rgba(204,0,0,.2);color:var(--red2);border-radius:9px;font-size:.78rem;text-align:center;line-height:1.4;">⚠️ File link expired after app reload.<br><span style="font-size:.7rem;color:var(--tx3);">Delete and re-upload to restore access.</span></div>'
+          : '') +
     '<button onclick="sendToDocAI(' + playerIdx + ',' + fileIdx + ')" style="padding:11px;background:var(--card2);border:1px solid var(--b2);color:var(--tx2);border-radius:9px;font-size:.82rem;font-weight:600;cursor:pointer;">🤖 Open in Doc AI</button>' +
     '<button onclick="deleteAthFile(' + playerIdx + ',' + fileIdx + ')" style="padding:11px;background:var(--rm);border:1px solid rgba(204,0,0,.2);color:var(--red2);border-radius:9px;font-size:.82rem;font-weight:600;cursor:pointer;">🗑 Delete</button>' +
     '</div>');
@@ -7159,6 +7413,13 @@ function athFileOptions(playerIdx, fileIdx) {
 function deleteAthFile(playerIdx, fileIdx) {
   var a = D.roster[playerIdx]; if (!a) return;
   if (!confirm('Delete this file?')) return;
+  var entry = D.athleteFiles[a.init][fileIdx];
+  // Fire-and-forget cloud delete (local removal proceeds regardless)
+  if (entry && supaIsCloud(entry)) {
+    supaFileDelete(entry.supaBucket, entry.supaPath).catch(function(e){
+      console.warn('Cloud delete failed (file still removed from app):', e.message);
+    });
+  }
   D.athleteFiles[a.init].splice(fileIdx, 1);
   saveAppData();
   closeMo();
@@ -11875,7 +12136,13 @@ function renderAthMyFiles() {
         '<div style="font-size:.68rem;color:var(--tx3);">' + cat.label + (f.date?' · '+f.date:'') + '</div>' +
         (f.processed ? '<div style="font-size:.67rem;color:var(--grn);">✓ AI processed</div>' : '<div style="font-size:.67rem;color:var(--sub);">Pending AI review</div>') +
         '</div>' +
-        (f.url ? '<a href="' + f.url + '" target="_blank" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border-radius:7px;text-decoration:none;font-weight:700;flex-shrink:0;">View</a>' : '') +
+        (supaIsCloud(f)
+          ? '<button onclick="athFileOpen(&quot;' + (D._currentAthInit||init) + '&quot;,' + realIdx + ')" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border:none;border-radius:7px;font-weight:700;cursor:pointer;flex-shrink:0;">View</button>'
+          : (f.url && f.url.indexOf('data:') === 0)
+            ? '<a href="' + f.url + '" target="_blank" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border-radius:7px;text-decoration:none;font-weight:700;flex-shrink:0;">View</a>'
+            : (f.url && f.url.indexOf('blob:') === 0)
+              ? '<span style="font-size:.7rem;padding:4px 9px;background:var(--rm);color:var(--red2);border:1px solid rgba(204,0,0,.2);border-radius:7px;font-weight:700;flex-shrink:0;">Expired</span>'
+              : '') +
         '</div>' +
         (f.docAiFlags && f.docAiFlags.length > 0 ?
           '<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--b1);">' +
@@ -14288,40 +14555,114 @@ function handleFileVaultUpload(input, defaultFolder) {
   var files = Array.from(input.files);
   if (!files.length) return;
   var fdate = new Date().toISOString().split('T')[0];
-  var folder = defaultFolder || 'board';
-  var added = 0;
-  files.forEach(function(file) {
-    var exists = D.files.docs.some(function(d){ return d.name === file.name; });
-    // Detect folder from filename
+  var MAX_BYTES = 500 * 1024 * 1024;
+  var FALLBACK_CAP = 3 * 1024 * 1024;
+
+  function _detectFolder(file, fallback) {
     var fn = file.name.toLowerCase();
-    if (fn.includes('2025') || fn.includes('2026') || fn.includes('financial') || fn.includes('ledger') || fn.includes('workbook')) folder = 'financial';
-    else if (fn.includes('roster') || fn.includes('profile') || fn.includes('athlete')) folder = 'athletes';
-    else if (fn.includes('board') || fn.includes('scholarship') || fn.includes('approval') || fn.includes('governance')) folder = 'board';
-    else if (fn.includes('program') || fn.includes('soccer') || fn.includes('basketball')) folder = 'programs';
-    var url = URL.createObjectURL(file);
-    var maxId = D.files.docs.reduce(function(m,d){return Math.max(m,d.id);},0);
+    if (fn.includes('2025') || fn.includes('2026') || fn.includes('financial') || fn.includes('ledger') || fn.includes('workbook')) return 'financial';
+    if (fn.includes('roster') || fn.includes('profile') || fn.includes('athlete')) return 'athletes';
+    if (fn.includes('board') || fn.includes('scholarship') || fn.includes('approval') || fn.includes('governance')) return 'board';
+    if (fn.includes('program') || fn.includes('soccer') || fn.includes('basketball')) return 'programs';
+    return fallback || 'board';
+  }
+
+  closeMo();
+  toast('Uploading ' + files.length + ' file' + (files.length===1?'':'s') + '…');
+
+  // Pre-allocate unique IDs synchronously so concurrent uploads don't collide.
+  var baseMaxId = D.files.docs.reduce(function(m,d){return Math.max(m,d.id||0);},0);
+  var preAllocIds = files.map(function(_, i) { return baseMaxId + i + 1; });
+
+  var added = 0;
+  var oversized = 0;
+  var uploadErrors = 0;
+  var fallbackCount = 0;
+  var importQueue = [];
+
+  async function processOne(file, fileIndex) {
+    if (file.size > MAX_BYTES) { oversized++; return; }
+
+    var exists = D.files.docs.some(function(d){ return d.name === file.name; });
+    if (exists) return;
+
+    var folder = _detectFolder(file, defaultFolder);
+    var nextId = preAllocIds[fileIndex];
+
     var entry = {
-      id: maxId + added + 1,
+      id: nextId,
       folder: folder,
       name: file.name,
       type: file.name.split('.').pop().toLowerCase() || 'other',
       size: file.size > 1048576 ? (file.size/1048576).toFixed(1)+' MB' : (file.size/1024).toFixed(0)+' KB',
       date: fdate,
       tags: [],
-      url: url,
-      _blob: true
+      url: ''
     };
-    if (!exists) { D.files.docs.push(entry); added++; }
 
-    // If it's a financial or roster file, also run the accounting import
-    if (fn.includes('financial_reporting') || fn.includes('foundation_workbook') || fn.includes('roster')) {
-      var fakeInput = {files:[file]};
-      acctImportFile(fakeInput);
+    try {
+      var result = await supaFileUpload('board', {folderId: folder}, file, nextId);
+      entry.supaBucket = result.bucket;
+      entry.supaPath = result.storagePath;
+      try {
+        var urlResult = await supaFileGetUrl(result.bucket, result.storagePath, 3600);
+        entry.supaUrl = urlResult.signedUrl;
+        entry.supaUrlExpiresAt = urlResult.expiresAt;
+      } catch(urlErr) {}
+    } catch(uploadErr) {
+      console.warn('Supabase upload failed for', file.name, '-', uploadErr.message);
+      if (file.size <= FALLBACK_CAP) {
+        try {
+          var dataUrl = await new Promise(function(resolve, reject) {
+            var r = new FileReader();
+            r.onload = function(e) { resolve(e.target.result); };
+            r.onerror = reject;
+            r.readAsDataURL(file);
+          });
+          entry.url = dataUrl;
+          entry._fallback = true;
+          entry.tags = entry.tags.concat(['local-fallback']);
+          fallbackCount++;
+        } catch(e2) { uploadErrors++; return; }
+      } else { uploadErrors++; return; }
     }
+
+    D.files.docs.push(entry);
+    added++;
+
+    // Queue accounting import for financial/roster files (run after save)
+    var fn = file.name.toLowerCase();
+    if (fn.includes('financial_reporting') || fn.includes('foundation_workbook') || fn.includes('roster')) {
+      importQueue.push(file);
+    }
+  }
+
+  Promise.all(files.map(function(file, i) { return processOne(file, i); })).then(function() {
+    try {
+      saveAppData();
+    } catch(e) {
+      toast('⚠️ Storage issue — ' + (e.message || 'unknown'));
+    }
+    filesRefresh();
+
+    var msg;
+    if (added === 0) {
+      msg = 'Upload failed';
+      if (oversized > 0) msg += ' · ' + oversized + ' >500MB';
+      if (uploadErrors > 0) msg += ' · ' + uploadErrors + ' error' + (uploadErrors===1?'':'s');
+    } else {
+      msg = added + ' file' + (added===1?'':'s') + ' uploaded';
+      if (fallbackCount > 0) msg += ' · ' + fallbackCount + ' via local fallback';
+      if (oversized > 0) msg += ' · ' + oversized + ' skipped (>500MB)';
+      if (uploadErrors > 0) msg += ' · ' + uploadErrors + ' failed';
+    }
+    toast(msg);
+
+    // Fire accounting imports after save to avoid race conditions
+    importQueue.forEach(function(file) {
+      try { acctImportFile({files:[file]}); } catch(e) {}
+    });
   });
-  closeMo();
-  filesRefresh();
-  toast(added + ' file'+(added!==1?'s':'')+' added to vault');
 }
 
 function saveNewFile() {
@@ -14346,7 +14687,13 @@ function fileOptions(id) {
   if (!doc) return;
   openMo('<div class="mt">'+doc.name+'</div>' +
     '<div style="display:flex;flex-direction:column;gap:8px;">' +
-    (doc.url?'<a href="'+doc.url+'" target="_blank" style="padding:11px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:9px;font-size:.82rem;font-weight:700;text-decoration:none;text-align:center;">🔗 Open / Download</a>':'') +
+    (supaIsCloud(doc)
+      ? '<button onclick="docFileOpen(' + doc.id + ')" style="padding:11px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:9px;font-size:.82rem;font-weight:700;cursor:pointer;">🔗 Open / Download</button>'
+      : (doc.url && doc.url.indexOf('data:') === 0)
+        ? '<a href="'+doc.url+'" target="_blank" style="padding:11px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:9px;font-size:.82rem;font-weight:700;text-decoration:none;text-align:center;">🔗 Open / Download</a>'
+        : (doc.url && doc.url.indexOf('blob:') === 0)
+          ? '<div style="padding:11px;background:var(--rm);border:1px solid rgba(204,0,0,.2);color:var(--red2);border-radius:9px;font-size:.78rem;text-align:center;line-height:1.4;">⚠️ File link expired after app reload.<br><span style="font-size:.7rem;color:var(--tx3);">Delete and re-upload to restore access.</span></div>'
+          : '') +
     '<button onclick="editFileModal('+id+')" style="padding:11px;background:var(--card2);border:1px solid var(--b2);color:var(--tx2);border-radius:9px;font-size:.82rem;font-weight:600;cursor:pointer;">✏️ Edit Details</button>' +
     '<button onclick="deleteFile('+id+')" style="padding:11px;background:var(--rm);border:1px solid rgba(204,0,0,.2);color:var(--red2);border-radius:9px;font-size:.82rem;font-weight:600;cursor:pointer;">🗑 Delete</button>' +
     '</div>');
