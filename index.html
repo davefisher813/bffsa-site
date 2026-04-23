@@ -6908,31 +6908,54 @@ async function supaEnsureUrl(entry, ttlSec) {
 }
 
 // Open an athlete file. Handles cloud, data URL, and orphan cases.
-async function athFileOpen(playerInit, fileIdx) {
+// iOS PWA requires window.open() to run synchronously inside a user tap to
+// navigate correctly. If we need to fetch a signed URL first, we pre-open a
+// blank tab during the gesture, then set .location once the URL arrives.
+function athFileOpen(playerInit, fileIdx) {
   var files = (D.athleteFiles && D.athleteFiles[playerInit]) || [];
   var f = files[fileIdx];
   if (!f) return;
   if (supaIsCloud(f)) {
-    toast('Opening…');
+    var now = Date.now();
+    // Fast path: cached URL still fresh — sync open
+    if (f.supaUrl && f.supaUrlExpiresAt && f.supaUrlExpiresAt > now + 5*60*1000) {
+      window.open(f.supaUrl, '_blank');
+      return;
+    }
+    // Slow path: open blank tab now (in the user gesture), navigate it later
+    var win = window.open('', '_blank');
     var ttl = (f.category === 'film') ? 7*24*3600 : 3600;
-    var url = await supaEnsureUrl(f, ttl);
-    if (url) { window.open(url, '_blank'); }
-    else { toast('Could not open — check connection'); }
+    supaEnsureUrl(f, ttl).then(function(url) {
+      if (url && win && !win.closed) { win.location.href = url; }
+      else { if (win) { try { win.close(); } catch(e) {} } toast('Could not open — check connection'); }
+    }).catch(function(e) {
+      if (win) { try { win.close(); } catch(e) {} }
+      toast('Could not open — check connection');
+    });
     return;
   }
   if (f.url && f.url.indexOf('data:') === 0) { window.open(f.url, '_blank'); return; }
   toast('File link expired. Please re-upload.');
 }
 
-// Open a board vault file.
-async function docFileOpen(docId) {
+// Open a board vault file. Same iOS PWA pattern as athFileOpen.
+function docFileOpen(docId) {
   var doc = (D.files && D.files.docs || []).find(function(d){ return d.id === docId; });
   if (!doc) return;
   if (supaIsCloud(doc)) {
-    toast('Opening…');
-    var url = await supaEnsureUrl(doc, 3600);
-    if (url) { window.open(url, '_blank'); }
-    else { toast('Could not open — check connection'); }
+    var now = Date.now();
+    if (doc.supaUrl && doc.supaUrlExpiresAt && doc.supaUrlExpiresAt > now + 5*60*1000) {
+      window.open(doc.supaUrl, '_blank');
+      return;
+    }
+    var win = window.open('', '_blank');
+    supaEnsureUrl(doc, 3600).then(function(url) {
+      if (url && win && !win.closed) { win.location.href = url; }
+      else { if (win) { try { win.close(); } catch(e) {} } toast('Could not open — check connection'); }
+    }).catch(function(e) {
+      if (win) { try { win.close(); } catch(e) {} }
+      toast('Could not open — check connection');
+    });
     return;
   }
   if (doc.url && doc.url.indexOf('data:') === 0) { window.open(doc.url, '_blank'); return; }
@@ -6940,6 +6963,9 @@ async function docFileOpen(docId) {
 }
 
 // Share a cloud-stored athlete file via a 30-day signed URL.
+// iOS Safari strips user-gesture after an await, so we can't copy directly.
+// Instead: fetch the URL, then show it in a modal with a Copy button — the
+// user's tap on Copy IS a fresh gesture that clipboard accepts.
 async function athFileShare(playerInit, fileIdx) {
   var files = (D.athleteFiles && D.athleteFiles[playerInit]) || [];
   var f = files[fileIdx];
@@ -6948,25 +6974,43 @@ async function athFileShare(playerInit, fileIdx) {
   toast('Creating share link…');
   try {
     var result = await supaFileGetUrl(f.supaBucket, f.supaPath, 30*24*3600, f.name);
-    var copied = false;
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(result.signedUrl);
-        copied = true;
-      }
-    } catch(e) {}
-    if (!copied) {
-      var ta = document.createElement('textarea');
-      ta.value = result.signedUrl;
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); copied = true; } catch(e) {}
-      document.body.removeChild(ta);
-    }
-    toast(copied ? 'Share link copied — valid for 30 days' : 'Share link ready: ' + result.signedUrl);
+    var esc = String(result.signedUrl).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    openMo(
+      '<div class="mt">Share Link · Valid 30 days</div>' +
+      '<div style="background:var(--card2);border-radius:var(--r);padding:12px;font-size:.72rem;font-family:ui-monospace,Menlo,monospace;color:var(--tx);word-break:break-all;margin-bottom:14px;user-select:all;-webkit-user-select:all;max-height:160px;overflow-y:auto;" id="sh-link">' + esc + '</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="btn br3 bsm" style="flex:1;" onclick="_copyShareLink()">📋 Copy Link</button>' +
+        '<button class="btn bgh bsm" onclick="closeMo()">Close</button>' +
+      '</div>'
+    );
   } catch(e) {
     toast('Share failed: ' + (e.message || 'unknown'));
   }
+}
+
+// Helper: copy share link from modal (invoked by user tap — gesture preserved)
+function _copyShareLink() {
+  var el = document.getElementById('sh-link');
+  if (!el) return;
+  var txt = el.textContent || el.innerText || '';
+  if (!txt) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(function(){ toast('Copied!'); }).catch(function(){ _fallbackCopy(txt); });
+  } else {
+    _fallbackCopy(txt);
+  }
+}
+function _fallbackCopy(txt) {
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.position = 'fixed'; ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    toast(ok ? 'Copied!' : 'Copy failed — select & copy the link manually');
+  } catch(e) { toast('Copy failed — select & copy the link manually'); }
 }
 
 var ATH_FILE_CATS = [
