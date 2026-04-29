@@ -1489,6 +1489,875 @@ body.light .qa-art-sub{color:rgba(0,0,0,.85);}
 <script>
 'use strict';
 
+/* ════════════════════════════════════════════════════════
+   BFFSA ENGINE - Document intelligence pipeline
+   Phase 1 (foundation): modules sit available; nothing uses them yet.
+   Wire-up happens in subsequent phases.
+
+   Public surface:
+     Engine.audit      - localStorage activity log (engine-internal)
+     Engine.api        - Claude API client (queue, retries, budget, request IDs)
+     Engine.ingest     - File pipeline (HEIC, EXIF, downscale, magic bytes, raw fallback)
+     Engine.triage     - Pre-flight Haiku check
+     Engine.categories - Document type registry (transcript, test_scores, offer_letter,
+                         recommendation, financial_aid, film)
+     Engine.provenance - Per-field source tagging + role-weighted confidence
+     Engine.versioning - Replacement detection across uploads
+     Engine.resolver   - Fuzzy athlete match with override pinning
+   ════════════════════════════════════════════════════════ */
+var Engine = (function() {
+  'use strict';
+
+  // ── Audit log (internal) ──────────────────────────────
+  var audit = (function() {
+    var KEY = 'bffsa_engine_audit';
+    var entries = JSON.parse(localStorage.getItem(KEY) || '[]');
+    function persist() {
+      try {
+        if (entries.length > 200) entries = entries.slice(-200);
+        localStorage.setItem(KEY, JSON.stringify(entries));
+      } catch (e) { /* quota */ }
+    }
+    return {
+      add: function(kind, msg, detail) {
+        entries.push({ ts: new Date().toISOString(), kind: kind, msg: msg, detail: detail || null });
+        persist();
+      },
+      list: function() { return entries.slice(); },
+      clear: function() { entries = []; persist(); },
+    };
+  })();
+
+  // ── API client (queue, retries, budget, request IDs, tab-resume) ──
+  var api = (function() {
+    var ENDPOINT = '/.netlify/functions/claude';
+    var MAX_ATTEMPTS = 3;
+    var BACKOFF_MS = [800, 2200, 5000];
+    var QUEUE_DELAY_MS = 250;
+    var DAILY_TOKEN_SOFT_CAP = 800000;
+    var DAILY_TOKEN_HARD_CAP = 2000000;
+    var BUDGET_KEY = 'bffsa_engine_budget';
+    var PENDING_KEY = 'bffsa_engine_pending';
+
+    function loadBudget() {
+      var raw = localStorage.getItem(BUDGET_KEY);
+      var today = new Date().toISOString().slice(0, 10);
+      var b = raw ? JSON.parse(raw) : { date: today, input: 0, output: 0, calls: 0 };
+      if (b.date !== today) return { date: today, input: 0, output: 0, calls: 0 };
+      return b;
+    }
+    function saveBudget(b) { localStorage.setItem(BUDGET_KEY, JSON.stringify(b)); }
+    function recordUsage(usage) {
+      if (!usage) return;
+      var b = loadBudget();
+      b.input += usage.input_tokens || 0;
+      b.output += usage.output_tokens || 0;
+      b.calls += 1;
+      saveBudget(b);
+    }
+    function checkBudget() {
+      var b = loadBudget();
+      var total = b.input + b.output;
+      if (total >= DAILY_TOKEN_HARD_CAP) {
+        throw new Error('Daily token budget exceeded (' + total.toLocaleString() + ' / ' + DAILY_TOKEN_HARD_CAP.toLocaleString() + '). Resets at midnight UTC.');
+      }
+    }
+
+    function loadPending() {
+      try { return JSON.parse(localStorage.getItem(PENDING_KEY) || '{}'); }
+      catch (e) { return {}; }
+    }
+    function savePending(p) { localStorage.setItem(PENDING_KEY, JSON.stringify(p)); }
+    function markPending(reqId, body) {
+      var p = loadPending();
+      p[reqId] = { startedAt: Date.now(), bodyMeta: { model: body.model, max_tokens: body.max_tokens } };
+      savePending(p);
+    }
+    function clearPending(reqId) {
+      var p = loadPending();
+      delete p[reqId];
+      savePending(p);
+    }
+
+    var queueChain = Promise.resolve();
+    function enqueue(fn) {
+      var next = queueChain.then(function() {
+        return new Promise(function(r){ setTimeout(r, QUEUE_DELAY_MS); }).then(fn);
+      });
+      queueChain = next.catch(function(){});
+      return next;
+    }
+
+    async function callOnce(body) {
+      var res = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      var data;
+      try { data = await res.json(); }
+      catch (e) { data = { error: { message: 'Non-JSON response from API' } }; }
+      if (!res.ok) {
+        var err = (data && data.error && data.error.message) || ('HTTP ' + res.status);
+        // 5xx and 408 are transient and should retry. 429 is rate-limited and is
+        // handled by the app's per-call queue logic (e.g. _spq waits 12s), so we
+        // surface it immediately without retrying.
+        var transient = res.status >= 500 || res.status === 408;
+        var e2 = new Error(err);
+        e2.transient = transient;
+        e2.status = res.status;
+        throw e2;
+      }
+      if (data.error) {
+        var err2 = new Error(data.error.message || 'API error');
+        err2.transient = false;
+        throw err2;
+      }
+      return data;
+    }
+
+    async function callClaude(opts) {
+      checkBudget();
+      var reqId = opts.requestId || ('r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
+      var body = {
+        model: opts.model,
+        max_tokens: opts.max_tokens,
+        system: opts.system,
+        messages: opts.messages,
+      };
+      if (opts.tools) body.tools = opts.tools;
+
+      return enqueue(async function() {
+        markPending(reqId, body);
+        audit.add('extract', 'API call start · ' + opts.model + ' · ' + reqId);
+
+        var lastErr = null;
+        for (var attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+          try {
+            var data = await callOnce(body);
+            recordUsage(data.usage);
+            clearPending(reqId);
+            audit.add('extract', 'API ok · ' + opts.model + ' · ' + reqId + (data.usage ? (' · ' + data.usage.input_tokens + 'in/' + data.usage.output_tokens + 'out') : ''));
+            return data;
+          } catch (e) {
+            lastErr = e;
+            if (!e.transient || attempt === MAX_ATTEMPTS - 1) break;
+            audit.add('error', 'API attempt ' + (attempt+1) + ' failed (' + e.message + '), retrying in ' + BACKOFF_MS[attempt] + 'ms');
+            await new Promise(function(r){ setTimeout(r, BACKOFF_MS[attempt]); });
+          }
+        }
+        clearPending(reqId);
+        audit.add('error', 'API failed after retries · ' + reqId + ' · ' + (lastErr && lastErr.message));
+        throw lastErr;
+      });
+    }
+
+    function checkStaleOnLoad() {
+      var p = loadPending();
+      var stale = Object.keys(p).filter(function(id){ return Date.now() - p[id].startedAt > 30000; });
+      if (stale.length) {
+        stale.forEach(function(id){ delete p[id]; });
+        savePending(p);
+        audit.add('error', 'Cleared ' + stale.length + ' stale pending request(s) on load');
+      }
+    }
+
+    // Returns a fake Response object that mimics fetch() shape, so legacy call
+    // sites that call res.ok / res.json() / res.status keep working unchanged.
+    // All Claude API calls become queued, retried, budgeted, and request-tracked.
+    function makeFakeResponse(data, status) {
+      return {
+        ok: status >= 200 && status < 300,
+        status: status,
+        json: function() { return Promise.resolve(data); },
+        text: function() { return Promise.resolve(JSON.stringify(data)); },
+      };
+    }
+
+    function installFetchInterceptor() {
+      if (window._engineFetchInstalled) return;
+      var origFetch = window.fetch.bind(window);
+      window.fetch = function(input, init) {
+        var url = (typeof input === 'string') ? input : (input && input.url) || '';
+        // Only intercept POSTs to the Claude function endpoint
+        if (url.indexOf('/.netlify/functions/claude') >= 0 && init && init.method === 'POST' && init.body) {
+          var body;
+          try { body = JSON.parse(init.body); }
+          catch (e) { return origFetch(input, init); }
+          return callClaude({
+            model: body.model,
+            max_tokens: body.max_tokens,
+            system: body.system,
+            messages: body.messages,
+            tools: body.tools,
+          }).then(function(data) {
+            return makeFakeResponse(data, 200);
+          }).catch(function(err) {
+            // Preserve status from API errors so legacy 429/503 handling keeps working
+            var status = err.status || 500;
+            return makeFakeResponse({ error: { message: err.message || 'API error' } }, status);
+          });
+        }
+        return origFetch(input, init);
+      };
+      window._engineFetchInstalled = true;
+      audit.add('extract', 'Fetch interceptor installed - all Claude API calls now route through Engine');
+    }
+
+    return { callClaude: callClaude, checkStaleOnLoad: checkStaleOnLoad, loadBudget: loadBudget, installFetchInterceptor: installFetchInterceptor };
+  })();
+
+  // ── Ingest pipeline (file → API-ready record) ─────────
+  var ingest = (function() {
+    var MAX_LONG_EDGE = 2000;
+    var JPEG_QUALITY = 0.85;
+    var HEIC_TYPES = ['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence'];
+
+    function detectMime(file) {
+      if (file.type) return file.type;
+      var ext = (file.name || '').toLowerCase().split('.').pop();
+      var map = {
+        pdf: 'application/pdf',
+        jpg: 'image/jpeg', jpeg: 'image/jpeg',
+        png: 'image/png', webp: 'image/webp',
+        heic: 'image/heic', heif: 'image/heif',
+        gif: 'image/gif',
+        mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/mp4',
+      };
+      return map[ext] || 'application/octet-stream';
+    }
+
+    function classify(mime) {
+      if (mime === 'application/pdf') return 'pdf';
+      if (HEIC_TYPES.indexOf(mime) >= 0) return 'heic';
+      if (mime.indexOf('image/') === 0) return 'image';
+      if (mime.indexOf('video/') === 0) return 'video';
+      return 'unknown';
+    }
+
+    async function sniffMagic(file) {
+      try {
+        var buf = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+        if (buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) return { mime: 'application/pdf', kind: 'pdf' };
+        if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return { mime: 'image/jpeg', kind: 'image' };
+        if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return { mime: 'image/png', kind: 'image' };
+        if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return { mime: 'image/gif', kind: 'image' };
+        if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
+            && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return { mime: 'image/webp', kind: 'image' };
+        if (buf[4] === 0x66 && buf[5] === 0x74 && buf[6] === 0x79 && buf[7] === 0x70) {
+          var brand = String.fromCharCode(buf[8], buf[9], buf[10], buf[11]);
+          var heicBrands = ['heic','heix','hevc','heim','heis','hevm','hevs','mif1','msf1'];
+          if (heicBrands.indexOf(brand) >= 0) return { mime: 'image/heic', kind: 'heic' };
+        }
+        return null;
+      } catch (e) { return null; }
+    }
+
+    async function readExifOrientation(file) {
+      try {
+        var buf = await file.slice(0, 65536).arrayBuffer();
+        var dv = new DataView(buf);
+        if (dv.getUint16(0) !== 0xFFD8) return 1;
+        var off = 2;
+        while (off < dv.byteLength) {
+          var marker = dv.getUint16(off);
+          off += 2;
+          if (marker === 0xFFE1) {
+            if (dv.getUint32(off + 2) !== 0x45786966) return 1;
+            var tiffStart = off + 8;
+            var little = dv.getUint16(tiffStart) === 0x4949;
+            var get16 = function(o){ return dv.getUint16(o, little); };
+            var get32 = function(o){ return dv.getUint32(o, little); };
+            var ifdOffset = tiffStart + get32(tiffStart + 4);
+            var tags = get16(ifdOffset);
+            for (var i = 0; i < tags; i++) {
+              var entry = ifdOffset + 2 + i * 12;
+              if (get16(entry) === 0x0112) return get16(entry + 8);
+            }
+            return 1;
+          }
+          if ((marker & 0xFF00) !== 0xFF00) return 1;
+          off += dv.getUint16(off);
+        }
+        return 1;
+      } catch (e) { return 1; }
+    }
+
+    async function convertHeic(file) {
+      if (window.heic2any) {
+        try {
+          var blob = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: JPEG_QUALITY });
+          return new File([blob], file.name.replace(/\.heic?$/i, '.jpg'), { type: 'image/jpeg' });
+        } catch (e) {
+          audit.add('error', 'heic2any failed: ' + (e && e.message || 'unknown'));
+        }
+      }
+      try {
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        try {
+          await new Promise(function(res, rej) {
+            img.onload = res;
+            img.onerror = function(){ rej(new Error('HEIC decode unsupported in this browser')); };
+            img.src = url;
+          });
+        } finally { URL.revokeObjectURL(url); }
+        var canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        if (!canvas.width || !canvas.height) throw new Error('HEIC decoded with zero dimensions');
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        var blob2 = await new Promise(function(r){ canvas.toBlob(r, 'image/jpeg', JPEG_QUALITY); });
+        if (!blob2) throw new Error('Canvas toBlob returned null during HEIC fallback');
+        return new File([blob2], file.name.replace(/\.heic?$/i, '.jpg'), { type: 'image/jpeg' });
+      } catch (e) {
+        throw new Error('Could not convert HEIC (' + (e && e.message || 'unknown') + '). On iPhone, change Camera setting to "Most Compatible" or upload as JPEG.');
+      }
+    }
+
+    async function normalizeImage(file, orientation) {
+      var url = URL.createObjectURL(file);
+      var img;
+      try {
+        img = new Image();
+        await new Promise(function(res, rej) {
+          img.onload = res;
+          img.onerror = function(){ rej(new Error('Browser could not decode image (' + (file.type || 'unknown type') + ', ' + Math.round(file.size/1024) + ' KB)')); };
+          img.src = url;
+        });
+      } finally { URL.revokeObjectURL(url); }
+
+      var w = img.naturalWidth, h = img.naturalHeight;
+      if (!w || !h) throw new Error('Image decoded with zero dimensions (' + w + 'x' + h + ')');
+
+      var scale = 1;
+      var longEdge = Math.max(w, h);
+      if (longEdge > MAX_LONG_EDGE) scale = MAX_LONG_EDGE / longEdge;
+      var sw = Math.round(w * scale), sh = Math.round(h * scale);
+
+      var rotated = (orientation >= 5 && orientation <= 8);
+      var canvas = document.createElement('canvas');
+      canvas.width = rotated ? sh : sw;
+      canvas.height = rotated ? sw : sh;
+      var ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not create 2D canvas context');
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      switch (orientation) {
+        case 2: ctx.transform(-1, 0, 0, 1, sw, 0); break;
+        case 3: ctx.transform(-1, 0, 0, -1, sw, sh); break;
+        case 4: ctx.transform(1, 0, 0, -1, 0, sh); break;
+        case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
+        case 6: ctx.transform(0, 1, -1, 0, sh, 0); break;
+        case 7: ctx.transform(0, -1, -1, 0, sh, sw); break;
+        case 8: ctx.transform(0, -1, 1, 0, 0, sw); break;
+      }
+      ctx.drawImage(img, 0, 0, sw, sh);
+
+      var blob = await new Promise(function(resolve){ canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY); });
+      if (!blob) throw new Error('Canvas toBlob returned null (image may be too large or canvas is tainted)');
+      return { blob: blob, width: canvas.width, height: canvas.height, originalSize: file.size, newSize: blob.size };
+    }
+
+    function fileToBase64(blob) {
+      return new Promise(function(res, rej) {
+        var r = new FileReader();
+        r.onload = function() {
+          var result = r.result;
+          if (typeof result !== 'string') return rej(new Error('FileReader returned non-string'));
+          var idx = result.indexOf(',');
+          if (idx < 0) return rej(new Error('FileReader result missing base64 separator'));
+          res(result.slice(idx + 1));
+        };
+        r.onerror = function() { rej(new Error('FileReader failed: ' + (r.error && r.error.message || 'unknown'))); };
+        r.readAsDataURL(blob);
+      });
+    }
+
+    async function processFile(file, sourceRole) {
+      var sniffed = await sniffMagic(file);
+      var declaredMime = detectMime(file);
+      var mime = sniffed ? sniffed.mime : declaredMime;
+      var kind = sniffed ? sniffed.kind : classify(declaredMime);
+      var typeChanged = sniffed && declaredMime && sniffed.mime !== declaredMime;
+      if (typeChanged) {
+        audit.add('extract', file.name + ': declared ' + declaredMime + ' but magic bytes say ' + sniffed.mime + ' - using actual format');
+      }
+
+      var meta = {
+        originalName: file.name,
+        originalSize: file.size,
+        originalMime: mime,
+        declaredMime: declaredMime,
+        kind: kind,
+        sourceRole: sourceRole || 'admin',
+        ingestedAt: new Date().toISOString(),
+        requestId: 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+      };
+
+      if (kind === 'video') {
+        throw new Error('Video uploads are not yet supported. Film and highlights pipeline is coming in a later phase. Please upload a screenshot or share a link instead.');
+      }
+      if (kind === 'unknown') {
+        throw new Error('File type "' + mime + '" is not supported. Please upload a PDF, JPEG, PNG, WebP, or HEIC.');
+      }
+
+      if (kind === 'pdf') {
+        var b64 = await fileToBase64(file);
+        return Object.assign({}, meta, { mediaType: 'application/pdf', base64: b64, blockType: 'document' });
+      }
+
+      var workingFile = file;
+      if (kind === 'heic') {
+        try {
+          workingFile = await convertHeic(file);
+        } catch (e) {
+          audit.add('extract', file.name + ': HEIC convert failed (' + e.message + ') - sending raw to API');
+          var rawB64 = await fileToBase64(file);
+          return Object.assign({}, meta, { mediaType: 'image/heic', base64: rawB64, blockType: 'image', processedSize: file.size, normalizedSkipped: true, fallbackReason: 'heic_convert_failed' });
+        }
+      }
+
+      var orientation = 1;
+      try { orientation = await readExifOrientation(workingFile); } catch (e) { orientation = 1; }
+
+      var norm = null, normError = null;
+      try { norm = await normalizeImage(workingFile, orientation); }
+      catch (e) { normError = e && e.message || 'unknown'; }
+
+      if (norm) {
+        var b64a;
+        try { b64a = await fileToBase64(norm.blob); }
+        catch (e) { throw new Error('Base64 encode step failed: ' + (e && e.message || 'unknown')); }
+        return Object.assign({}, meta, {
+          mediaType: 'image/jpeg', base64: b64a, blockType: 'image',
+          width: norm.width, height: norm.height,
+          processedSize: norm.newSize, orientation: orientation,
+        });
+      }
+
+      audit.add('extract', file.name + ': normalize failed (' + normError + ') - sending raw to API as ' + mime);
+      var rawB64b;
+      try { rawB64b = await fileToBase64(workingFile); }
+      catch (e) { throw new Error('Could not read file at all: ' + (e && e.message || 'unknown')); }
+      return Object.assign({}, meta, {
+        mediaType: mime, base64: rawB64b, blockType: 'image',
+        processedSize: workingFile.size, normalizedSkipped: true, fallbackReason: normError,
+      });
+    }
+
+    async function processFiles(files, sourceRole) {
+      var records = [], errors = [];
+      for (var i = 0; i < files.length; i++) {
+        try { records.push(await processFile(files[i], sourceRole)); }
+        catch (e) {
+          var msg = (e && e.message) ? e.message : (typeof e === 'string' ? e : 'Unknown ingest error');
+          errors.push({ name: files[i].name, error: msg });
+        }
+      }
+      return { records: records, errors: errors };
+    }
+
+    function toContentBlocks(records, prompt) {
+      var blocks = [];
+      records.forEach(function(r) {
+        blocks.push({ type: r.blockType, source: { type: 'base64', media_type: r.mediaType, data: r.base64 } });
+      });
+      blocks.push({ type: 'text', text: prompt });
+      return blocks;
+    }
+
+    return { detectMime: detectMime, classify: classify, processFile: processFile, processFiles: processFiles, toContentBlocks: toContentBlocks };
+  })();
+
+  // ── Triage (cheap Haiku pre-flight) ───────────────────
+  var triage = (function() {
+    async function check(records, expectedCategory) {
+      var systemPrompt = 'You are a document triage assistant for a college recruiting platform. You receive 1+ images or PDF pages and must rapidly assess whether they can be processed for structured data extraction.\n\n'
+        + 'Return ONLY valid JSON, no markdown, with this exact schema:\n'
+        + '{\n'
+        + '  "readable": boolean,\n'
+        + '  "legibilityScore": number 0-1,\n'
+        + '  "detectedType": "transcript" | "test_scores" | "offer_letter" | "recommendation" | "financial_aid" | "highlight_video_screenshot" | "id_document" | "other" | "unreadable",\n'
+        + '  "typeMatchesExpected": boolean,\n'
+        + '  "pagesDetected": number,\n'
+        + '  "issues": ["array of short specific problems"],\n'
+        + '  "recommendation": "proceed" | "retake" | "wrong_category" | "partial_only",\n'
+        + '  "reason": "1-2 sentence explanation"\n'
+        + '}\n\n'
+        + 'Be strict. If anything material is illegible or cropped, recommend retake. Do NOT extract data; this is triage only.';
+
+      var userText = 'Expected category: ' + expectedCategory + '\nFiles attached: ' + records.length + '\n\nAssess and return JSON only.';
+      var blocks = ingest.toContentBlocks(records, userText);
+
+      var res = await api.callClaude({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 600,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: blocks }],
+        requestId: records[0].requestId + '_triage',
+      });
+
+      var text = (res.content || []).filter(function(c){ return c.type === 'text'; }).map(function(c){ return c.text; }).join('\n').trim();
+      var cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+      try { return JSON.parse(cleaned); }
+      catch (e) {
+        var m = cleaned.match(/\{[\s\S]+\}/);
+        if (m) return JSON.parse(m[0]);
+        throw new Error('Triage returned unparseable response: ' + cleaned.slice(0, 200));
+      }
+    }
+    return { check: check };
+  })();
+
+  // ── Categories registry ──────────────────────────────
+  var categories = (function() {
+    var REGISTRY = {
+      transcript: {
+        id: 'transcript', label: 'Transcript', icon: '📄',
+        shape: 'field_update', versioning: 'replacement_within_180d', triageType: 'transcript',
+        extractionPrompt: 'Extract structured data from an athlete\'s high school transcript. Return ONLY valid JSON, no markdown.\n\n'
+          + 'Schema:\n{\n'
+          + '  "studentName": "full name as on transcript",\n'
+          + '  "school": "high school name",\n'
+          + '  "gradYear": number,\n'
+          + '  "sport": "Baseball" | "Other" | null,\n'
+          + '  "gpa": number | null,\n'
+          + '  "gpaScale": "4.0" | "100" | "other",\n'
+          + '  "gpaVerified": true,\n'
+          + '  "courseLoad": "Regular" | "Mixed (some Honors)" | "Mostly Honors/AP" | "Heavy AP/IB",\n'
+          + '  "apCount": number, "honorsCount": number, "regularCount": number, "ibCount": number, "dualCount": number,\n'
+          + '  "courseRigorNotes": "1-2 sentences",\n'
+          + '  "confidence": number 0-1,\n'
+          + '  "warnings": []\n}',
+      },
+      test_scores: {
+        id: 'test_scores', label: 'Test Scores', icon: '📊',
+        shape: 'collection_append', collectionKey: 'tests',
+        versioning: 'match_on_test_and_date', triageType: 'test_scores',
+        extractionPrompt: 'Extract test score data (SAT, ACT, AP, PSAT, Subject Test). Return ONLY valid JSON.\n\n'
+          + 'Schema:\n{\n'
+          + '  "studentName": "full name on report",\n'
+          + '  "tests": [{\n'
+          + '    "type": "SAT"|"ACT"|"AP"|"PSAT"|"Subject"|"Other",\n'
+          + '    "testDate": "YYYY-MM-DD or YYYY-MM",\n'
+          + '    "totalScore": number | null,\n'
+          + '    "breakdown": { "math": number, "ebrw": number, "english": number, "reading": number, "science": number, "writing": number, "subject": "string" },\n'
+          + '    "percentile": number | null\n'
+          + '  }],\n'
+          + '  "confidence": number 0-1,\n'
+          + '  "warnings": []\n}\n\nExtract ALL tests visible.',
+      },
+      offer_letter: {
+        id: 'offer_letter', label: 'Offer Letter', icon: '🎯',
+        shape: 'collection_append', collectionKey: 'offers',
+        versioning: 'match_on_school', triageType: 'offer_letter',
+        extractionPrompt: 'Extract a college athletic offer / admissions letter. Return ONLY valid JSON.\n\n'
+          + 'Schema:\n{\n'
+          + '  "studentName": "string",\n'
+          + '  "college": "full college name",\n'
+          + '  "sport": "Baseball" | "Other" | null,\n'
+          + '  "offerType": "verbal"|"written"|"scholarship"|"walk_on"|"preferred_walk_on"|"admission_only"|"other",\n'
+          + '  "scholarshipPercent": number 0-100 | null,\n'
+          + '  "offerDate": "YYYY-MM-DD or YYYY-MM",\n'
+          + '  "decisionDeadline": "YYYY-MM-DD" | null,\n'
+          + '  "position": "string or null",\n'
+          + '  "coachName": "string or null",\n'
+          + '  "coachTitle": "string or null",\n'
+          + '  "isOfficial": boolean,\n'
+          + '  "notes": "1-2 sentence summary",\n'
+          + '  "confidence": number 0-1,\n'
+          + '  "warnings": []\n}',
+      },
+      recommendation: {
+        id: 'recommendation', label: 'Recommendation', icon: '✉️',
+        shape: 'collection_append', collectionKey: 'recommendations',
+        versioning: 'match_on_recommender', triageType: 'recommendation',
+        extractionPrompt: 'Extract a recommendation letter. Return ONLY valid JSON.\n\n'
+          + 'Schema:\n{\n'
+          + '  "studentName": "string",\n'
+          + '  "recommenderName": "string",\n'
+          + '  "recommenderTitle": "Coach"|"Teacher"|"Counselor"|"Mentor"|"Other",\n'
+          + '  "recommenderOrg": "school or org",\n'
+          + '  "recType": "academic"|"athletic"|"character"|"mixed",\n'
+          + '  "letterDate": "YYYY-MM-DD",\n'
+          + '  "addressedTo": "specific college, generic, or null",\n'
+          + '  "tone": "strong"|"supportive"|"lukewarm"|"neutral",\n'
+          + '  "themes": ["array of 2-4 short tags"],\n'
+          + '  "summary": "2-3 sentence neutral summary",\n'
+          + '  "wordCount": number | null,\n'
+          + '  "confidence": number 0-1,\n'
+          + '  "warnings": []\n}',
+      },
+      financial_aid: {
+        id: 'financial_aid', label: 'Financial Aid', icon: '💰',
+        shape: 'collection_append', collectionKey: 'financialAid',
+        versioning: 'match_on_school_and_year', triageType: 'financial_aid',
+        extractionPrompt: 'Extract a financial aid document (FAFSA SAR, CSS Profile, school award letter, EFC report). Return ONLY valid JSON.\n\n'
+          + 'Schema:\n{\n'
+          + '  "studentName": "string or null",\n'
+          + '  "documentType": "fafsa_sar"|"css_profile"|"award_letter"|"efc_report"|"other",\n'
+          + '  "college": "string or null",\n'
+          + '  "academicYear": "YYYY-YYYY",\n'
+          + '  "efc": number | null,\n'
+          + '  "sai": number | null,\n'
+          + '  "awards": [{ "type": "grant"|"scholarship"|"subsidized_loan"|"unsubsidized_loan"|"work_study"|"parent_plus"|"other", "name": "string", "amount": number, "renewable": boolean | null }],\n'
+          + '  "totalCostOfAttendance": number | null,\n'
+          + '  "netCost": number | null,\n'
+          + '  "confidence": number 0-1,\n'
+          + '  "warnings": []\n}',
+      },
+      film: {
+        id: 'film', label: 'Film / Highlights', icon: '🎥',
+        shape: 'unsupported', versioning: 'none', triageType: 'highlight_video_screenshot',
+        extractionPrompt: '',
+        unsupportedMessage: 'Video pipeline is not yet built. Upload a screenshot of a metrics dashboard, or paste a YouTube/Hudl link in the description for now.',
+      },
+    };
+
+    function get(id) { return REGISTRY[id]; }
+    function list() { var arr = []; for (var k in REGISTRY) arr.push(REGISTRY[k]); return arr; }
+
+    // Live extraction helper (no demo path - live app doesn't need demo)
+    async function extract(catId, records, override, rosterContext) {
+      var cat = get(catId);
+      if (!cat) throw new Error('Unknown category: ' + catId);
+      if (cat.shape === 'unsupported') throw new Error(cat.unsupportedMessage || 'Unsupported document type');
+
+      var systemPrompt = 'You are the BFFSA structured-data extraction service. ' + cat.extractionPrompt + '\n\n'
+        + 'ROSTER CONTEXT (existing athletes, for reference only - do NOT match yourself; that is a separate step):\n'
+        + JSON.stringify((rosterContext || []).slice(0, 50)) + '\n\n'
+        + 'USER OVERRIDE: ' + (override || '(none)') + '\n\n'
+        + 'Return ONLY the JSON object, no preamble, no markdown fences.';
+
+      var userText = records.length + ' file(s) attached. Extract data and return ONLY the JSON object.';
+      var blocks = ingest.toContentBlocks(records, userText);
+
+      var res = await api.callClaude({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 2000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: blocks }],
+        requestId: records[0].requestId + '_extract',
+      });
+
+      var text = (res.content || []).filter(function(c){ return c.type === 'text'; }).map(function(c){ return c.text; }).join('\n').trim();
+      var cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+      try { return JSON.parse(cleaned); }
+      catch (e) {
+        var m = cleaned.match(/\{[\s\S]+\}/);
+        if (m) return JSON.parse(m[0]);
+        throw new Error('Could not parse JSON from model: ' + cleaned.slice(0, 200));
+      }
+    }
+
+    return { get: get, list: list, extract: extract, REGISTRY: REGISTRY };
+  })();
+
+  // ── Provenance ───────────────────────────────────────
+  var provenance = (function() {
+    var ROLE_WEIGHTS = { admin: 1.0, coordinator: 0.95, email: 0.9, parent: 0.8, athlete: 0.75 };
+    function effectiveConfidence(modelConfidence, sourceRole, triageLegibility) {
+      var m = (modelConfidence == null) ? 0.7 : modelConfidence;
+      var r = ROLE_WEIGHTS[sourceRole] || 0.8;
+      var l = (triageLegibility == null) ? 1.0 : triageLegibility;
+      return Math.max(0, Math.min(1, m * r * l));
+    }
+    function classifyConfidence(c) {
+      if (c >= 0.85) return { tier: 'high', label: 'high' };
+      if (c >= 0.65) return { tier: 'med', label: 'medium' };
+      return { tier: 'low', label: 'low' };
+    }
+    function build(extracted, sourceRole, triageObj, requestId) {
+      var conf = effectiveConfidence(extracted && extracted.confidence, sourceRole, triageObj && triageObj.legibilityScore);
+      return {
+        source: 'ai',
+        sourceRole: sourceRole,
+        confidence: conf,
+        modelConfidence: extracted && extracted.confidence,
+        legibility: triageObj && triageObj.legibilityScore,
+        ts: new Date().toISOString(),
+        requestId: requestId || null,
+      };
+    }
+    return { ROLE_WEIGHTS: ROLE_WEIGHTS, effectiveConfidence: effectiveConfidence, classifyConfidence: classifyConfidence, build: build };
+  })();
+
+  // ── Versioning ───────────────────────────────────────
+  var versioning = (function() {
+    var VKEY = 'bffsa_engine_versions';
+    function loadIndex() {
+      try { return JSON.parse(localStorage.getItem(VKEY) || '{}'); }
+      catch (e) { return {}; }
+    }
+    function saveIndex(ix) { localStorage.setItem(VKEY, JSON.stringify(ix)); }
+    function recordVersion(athleteInit, category, extracted, requestId) {
+      var ix = loadIndex();
+      if (!ix[athleteInit]) ix[athleteInit] = [];
+      ix[athleteInit].push({
+        requestId: requestId,
+        category: category,
+        gpa: extracted && extracted.gpa,
+        gradYear: extracted && extracted.gradYear,
+        ts: new Date().toISOString(),
+      });
+      ix[athleteInit] = ix[athleteInit].slice(-10);
+      saveIndex(ix);
+    }
+    function findPriorVersions(athleteInit, category) {
+      var ix = loadIndex();
+      var all = ix[athleteInit] || [];
+      return all.filter(function(v){ return v.category === category; });
+    }
+    function classifyAgainstPrior(extracted, priors) {
+      if (!priors.length) return { kind: 'first', priors: [] };
+      var latest = priors[priors.length - 1];
+      var gpaChanged = extracted && extracted.gpa != null && latest.gpa != null && Math.abs(extracted.gpa - latest.gpa) > 0.01;
+      var gradMatches = extracted && extracted.gradYear === latest.gradYear;
+      var recencyDays = (Date.now() - new Date(latest.ts).getTime()) / (1000 * 60 * 60 * 24);
+      if (gradMatches && recencyDays < 180) {
+        return {
+          kind: 'likely_replacement',
+          priors: priors,
+          latest: latest,
+          reason: gpaChanged
+            ? 'Updated GPA (' + latest.gpa + ' -> ' + extracted.gpa + ') for same grad year ' + latest.gradYear
+            : 'Same grad year ' + latest.gradYear + ', uploaded ' + Math.round(recencyDays) + ' day(s) ago',
+        };
+      }
+      return { kind: 'new_period', priors: priors, latest: latest };
+    }
+    return { recordVersion: recordVersion, findPriorVersions: findPriorVersions, classifyAgainstPrior: classifyAgainstPrior };
+  })();
+
+  // ── Resolver ─────────────────────────────────────────
+  var resolver = (function() {
+    function tokens(s) {
+      return (s||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(function(t){ return t.length > 1; });
+    }
+    function jaccard(a, b) {
+      var A = new Set(a), B = new Set(b);
+      if (!A.size || !B.size) return 0;
+      var inter = 0;
+      A.forEach(function(x){ if (B.has(x)) inter++; });
+      var uni = new Set([].concat(Array.from(A), Array.from(B))).size;
+      return inter / uni;
+    }
+    function lev(a, b) {
+      a = a||''; b = b||'';
+      if (!a.length) return b.length;
+      if (!b.length) return a.length;
+      var m = [];
+      for (var i = 0; i <= a.length; i++) { m[i] = [i]; }
+      for (var j = 0; j <= b.length; j++) { m[0][j] = j; }
+      for (var i2 = 1; i2 <= a.length; i2++) {
+        for (var j2 = 1; j2 <= b.length; j2++) {
+          var cost = a[i2-1] === b[j2-1] ? 0 : 1;
+          m[i2][j2] = Math.min(m[i2-1][j2]+1, m[i2][j2-1]+1, m[i2-1][j2-1]+cost);
+        }
+      }
+      return m[a.length][b.length];
+    }
+    function nameMatch(a, b) {
+      a = (a||'').toLowerCase().trim();
+      b = (b||'').toLowerCase().trim();
+      if (!a || !b) return 0;
+      if (a === b) return 1;
+      var ta = tokens(a), tb = tokens(b);
+      var j = jaccard(ta, tb);
+      var lastA = ta[ta.length-1] || '', lastB = tb[tb.length-1] || '';
+      var lastDist = lev(lastA, lastB) / Math.max(lastA.length, lastB.length, 1);
+      var lastSim = 1 - lastDist;
+      return Math.max(j, lastSim * 0.85);
+    }
+
+    function findCandidates(extracted, roster, override) {
+      var name = (extracted && extracted.studentName) || '';
+      var school = (extracted && extracted.school) || '';
+      var grad = extracted && extracted.gradYear;
+      var ranked = roster.map(function(a) {
+        var nameScore = nameMatch(a.name, name);
+        var schoolScore = a.school && school ? nameMatch(a.school, school) : 0;
+        var gradMatch = a.grad && grad && Number(a.grad) === Number(grad) ? 1 : 0;
+        var score = (nameScore * 0.7) + (schoolScore * 0.2) + (gradMatch * 0.1);
+        var reasons = [];
+        if (nameScore > 0.6) reasons.push('Name match');
+        if (school && schoolScore > 0.6) reasons.push('School match');
+        if (gradMatch) reasons.push('Grad year match');
+        return { athlete: a, score: score, reasons: reasons };
+      }).filter(function(x){ return x.score > 0.2; }).sort(function(a,b){ return b.score - a.score; });
+
+      if (override && override.length > 2) {
+        var ov = override.toLowerCase();
+        var pinned = ranked.find(function(c) {
+          var n = (c.athlete.name||'').toLowerCase();
+          return ov.indexOf(n) >= 0 || n.split(' ').every(function(t){ return t.length > 2 && ov.indexOf(t) >= 0; });
+        });
+        if (pinned) {
+          pinned.score = 1;
+          pinned.reasons = ['User override: pinned to ' + pinned.athlete.name];
+          var idx = ranked.indexOf(pinned);
+          ranked.splice(idx, 1);
+          ranked.unshift(pinned);
+        }
+      }
+      return ranked.slice(0, 5);
+    }
+
+    function resolveOverrideToAthlete(override, roster) {
+      if (!override) return null;
+      var ov = override.toLowerCase();
+      var best = null, bestScore = 0;
+      roster.forEach(function(a) {
+        var n = (a.name || '').toLowerCase();
+        if (!n) return;
+        var nameTokens = n.split(/\s+/).filter(function(t){ return t.length > 1; });
+        if (ov.indexOf(n) >= 0 && n.length >= 3) {
+          if (n.length > bestScore) { best = a; bestScore = n.length; }
+          return;
+        }
+        var matched = nameTokens.filter(function(t){ return t.length > 2 && ov.indexOf(t) >= 0; });
+        var nonShort = nameTokens.filter(function(t){ return t.length > 2; });
+        if (matched.length >= 2 && matched.length === nonShort.length) {
+          var score = matched.join('').length;
+          if (score > bestScore) { best = a; bestScore = score; }
+        }
+      });
+      return best;
+    }
+
+    function classify(score) {
+      if (score >= 0.85) return 'high';
+      if (score >= 0.5) return 'mid';
+      return 'low';
+    }
+
+    return { findCandidates: findCandidates, resolveOverrideToAthlete: resolveOverrideToAthlete, classify: classify };
+  })();
+
+  // Run stale-pending recovery on init
+  try { api.checkStaleOnLoad(); } catch (e) { /* noop */ }
+
+  // Install fetch interceptor: every existing fetch('/.netlify/functions/claude') call
+  // in the live app now silently routes through Engine.api (queue, retries, budget, request IDs).
+  // Zero changes to call sites. Custom 429/503 handling continues to work because we preserve status.
+  try { api.installFetchInterceptor(); } catch (e) { /* noop */ }
+
+  return {
+    audit: audit,
+    api: api,
+    ingest: ingest,
+    triage: triage,
+    categories: categories,
+    provenance: provenance,
+    versioning: versioning,
+    resolver: resolver,
+  };
+})();
+
+
 /* ── Division display-label helper ── */
 var DIV_LABELS = {
   'D1':'NCAA I','D2':'NCAA II','D3':'NCAA III',
@@ -1733,18 +2602,11 @@ function syncPush(silent) {
 }
 
 // Pull latest data from Supabase and merge into local
-function syncPull(onDone, _isRetry) {
+function syncPull(onDone) {
   syncUpdateIndicator('pulling', 'Syncing...');
   fetch('/.netlify/functions/sync', { method: 'GET' })
   .then(function(r){
-    if (!r.ok) {
-      // Transient 404 = cold start; retry once silently before warning
-      if (r.status === 404 && !_isRetry) {
-        setTimeout(function() { syncPull(onDone, true); }, 2000);
-        throw new Error('__RETRY__');
-      }
-      throw new Error('HTTP '+r.status);
-    }
+    if (!r.ok) throw new Error('HTTP '+r.status);
     return r.text().then(function(txt){
       try { return JSON.parse(txt); }
       catch(e) { throw new Error('Invalid response from sync function — check Netlify logs'); }
@@ -1777,7 +2639,6 @@ function syncPull(onDone, _isRetry) {
   })
   .catch(function(e){
     var msg = (e&&e.message)||'';
-    if (msg === '__RETRY__') return; // retry scheduled, stay quiet
     var isOffline = msg.indexOf('fetch') >= 0 || msg.indexOf('network') >= 0 || msg.indexOf('Failed to fetch') >= 0;
     var isFnError = msg.indexOf('<!DOCTYPE') >= 0 || msg.indexOf('not valid JSON') >= 0 || msg.indexOf('Unexpected token') >= 0;
     if (isFnError) {
@@ -6807,212 +7668,6 @@ function spqEnqueueAfterImport(init) {
 // PER-ATHLETE FILE VAULT
 // ══════════════════════════════════════════════════════════════════
 
-// ── SUPABASE STORAGE HELPERS (Phase 1) ──
-// Files live in Supabase Storage buckets (athlete-files, board-files).
-// Entries cache a signed URL + expiration; helpers refresh on demand.
-
-// Upload a File to Supabase via a two-step signed URL flow.
-// Bypasses Netlify's 6MB payload limit by PUTing directly to Supabase.
-// scope: 'athlete' or 'board'
-// scopeParams: { athleteInit } or { folderId }
-// Returns: { bucket, storagePath }
-async function supaFileUpload(scope, scopeParams, file, fileId) {
-  var initRes = await fetch('/.netlify/functions/files-upload-init', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      scope: scope,
-      athleteInit: scopeParams.athleteInit || null,
-      folderId: scopeParams.folderId || null,
-      fileName: file.name,
-      fileId: fileId
-    })
-  });
-  if (!initRes.ok) {
-    var initErr = await initRes.text().catch(function(){return '';});
-    throw new Error('init ' + initRes.status + ': ' + initErr.slice(0, 200));
-  }
-  var initData = await initRes.json();
-  // PUT directly to Supabase. The signed URL has the auth token in the query
-  // string already — do NOT add Authorization header (it would collide with
-  // Supabase's JWT validator and reject the upload).
-  var uploadRes = await fetch(initData.uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'x-upsert': 'true',
-      'Content-Type': file.type || 'application/octet-stream'
-    },
-    body: file
-  });
-  if (!uploadRes.ok) {
-    var upErr = await uploadRes.text().catch(function(){return '';});
-    throw new Error('upload ' + uploadRes.status + ': ' + upErr.slice(0, 200));
-  }
-  return { bucket: initData.bucket, storagePath: initData.storagePath };
-}
-
-// Get a fresh signed read URL. ttlSec defaults to 1h.
-// If downloadName is set, the URL forces a download with that filename.
-async function supaFileGetUrl(bucket, storagePath, ttlSec, downloadName) {
-  var res = await fetch('/.netlify/functions/files-get-url', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      bucket: bucket,
-      storagePath: storagePath,
-      ttl: ttlSec || 3600,
-      download: downloadName ? true : false,
-      fileName: downloadName || null
-    })
-  });
-  if (!res.ok) {
-    var errText = await res.text().catch(function(){return '';});
-    throw new Error('getUrl ' + res.status + ': ' + errText.slice(0, 200));
-  }
-  return await res.json();
-}
-
-// Delete from Supabase Storage.
-async function supaFileDelete(bucket, storagePath) {
-  var res = await fetch('/.netlify/functions/files-delete', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({bucket: bucket, storagePath: storagePath})
-  });
-  if (!res.ok) throw new Error('delete failed: ' + res.status);
-  return await res.json();
-}
-
-// Is this entry backed by Supabase (vs legacy data:/blob: URL)?
-function supaIsCloud(entry) {
-  return !!(entry && entry.supaBucket && entry.supaPath);
-}
-
-// Ensure entry has a fresh signed URL, refreshing if stale (<5min left).
-// Mutates entry in place. Returns URL string or null.
-async function supaEnsureUrl(entry, ttlSec) {
-  if (!supaIsCloud(entry)) return entry.url || null;
-  var now = Date.now();
-  var expires = entry.supaUrlExpiresAt || 0;
-  if (entry.supaUrl && expires > now + 5*60*1000) return entry.supaUrl;
-  try {
-    var result = await supaFileGetUrl(entry.supaBucket, entry.supaPath, ttlSec || 3600);
-    entry.supaUrl = result.signedUrl;
-    entry.supaUrlExpiresAt = result.expiresAt;
-    try { saveAppData(); } catch(e) {}
-    return entry.supaUrl;
-  } catch(e) {
-    console.warn('supaEnsureUrl failed:', e.message);
-    return null;
-  }
-}
-
-// Open an athlete file. Handles cloud, data URL, and orphan cases.
-// iOS PWA requires window.open() to run synchronously inside a user tap to
-// navigate correctly. If we need to fetch a signed URL first, we pre-open a
-// blank tab during the gesture, then set .location once the URL arrives.
-function athFileOpen(playerInit, fileIdx) {
-  var files = (D.athleteFiles && D.athleteFiles[playerInit]) || [];
-  var f = files[fileIdx];
-  if (!f) return;
-  if (supaIsCloud(f)) {
-    var now = Date.now();
-    // Fast path: cached URL still fresh — sync open
-    if (f.supaUrl && f.supaUrlExpiresAt && f.supaUrlExpiresAt > now + 5*60*1000) {
-      window.open(f.supaUrl, '_blank');
-      return;
-    }
-    // Slow path: open blank tab now (in the user gesture), navigate it later
-    var win = window.open('', '_blank');
-    var ttl = (f.category === 'film') ? 7*24*3600 : 3600;
-    supaEnsureUrl(f, ttl).then(function(url) {
-      if (url && win && !win.closed) { win.location.href = url; }
-      else { if (win) { try { win.close(); } catch(e) {} } toast('Could not open — check connection'); }
-    }).catch(function(e) {
-      if (win) { try { win.close(); } catch(e) {} }
-      toast('Could not open — check connection');
-    });
-    return;
-  }
-  if (f.url && f.url.indexOf('data:') === 0) { window.open(f.url, '_blank'); return; }
-  toast('File link expired. Please re-upload.');
-}
-
-// Open a board vault file. Same iOS PWA pattern as athFileOpen.
-function docFileOpen(docId) {
-  var doc = (D.files && D.files.docs || []).find(function(d){ return d.id === docId; });
-  if (!doc) return;
-  if (supaIsCloud(doc)) {
-    var now = Date.now();
-    if (doc.supaUrl && doc.supaUrlExpiresAt && doc.supaUrlExpiresAt > now + 5*60*1000) {
-      window.open(doc.supaUrl, '_blank');
-      return;
-    }
-    var win = window.open('', '_blank');
-    supaEnsureUrl(doc, 3600).then(function(url) {
-      if (url && win && !win.closed) { win.location.href = url; }
-      else { if (win) { try { win.close(); } catch(e) {} } toast('Could not open — check connection'); }
-    }).catch(function(e) {
-      if (win) { try { win.close(); } catch(e) {} }
-      toast('Could not open — check connection');
-    });
-    return;
-  }
-  if (doc.url && doc.url.indexOf('data:') === 0) { window.open(doc.url, '_blank'); return; }
-  toast('File link expired. Please re-upload.');
-}
-
-// Share a cloud-stored athlete file via a 30-day signed URL.
-// iOS Safari strips user-gesture after an await, so we can't copy directly.
-// Instead: fetch the URL, then show it in a modal with a Copy button — the
-// user's tap on Copy IS a fresh gesture that clipboard accepts.
-async function athFileShare(playerInit, fileIdx) {
-  var files = (D.athleteFiles && D.athleteFiles[playerInit]) || [];
-  var f = files[fileIdx];
-  if (!f) return;
-  if (!supaIsCloud(f)) { toast('Share is only available for cloud-stored files. Re-upload to enable.'); return; }
-  toast('Creating share link…');
-  try {
-    var result = await supaFileGetUrl(f.supaBucket, f.supaPath, 30*24*3600, f.name);
-    var esc = String(result.signedUrl).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    openMo(
-      '<div class="mt">Share Link · Valid 30 days</div>' +
-      '<div style="background:var(--card2);border-radius:var(--r);padding:12px;font-size:.72rem;font-family:ui-monospace,Menlo,monospace;color:var(--tx);word-break:break-all;margin-bottom:14px;user-select:all;-webkit-user-select:all;max-height:160px;overflow-y:auto;" id="sh-link">' + esc + '</div>' +
-      '<div style="display:flex;gap:8px;">' +
-        '<button class="btn br3 bsm" style="flex:1;" onclick="_copyShareLink()">📋 Copy Link</button>' +
-        '<button class="btn bgh bsm" onclick="closeMo()">Close</button>' +
-      '</div>'
-    );
-  } catch(e) {
-    toast('Share failed: ' + (e.message || 'unknown'));
-  }
-}
-
-// Helper: copy share link from modal (invoked by user tap — gesture preserved)
-function _copyShareLink() {
-  var el = document.getElementById('sh-link');
-  if (!el) return;
-  var txt = el.textContent || el.innerText || '';
-  if (!txt) return;
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(txt).then(function(){ toast('Copied!'); }).catch(function(){ _fallbackCopy(txt); });
-  } else {
-    _fallbackCopy(txt);
-  }
-}
-function _fallbackCopy(txt) {
-  try {
-    var ta = document.createElement('textarea');
-    ta.value = txt;
-    ta.style.position = 'fixed'; ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    var ok = document.execCommand('copy');
-    document.body.removeChild(ta);
-    toast(ok ? 'Copied!' : 'Copy failed — select & copy the link manually');
-  } catch(e) { toast('Copy failed — select & copy the link manually'); }
-}
-
 var ATH_FILE_CATS = [
   {id:'transcript',  label:'Transcripts',       icon:'📄', color:'var(--blu)'},
   {id:'testscores',  label:'Test Scores',        icon:'📝', color:'var(--pur)'},
@@ -7072,13 +7727,7 @@ function renderPlayerFiles(idx, a) {
         (f.docAiResult ? '<div style="font-size:.68rem;color:var(--grn);margin-top:2px;">✓ AI processed</div>' : '') +
         '</div>' +
         '<div style="display:flex;gap:6px;">' +
-        (supaIsCloud(f)
-          ? '<button onclick="athFileOpen(&quot;' + a.init + '&quot;,' + realIdx + ')" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border:none;border-radius:7px;font-weight:700;cursor:pointer;">Open</button>'
-          : (f.url && f.url.indexOf('data:') === 0)
-            ? '<a href="' + f.url + '" target="_blank" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border-radius:7px;text-decoration:none;font-weight:700;">Open</a>'
-            : (f.url && f.url.indexOf('blob:') === 0)
-              ? '<button onclick="openAthFileUpload(' + idx + ',&quot;' + f.category + '&quot;)" style="font-size:.7rem;padding:4px 9px;background:var(--rm);color:var(--red2);border:1px solid rgba(204,0,0,.2);border-radius:7px;font-weight:700;cursor:pointer;">Re-upload</button>'
-              : '') +
+        (f.url ? '<a href="' + f.url + '" target="_blank" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border-radius:7px;text-decoration:none;font-weight:700;">Open</a>' : '') +
         '<button onclick="athFileOptions(' + idx + ',' + realIdx + ')" style="font-size:.7rem;padding:4px 9px;background:var(--card2);color:var(--sub);border:1px solid var(--b1);border-radius:7px;cursor:pointer;">⋯</button>' +
         '</div></div>' +
         (f.docAiResult ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1);font-size:.72rem;color:var(--tx2);line-height:1.5;">' + f.docAiResult.slice(0,200) + (f.docAiResult.length>200?'...':'') + '</div>' : '') +
@@ -7128,130 +7777,60 @@ function handleAthFileUpload(input, idx) {
   var cat = (document.getElementById('ath-cat')||{}).value || 'other';
   var notes = (document.getElementById('ath-notes')||{}).value || '';
   var fdate = new Date().toISOString().split('T')[0];
-  var MAX_BYTES = 500 * 1024 * 1024; // 500 MB — bucket cap
-  var FALLBACK_CAP = 3 * 1024 * 1024; // 3 MB — data URL fallback if cloud fails
-
-  function _detectCat(fn) {
-    fn = fn.toLowerCase();
-    if (fn.includes('transcript') || fn.includes('grades') || fn.includes('gpa')) return 'transcript';
-    if (fn.includes('sat') || fn.includes('act') || fn.includes('score') || fn.includes('test')) return 'testscores';
-    if (fn.includes('offer') || (fn.includes('scholarship') && fn.includes('award'))) return 'offer';
-    if (fn.includes('financial') || fn.includes('aid') || fn.includes('fafsa') || fn.includes('fasfa')) return 'finaid';
-    if (fn.includes('recommend') || fn.includes('letter')) return 'rec';
-    if (fn.includes('film') || fn.includes('highlight') || fn.includes('hudl') || fn.includes('video')) return 'film';
-    if (fn.includes('medical') || fn.includes('physical') || fn.includes('clearance')) return 'medical';
-    return cat;
-  }
-
-  if (!D.athleteFiles) D.athleteFiles = {};
-  if (!D.athleteFiles[a.init]) D.athleteFiles[a.init] = [];
-
-  // Pre-allocate unique IDs synchronously so concurrent uploads don't collide
-  // (Promise.all runs processOne bodies before any awaits resolve).
-  var baseMaxId = Object.values(D.athleteFiles).flat().reduce(function(m,f){ return Math.max(m, f.id||0); }, 0);
-  var preAllocIds = files.map(function(_, i) { return baseMaxId + i + 1; });
-
-  closeMo();
-  toast('Uploading ' + files.length + ' file' + (files.length===1?'':'s') + '…');
-
   var added = [];
-  var oversized = 0;
-  var uploadErrors = 0;
-  var fallbackCount = 0;
 
-  // Process one file: try Supabase, fall back to data URL if small, else fail.
-  async function processOne(file, fileIndex) {
-    if (file.size > MAX_BYTES) { oversized++; return null; }
+  files.forEach(function(file) {
+    // Auto-detect category from filename
+    var fn = file.name.toLowerCase();
+    var detectedCat = cat;
+    if (fn.includes('transcript') || fn.includes('grades') || fn.includes('gpa')) detectedCat = 'transcript';
+    else if (fn.includes('sat') || fn.includes('act') || fn.includes('score') || fn.includes('test')) detectedCat = 'testscores';
+    else if (fn.includes('offer') || fn.includes('scholarship') && fn.includes('award')) detectedCat = 'offer';
+    else if (fn.includes('financial') || fn.includes('aid') || fn.includes('fafsa') || fn.includes('fasfa')) detectedCat = 'finaid';
+    else if (fn.includes('recommend') || fn.includes('letter')) detectedCat = 'rec';
+    else if (fn.includes('film') || fn.includes('highlight') || fn.includes('hudl') || fn.includes('video')) detectedCat = 'film';
+    else if (fn.includes('medical') || fn.includes('physical') || fn.includes('clearance')) detectedCat = 'medical';
 
-    var nextId = preAllocIds[fileIndex];
+    var url = URL.createObjectURL(file);
+    var maxId = Object.values(D.athleteFiles||{}).flat().reduce(function(m,f){ return Math.max(m, f.id||0); }, 0);
 
     var entry = {
-      id: nextId,
-      category: _detectCat(file.name),
+      id: maxId + added.length + 1,
+      category: detectedCat,
       name: file.name,
       type: file.name.split('.').pop().toLowerCase() || 'other',
       size: file.size > 1048576 ? (file.size/1048576).toFixed(1)+' MB' : (file.size/1024).toFixed(0)+' KB',
       date: fdate,
       notes: notes,
-      url: '',
+      url: url,
+      _blob: true,
       processed: false,
-      docAiResult: null
+      docAiResult: null,
+      _fileRef: file
     };
 
-    // Primary path: upload to Supabase
-    try {
-      var result = await supaFileUpload('athlete', {athleteInit: a.init}, file, nextId);
-      entry.supaBucket = result.bucket;
-      entry.supaPath = result.storagePath;
-      // Pre-fetch a signed URL so the first Open is instant.
-      // Film gets 7-day URLs so shared links survive; docs get 1h.
-      var ttl = (entry.category === 'film') ? 7*24*3600 : 3600;
-      try {
-        var urlResult = await supaFileGetUrl(result.bucket, result.storagePath, ttl);
-        entry.supaUrl = urlResult.signedUrl;
-        entry.supaUrlExpiresAt = urlResult.expiresAt;
-      } catch(urlErr) { /* non-fatal — fetch on demand later */ }
-    } catch(uploadErr) {
-      // Cloud failed. Try data URL fallback if small enough.
-      console.warn('Supabase upload failed for', file.name, '-', uploadErr.message);
-      if (file.size <= FALLBACK_CAP) {
-        try {
-          var dataUrl = await new Promise(function(resolve, reject) {
-            var r = new FileReader();
-            r.onload = function(e) { resolve(e.target.result); };
-            r.onerror = reject;
-            r.readAsDataURL(file);
-          });
-          entry.url = dataUrl;
-          entry._fallback = true;
-          fallbackCount++;
-        } catch(e2) {
-          uploadErrors++;
-          return null;
-        }
-      } else {
-        uploadErrors++;
-        return null;
-      }
-    }
-
+    if (!D.athleteFiles) D.athleteFiles = {};
+    if (!D.athleteFiles[a.init]) D.athleteFiles[a.init] = [];
     D.athleteFiles[a.init].push(entry);
     added.push({entry: entry, file: file, idx: D.athleteFiles[a.init].length - 1});
-    return entry;
+  });
+
+  saveAppData();
+  closeMo();
+  toast(added.length + ' file' + (added.length===1?'':'s') + ' added — AI processing...');
+  playerTab('files');
+
+  // Notify coordinator
+  var coord = D.assignments && D.assignments[a.init] ? D.assignments[a.init].coordInit : null;
+  if (coord) {
+    _addActivity('file_upload', a.name.split(' ')[0] + ' — ' + added.length + ' file' + (added.length===1?'':'s') + ' uploaded');
   }
 
-  Promise.all(files.map(function(file, i) { return processOne(file, i); })).then(function() {
-    try {
-      saveAppData();
-    } catch(e) {
-      toast('⚠️ Storage issue — ' + (e.message || 'unknown'));
-    }
-
-    var msg;
-    if (added.length === 0) {
-      msg = 'Upload failed';
-      if (oversized > 0) msg += ' · ' + oversized + ' >500MB';
-      if (uploadErrors > 0) msg += ' · ' + uploadErrors + ' error' + (uploadErrors===1?'':'s');
-    } else {
-      msg = added.length + ' file' + (added.length===1?'':'s') + ' uploaded';
-      if (fallbackCount > 0) msg += ' · ' + fallbackCount + ' via local fallback';
-      if (oversized > 0) msg += ' · ' + oversized + ' skipped (>500MB)';
-      if (uploadErrors > 0) msg += ' · ' + uploadErrors + ' failed';
-    }
-    toast(msg);
-    playerTab('files');
-
-    var coord = D.assignments && D.assignments[a.init] ? D.assignments[a.init].coordInit : null;
-    if (coord && added.length > 0) {
-      _addActivity('file_upload', a.name.split(' ')[0] + ' — ' + added.length + ' file' + (added.length===1?'':'s') + ' uploaded');
-    }
-
-    // Auto-process with Doc AI (only successful uploads)
-    added.forEach(function(item) {
-      setTimeout(function() {
-        autoProcessAthFile(idx, item.idx, item.file);
-      }, 500);
-    });
+  // Auto-process each file with Doc AI
+  added.forEach(function(item) {
+    setTimeout(function() {
+      autoProcessAthFile(idx, item.idx, item.file);
+    }, 500);
   });
 }
 
@@ -7440,15 +8019,7 @@ function athFileOptions(playerIdx, fileIdx) {
     (f.docAiResult ? '<div style="font-size:.78rem;color:var(--tx2);background:var(--card2);padding:10px;border-radius:9px;margin-bottom:10px;line-height:1.6;">' + f.docAiResult + '</div>' : '') +
     (f.docAiFlags && f.docAiFlags.length > 0 ? '<div style="margin-bottom:10px;">' + f.docAiFlags.map(function(fl){ return '<div style="font-size:.72rem;color:#ff9500;display:flex;gap:5px;"><span>⚠️</span><span>' + fl + '</span></div>'; }).join('') + '</div>' : '') +
     '<div style="display:flex;flex-direction:column;gap:7px;">' +
-    (supaIsCloud(f)
-      ? '<button onclick="athFileOpen(&quot;' + a.init + '&quot;,' + fileIdx + ')" style="padding:11px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:9px;font-size:.82rem;font-weight:700;cursor:pointer;">🔗 Open / Download</button>' +
-        '<button onclick="athFileShare(&quot;' + a.init + '&quot;,' + fileIdx + ')" style="padding:11px;background:var(--card2);border:1px solid var(--b2);color:var(--tx);border-radius:9px;font-size:.82rem;font-weight:600;cursor:pointer;">📤 Copy share link (30 days)</button>'
-      : (f.url && f.url.indexOf('data:') === 0)
-        ? '<a href="' + f.url + '" target="_blank" style="padding:11px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:9px;font-size:.82rem;font-weight:700;text-decoration:none;text-align:center;">🔗 Open / Download</a>' +
-          '<div style="padding:8px 11px;background:var(--card2);border:1px solid var(--b2);color:var(--tx3);border-radius:9px;font-size:.72rem;text-align:center;line-height:1.4;">Share link unavailable for local-fallback files. Re-upload to enable.</div>'
-        : (f.url && f.url.indexOf('blob:') === 0)
-          ? '<div style="padding:11px;background:var(--rm);border:1px solid rgba(204,0,0,.2);color:var(--red2);border-radius:9px;font-size:.78rem;text-align:center;line-height:1.4;">⚠️ File link expired after app reload.<br><span style="font-size:.7rem;color:var(--tx3);">Delete and re-upload to restore access.</span></div>'
-          : '') +
+    (f.url ? '<a href="' + f.url + '" target="_blank" style="padding:11px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:9px;font-size:.82rem;font-weight:700;text-decoration:none;text-align:center;">🔗 Open / Download</a>' : '') +
     '<button onclick="sendToDocAI(' + playerIdx + ',' + fileIdx + ')" style="padding:11px;background:var(--card2);border:1px solid var(--b2);color:var(--tx2);border-radius:9px;font-size:.82rem;font-weight:600;cursor:pointer;">🤖 Open in Doc AI</button>' +
     '<button onclick="deleteAthFile(' + playerIdx + ',' + fileIdx + ')" style="padding:11px;background:var(--rm);border:1px solid rgba(204,0,0,.2);color:var(--red2);border-radius:9px;font-size:.82rem;font-weight:600;cursor:pointer;">🗑 Delete</button>' +
     '</div>');
@@ -7457,13 +8028,6 @@ function athFileOptions(playerIdx, fileIdx) {
 function deleteAthFile(playerIdx, fileIdx) {
   var a = D.roster[playerIdx]; if (!a) return;
   if (!confirm('Delete this file?')) return;
-  var entry = D.athleteFiles[a.init][fileIdx];
-  // Fire-and-forget cloud delete (local removal proceeds regardless)
-  if (entry && supaIsCloud(entry)) {
-    supaFileDelete(entry.supaBucket, entry.supaPath).catch(function(e){
-      console.warn('Cloud delete failed (file still removed from app):', e.message);
-    });
-  }
   D.athleteFiles[a.init].splice(fileIdx, 1);
   saveAppData();
   closeMo();
@@ -12180,13 +12744,7 @@ function renderAthMyFiles() {
         '<div style="font-size:.68rem;color:var(--tx3);">' + cat.label + (f.date?' · '+f.date:'') + '</div>' +
         (f.processed ? '<div style="font-size:.67rem;color:var(--grn);">✓ AI processed</div>' : '<div style="font-size:.67rem;color:var(--sub);">Pending AI review</div>') +
         '</div>' +
-        (supaIsCloud(f)
-          ? '<button onclick="athFileOpen(&quot;' + (D._currentAthInit||init) + '&quot;,' + realIdx + ')" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border:none;border-radius:7px;font-weight:700;cursor:pointer;flex-shrink:0;">View</button>'
-          : (f.url && f.url.indexOf('data:') === 0)
-            ? '<a href="' + f.url + '" target="_blank" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border-radius:7px;text-decoration:none;font-weight:700;flex-shrink:0;">View</a>'
-            : (f.url && f.url.indexOf('blob:') === 0)
-              ? '<span style="font-size:.7rem;padding:4px 9px;background:var(--rm);color:var(--red2);border:1px solid rgba(204,0,0,.2);border-radius:7px;font-weight:700;flex-shrink:0;">Expired</span>'
-              : '') +
+        (f.url ? '<a href="' + f.url + '" target="_blank" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border-radius:7px;text-decoration:none;font-weight:700;flex-shrink:0;">View</a>' : '') +
         '</div>' +
         (f.docAiFlags && f.docAiFlags.length > 0 ?
           '<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--b1);">' +
@@ -14599,114 +15157,40 @@ function handleFileVaultUpload(input, defaultFolder) {
   var files = Array.from(input.files);
   if (!files.length) return;
   var fdate = new Date().toISOString().split('T')[0];
-  var MAX_BYTES = 500 * 1024 * 1024;
-  var FALLBACK_CAP = 3 * 1024 * 1024;
-
-  function _detectFolder(file, fallback) {
-    var fn = file.name.toLowerCase();
-    if (fn.includes('2025') || fn.includes('2026') || fn.includes('financial') || fn.includes('ledger') || fn.includes('workbook')) return 'financial';
-    if (fn.includes('roster') || fn.includes('profile') || fn.includes('athlete')) return 'athletes';
-    if (fn.includes('board') || fn.includes('scholarship') || fn.includes('approval') || fn.includes('governance')) return 'board';
-    if (fn.includes('program') || fn.includes('soccer') || fn.includes('basketball')) return 'programs';
-    return fallback || 'board';
-  }
-
-  closeMo();
-  toast('Uploading ' + files.length + ' file' + (files.length===1?'':'s') + '…');
-
-  // Pre-allocate unique IDs synchronously so concurrent uploads don't collide.
-  var baseMaxId = D.files.docs.reduce(function(m,d){return Math.max(m,d.id||0);},0);
-  var preAllocIds = files.map(function(_, i) { return baseMaxId + i + 1; });
-
+  var folder = defaultFolder || 'board';
   var added = 0;
-  var oversized = 0;
-  var uploadErrors = 0;
-  var fallbackCount = 0;
-  var importQueue = [];
-
-  async function processOne(file, fileIndex) {
-    if (file.size > MAX_BYTES) { oversized++; return; }
-
+  files.forEach(function(file) {
     var exists = D.files.docs.some(function(d){ return d.name === file.name; });
-    if (exists) return;
-
-    var folder = _detectFolder(file, defaultFolder);
-    var nextId = preAllocIds[fileIndex];
-
+    // Detect folder from filename
+    var fn = file.name.toLowerCase();
+    if (fn.includes('2025') || fn.includes('2026') || fn.includes('financial') || fn.includes('ledger') || fn.includes('workbook')) folder = 'financial';
+    else if (fn.includes('roster') || fn.includes('profile') || fn.includes('athlete')) folder = 'athletes';
+    else if (fn.includes('board') || fn.includes('scholarship') || fn.includes('approval') || fn.includes('governance')) folder = 'board';
+    else if (fn.includes('program') || fn.includes('soccer') || fn.includes('basketball')) folder = 'programs';
+    var url = URL.createObjectURL(file);
+    var maxId = D.files.docs.reduce(function(m,d){return Math.max(m,d.id);},0);
     var entry = {
-      id: nextId,
+      id: maxId + added + 1,
       folder: folder,
       name: file.name,
       type: file.name.split('.').pop().toLowerCase() || 'other',
       size: file.size > 1048576 ? (file.size/1048576).toFixed(1)+' MB' : (file.size/1024).toFixed(0)+' KB',
       date: fdate,
       tags: [],
-      url: ''
+      url: url,
+      _blob: true
     };
+    if (!exists) { D.files.docs.push(entry); added++; }
 
-    try {
-      var result = await supaFileUpload('board', {folderId: folder}, file, nextId);
-      entry.supaBucket = result.bucket;
-      entry.supaPath = result.storagePath;
-      try {
-        var urlResult = await supaFileGetUrl(result.bucket, result.storagePath, 3600);
-        entry.supaUrl = urlResult.signedUrl;
-        entry.supaUrlExpiresAt = urlResult.expiresAt;
-      } catch(urlErr) {}
-    } catch(uploadErr) {
-      console.warn('Supabase upload failed for', file.name, '-', uploadErr.message);
-      if (file.size <= FALLBACK_CAP) {
-        try {
-          var dataUrl = await new Promise(function(resolve, reject) {
-            var r = new FileReader();
-            r.onload = function(e) { resolve(e.target.result); };
-            r.onerror = reject;
-            r.readAsDataURL(file);
-          });
-          entry.url = dataUrl;
-          entry._fallback = true;
-          entry.tags = entry.tags.concat(['local-fallback']);
-          fallbackCount++;
-        } catch(e2) { uploadErrors++; return; }
-      } else { uploadErrors++; return; }
-    }
-
-    D.files.docs.push(entry);
-    added++;
-
-    // Queue accounting import for financial/roster files (run after save)
-    var fn = file.name.toLowerCase();
+    // If it's a financial or roster file, also run the accounting import
     if (fn.includes('financial_reporting') || fn.includes('foundation_workbook') || fn.includes('roster')) {
-      importQueue.push(file);
+      var fakeInput = {files:[file]};
+      acctImportFile(fakeInput);
     }
-  }
-
-  Promise.all(files.map(function(file, i) { return processOne(file, i); })).then(function() {
-    try {
-      saveAppData();
-    } catch(e) {
-      toast('⚠️ Storage issue — ' + (e.message || 'unknown'));
-    }
-    filesRefresh();
-
-    var msg;
-    if (added === 0) {
-      msg = 'Upload failed';
-      if (oversized > 0) msg += ' · ' + oversized + ' >500MB';
-      if (uploadErrors > 0) msg += ' · ' + uploadErrors + ' error' + (uploadErrors===1?'':'s');
-    } else {
-      msg = added + ' file' + (added===1?'':'s') + ' uploaded';
-      if (fallbackCount > 0) msg += ' · ' + fallbackCount + ' via local fallback';
-      if (oversized > 0) msg += ' · ' + oversized + ' skipped (>500MB)';
-      if (uploadErrors > 0) msg += ' · ' + uploadErrors + ' failed';
-    }
-    toast(msg);
-
-    // Fire accounting imports after save to avoid race conditions
-    importQueue.forEach(function(file) {
-      try { acctImportFile({files:[file]}); } catch(e) {}
-    });
   });
+  closeMo();
+  filesRefresh();
+  toast(added + ' file'+(added!==1?'s':'')+' added to vault');
 }
 
 function saveNewFile() {
@@ -14731,13 +15215,7 @@ function fileOptions(id) {
   if (!doc) return;
   openMo('<div class="mt">'+doc.name+'</div>' +
     '<div style="display:flex;flex-direction:column;gap:8px;">' +
-    (supaIsCloud(doc)
-      ? '<button onclick="docFileOpen(' + doc.id + ')" style="padding:11px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:9px;font-size:.82rem;font-weight:700;cursor:pointer;">🔗 Open / Download</button>'
-      : (doc.url && doc.url.indexOf('data:') === 0)
-        ? '<a href="'+doc.url+'" target="_blank" style="padding:11px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:9px;font-size:.82rem;font-weight:700;text-decoration:none;text-align:center;">🔗 Open / Download</a>'
-        : (doc.url && doc.url.indexOf('blob:') === 0)
-          ? '<div style="padding:11px;background:var(--rm);border:1px solid rgba(204,0,0,.2);color:var(--red2);border-radius:9px;font-size:.78rem;text-align:center;line-height:1.4;">⚠️ File link expired after app reload.<br><span style="font-size:.7rem;color:var(--tx3);">Delete and re-upload to restore access.</span></div>'
-          : '') +
+    (doc.url?'<a href="'+doc.url+'" target="_blank" style="padding:11px;background:var(--gm);border:1px solid rgba(46,204,113,.3);color:var(--grn);border-radius:9px;font-size:.82rem;font-weight:700;text-decoration:none;text-align:center;">🔗 Open / Download</a>':'') +
     '<button onclick="editFileModal('+id+')" style="padding:11px;background:var(--card2);border:1px solid var(--b2);color:var(--tx2);border-radius:9px;font-size:.82rem;font-weight:600;cursor:pointer;">✏️ Edit Details</button>' +
     '<button onclick="deleteFile('+id+')" style="padding:11px;background:var(--rm);border:1px solid rgba(204,0,0,.2);color:var(--red2);border-radius:9px;font-size:.82rem;font-weight:600;cursor:pointer;">🗑 Delete</button>' +
     '</div>');
