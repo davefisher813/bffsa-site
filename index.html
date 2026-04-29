@@ -2358,6 +2358,230 @@ var Engine = (function() {
 })();
 
 
+/* ════════════════════════════════════════════════════════
+   ENGINE BRIDGE - connects Engine to the live app's D model
+   Maps app categories to engine categories, handles file ingest,
+   triage, extraction, and writes results back to D with provenance.
+   ════════════════════════════════════════════════════════ */
+var EngineBridge = (function() {
+  'use strict';
+
+  // Map app's vault category IDs to engine category IDs
+  var CAT_MAP = {
+    transcript: 'transcript',
+    testscores: 'test_scores',
+    offer: 'offer_letter',
+    rec: 'recommendation',
+    recommendation: 'recommendation',
+    recommendations: 'recommendation',
+    finaid: 'financial_aid',
+    financial: 'financial_aid',
+    fafsa: 'financial_aid',
+    film: 'film',
+    highlight: 'film',
+    highlights: 'film',
+  };
+
+  function mapCategory(appCat) {
+    return CAT_MAP[String(appCat||'').toLowerCase()] || null;
+  }
+
+  // Read a file from the athlete vault. Vault entries can have a _fileRef (live File obj)
+  // or just a base64 url. Returns a File or null.
+  function getFileObject(entry, fallbackFile) {
+    if (fallbackFile) return fallbackFile;
+    if (entry && entry._fileRef) return entry._fileRef;
+    return null;
+  }
+
+  // Run the full pipeline on a single file for a known athlete.
+  // Returns { extracted, triage, prov, error } - never throws.
+  async function processOneFile(file, appCategory, sourceRole, override, athleteContext) {
+    var engCat = mapCategory(appCategory);
+    if (!engCat) {
+      return { error: 'No engine category for "' + appCategory + '"; falling back to legacy doc summary.', skipped: true };
+    }
+    var cat = Engine.categories.get(engCat);
+    if (!cat) return { error: 'Engine category "' + engCat + '" not found' };
+    if (cat.shape === 'unsupported') {
+      return { error: cat.unsupportedMessage || 'Unsupported document type' };
+    }
+
+    // Ingest
+    var pf = await Engine.ingest.processFiles([file], sourceRole || 'admin');
+    if (!pf.records.length) {
+      return { error: 'Ingest failed: ' + (pf.errors[0] && pf.errors[0].error || 'unknown') };
+    }
+    var records = pf.records;
+
+    // Triage
+    var triage = null;
+    try {
+      triage = await Engine.triage.check(records, cat.triageType);
+      Engine.audit.add('extract', 'Triage: ' + triage.recommendation + ' · type=' + triage.detectedType + ' · legibility=' + Math.round((triage.legibilityScore||0)*100) + '%');
+    } catch (e) {
+      Engine.audit.add('error', 'Triage failed (' + e.message + ') - proceeding to extraction anyway');
+    }
+
+    if (triage && triage.recommendation === 'retake') {
+      return { error: 'Document not readable: ' + (triage.issues && triage.issues[0] || triage.reason || 'retake recommended'), triage: triage };
+    }
+
+    // Extract
+    var extracted;
+    try {
+      extracted = await Engine.categories.extract(engCat, records, override, athleteContext || []);
+    } catch (e) {
+      return { error: 'Extraction failed: ' + e.message, triage: triage };
+    }
+
+    var prov = Engine.provenance.build(extracted, sourceRole || 'admin', triage, records[0].requestId);
+
+    return { extracted: extracted, triage: triage, prov: prov, engineCategory: engCat, records: records };
+  }
+
+  // Apply transcript extraction to an athlete profile, respecting manual overrides.
+  // Returns { applied: [...field names], protected: [...field names] }
+  function applyTranscriptToAthlete(a, extracted, prov) {
+    var applied = [], protectedFields = [];
+
+    function setField(key, newVal, sourceKey) {
+      if (newVal == null || newVal === '') return;
+      var cur = a[key];
+      var sourceVal = a[sourceKey];
+      // Protect manual edits
+      if (sourceVal === 'manual' && cur != null && cur !== '') {
+        protectedFields.push(key);
+        return;
+      }
+      a[key] = newVal;
+      if (sourceKey) a[sourceKey] = 'ai';
+      applied.push(key);
+    }
+
+    setField('school', extracted.school, 'schoolSource');
+    if (extracted.gradYear) {
+      var gy = parseInt(extracted.gradYear);
+      if (!isNaN(gy)) { setField('grad', gy, 'gradSource'); }
+    }
+    if (extracted.gpa != null) {
+      var g = parseFloat(extracted.gpa);
+      if (!isNaN(g)) { setField('gpa', g, 'gpaSource'); }
+    }
+    if (extracted.gpaVerified) { a.gpaVerified = true; applied.push('gpaVerified'); }
+    setField('courseLoad', extracted.courseLoad, 'courseLoadSource');
+    if (extracted.courseRigorNotes) a.courseLoadNotes = extracted.courseRigorNotes;
+
+    a.transcriptData = {
+      apCount: extracted.apCount || 0,
+      honorsCount: extracted.honorsCount || 0,
+      regularCount: extracted.regularCount || 0,
+      ibCount: extracted.ibCount || 0,
+      dualCount: extracted.dualCount || 0,
+    };
+
+    // Provenance stamp
+    a._engineProvenance = a._engineProvenance || {};
+    a._engineProvenance.transcript = prov;
+
+    return { applied: applied, protected: protectedFields };
+  }
+
+  // Append a record to the athlete's collection (tests, offers, recs, financial aid)
+  // Returns { collectionKey, recordsAdded, recordsReplaced }
+  function appendCollectionRecord(a, engineCategory, extracted, prov) {
+    var cat = Engine.categories.get(engineCategory);
+    if (!cat || cat.shape !== 'collection_append') return { error: 'Not a collection category' };
+    var key = cat.collectionKey;
+
+    // Storage location: D.athleteData[init][key]. If structure missing, create it.
+    if (!window.D) return { error: 'No D object available' };
+    if (!D.athleteData) D.athleteData = {};
+    if (!D.athleteData[a.init]) D.athleteData[a.init] = {};
+    if (!Array.isArray(D.athleteData[a.init][key])) D.athleteData[a.init][key] = [];
+    var collection = D.athleteData[a.init][key];
+
+    var added = 0, replaced = 0;
+
+    if (engineCategory === 'test_scores' && Array.isArray(extracted.tests)) {
+      extracted.tests.forEach(function(t) {
+        var dup = collection.findIndex(function(x){ return x.type === t.type && x.testDate === t.testDate; });
+        var record = Object.assign({}, t, { _provenance: prov, _addedAt: new Date().toISOString() });
+        if (dup >= 0) { collection[dup] = record; replaced++; }
+        else { collection.push(record); added++; }
+      });
+    } else {
+      // offer_letter, recommendation, financial_aid: single record
+      var record = Object.assign({}, extracted, { _provenance: prov, _addedAt: new Date().toISOString() });
+      // Replacement detection per-category
+      var dupIdx = -1;
+      if (engineCategory === 'offer_letter' && extracted.college) {
+        dupIdx = collection.findIndex(function(x){ return (x.college||'').toLowerCase() === extracted.college.toLowerCase(); });
+      } else if (engineCategory === 'recommendation' && extracted.recommenderName) {
+        dupIdx = collection.findIndex(function(x){ return (x.recommenderName||'').toLowerCase() === extracted.recommenderName.toLowerCase(); });
+      } else if (engineCategory === 'financial_aid' && extracted.college && extracted.academicYear) {
+        dupIdx = collection.findIndex(function(x){ return (x.college||'').toLowerCase() === extracted.college.toLowerCase() && x.academicYear === extracted.academicYear; });
+      }
+      if (dupIdx >= 0) { collection[dupIdx] = record; replaced = 1; }
+      else { collection.push(record); added = 1; }
+    }
+
+    return { collectionKey: key, recordsAdded: added, recordsReplaced: replaced };
+  }
+
+  // Build a short human-readable summary of an extraction result for the file vault
+  function summarize(engineCategory, extracted, applyResult) {
+    var cat = Engine.categories.get(engineCategory);
+    if (engineCategory === 'transcript') {
+      var bits = [];
+      if (extracted.gpa != null) bits.push('GPA ' + extracted.gpa + (extracted.gpaScale ? ' (' + extracted.gpaScale + ')' : ''));
+      if (extracted.courseLoad) bits.push(extracted.courseLoad);
+      if (extracted.school) bits.push(extracted.school);
+      if (extracted.gradYear) bits.push('class of ' + extracted.gradYear);
+      var line = bits.join(' · ');
+      if (applyResult && applyResult.protected && applyResult.protected.length) {
+        line += ' · Protected: ' + applyResult.protected.join(', ');
+      }
+      return line || 'Transcript processed';
+    }
+    if (engineCategory === 'test_scores' && Array.isArray(extracted.tests)) {
+      return extracted.tests.map(function(t){ return t.type + ' ' + (t.totalScore||'?') + (t.testDate ? ' (' + t.testDate + ')' : ''); }).join(' · ');
+    }
+    if (engineCategory === 'offer_letter') {
+      var s = (extracted.college || 'Offer') + ' · ' + (extracted.offerType || 'unknown');
+      if (extracted.scholarshipPercent != null) s += ' (' + extracted.scholarshipPercent + '%)';
+      return s;
+    }
+    if (engineCategory === 'recommendation') {
+      return 'Rec from ' + (extracted.recommenderName || 'unknown') + (extracted.recType ? ' (' + extracted.recType + ')' : '') + (extracted.tone ? ' · ' + extracted.tone : '');
+    }
+    if (engineCategory === 'financial_aid') {
+      var n = (extracted.awards || []).length;
+      return (extracted.documentType || 'Aid doc') + (extracted.college ? ' · ' + extracted.college : '') + ' · ' + n + ' award' + (n===1?'':'s');
+    }
+    return 'Document processed';
+  }
+
+  // Build a roster context block for the engine (top 50 athletes)
+  function rosterContext() {
+    if (!window.D || !D.roster) return [];
+    return D.roster.slice(0, 50).map(function(a) {
+      return { init: a.init, name: a.name, school: a.school, grad: a.grad, sport: a.sport };
+    });
+  }
+
+  return {
+    mapCategory: mapCategory,
+    getFileObject: getFileObject,
+    processOneFile: processOneFile,
+    applyTranscriptToAthlete: applyTranscriptToAthlete,
+    appendCollectionRecord: appendCollectionRecord,
+    summarize: summarize,
+    rosterContext: rosterContext,
+  };
+})();
+
+
 /* ── Division display-label helper ── */
 var DIV_LABELS = {
   'D1':'NCAA I','D2':'NCAA II','D3':'NCAA III',
@@ -6915,21 +7139,98 @@ function savePlayerInfo(idx) {
 function extractTranscriptAI(playerIdx) {
   var a = D.roster[playerIdx]; if (!a) return;
 
-  // Find transcript files in athlete's file vault
+  // Find transcript file in athlete's vault
   var athFiles = (D.athleteFiles && D.athleteFiles[a.init]) || [];
   var allFiles = (D.files && D.files.docs) || [];
-  var transcriptFile = athFiles.concat(allFiles).find(function(f) {
+  var transcriptEntry = athFiles.concat(allFiles).find(function(f) {
     var nm = (f.name||'').toLowerCase();
-    return nm.indexOf('transcript') >= 0 || nm.indexOf('grades') >= 0 || nm.indexOf('academic') >= 0;
+    return f._fileRef && (nm.indexOf('transcript') >= 0 || nm.indexOf('grades') >= 0 || nm.indexOf('academic') >= 0 || (f.category||'').toLowerCase() === 'transcript');
   });
 
-  var fileNote = transcriptFile ? 'Found file: ' + transcriptFile.name : 'No transcript file found in vault — paste transcript text below or upload to Files tab first.';
+  if (transcriptEntry && transcriptEntry._fileRef) {
+    // Engine path: read the actual file
+    openMo('<div class="mt">🤖 Extract Course Load</div>' +
+      '<div style="font-size:.78rem;color:var(--tx2);margin-bottom:10px;">Reading <strong>' + transcriptEntry.name + '</strong> from the file vault.</div>' +
+      '<div id="ext-status" style="font-size:.78rem;color:var(--tx2);background:var(--card2);padding:11px;border-radius:9px;margin-bottom:10px;">Starting...</div>' +
+      '<div class="fg"><label class="fl">Optional override (e.g. "this is for ' + a.name + '")</label>' +
+      '<input class="fi" id="ext-override" type="text" placeholder=""></div>' +
+      '<button class="btn br3 bf" id="ext-go-btn" onclick="runTranscriptExtractFromVault(' + playerIdx + ')">Run Extraction</button>' +
+      '<button onclick="extractTranscriptAIPasteFallback(' + playerIdx + ')" style="margin-top:8px;background:transparent;border:none;color:var(--tx3);font-size:.7rem;text-decoration:underline;cursor:pointer;">Or paste transcript text instead</button>');
+    document.getElementById('ext-status').textContent = 'Ready · click Run Extraction';
+  } else {
+    // No file in vault: fall back to paste-in
+    extractTranscriptAIPasteFallback(playerIdx);
+  }
+}
 
-  openMo('<div class="mt">🤖 Extract Course Load</div>' +
-    '<div style="font-size:.75rem;color:var(--tx3);margin-bottom:10px;">' + fileNote + '</div>' +
-    '<div class="fg"><label class="fl">Paste transcript text (or course list)</label>' +
+function extractTranscriptAIPasteFallback(playerIdx) {
+  var a = D.roster[playerIdx]; if (!a) return;
+  openMo('<div class="mt">🤖 Extract Course Load (paste)</div>' +
+    '<div style="font-size:.75rem;color:var(--tx3);margin-bottom:10px;">No transcript file in vault. Paste transcript text below or upload a file to the Files tab first.</div>' +
+    '<div class="fg"><label class="fl">Paste transcript text</label>' +
     '<textarea class="fi" id="tr-text" style="height:120px;resize:none;" placeholder="Paste courses here, e.g.: AP Calculus AB - A, Honors English - B+, Regular PE - A..."></textarea></div>' +
     '<button class="btn br3 bf" onclick="runTranscriptExtract(' + playerIdx + ')">Analyze Transcript</button>');
+}
+
+async function runTranscriptExtractFromVault(playerIdx) {
+  var a = D.roster[playerIdx]; if (!a) return;
+  var override = ((document.getElementById('ext-override')||{}).value || '').trim();
+  var btn = document.getElementById('ext-go-btn');
+  var status = document.getElementById('ext-status');
+  if (btn) { btn.disabled = true; btn.textContent = 'Working...'; }
+  if (status) status.textContent = 'Reading file...';
+
+  // Locate the transcript entry
+  var athFiles = (D.athleteFiles && D.athleteFiles[a.init]) || [];
+  var entry = athFiles.find(function(f) {
+    var nm = (f.name||'').toLowerCase();
+    return f._fileRef && (nm.indexOf('transcript') >= 0 || nm.indexOf('grades') >= 0 || nm.indexOf('academic') >= 0 || (f.category||'').toLowerCase() === 'transcript');
+  });
+  if (!entry || !entry._fileRef) {
+    if (status) status.textContent = 'No transcript file with live reference found. The file may have been added in a different session - re-upload to enable AI extraction.';
+    if (btn) { btn.disabled = false; btn.textContent = 'Run Extraction'; }
+    return;
+  }
+
+  try {
+    if (status) status.textContent = 'Triaging document quality...';
+    var result = await EngineBridge.processOneFile(
+      entry._fileRef,
+      'transcript',
+      'admin',
+      override,
+      EngineBridge.rosterContext()
+    );
+
+    if (result.error) {
+      if (status) status.textContent = '⚠ ' + result.error;
+      if (btn) { btn.disabled = false; btn.textContent = 'Try again'; }
+      return;
+    }
+
+    if (status) status.textContent = 'Applying changes...';
+    var applyResult = EngineBridge.applyTranscriptToAthlete(a, result.extracted, result.prov);
+    Engine.versioning.recordVersion(a.init, 'transcript', result.extracted, result.records[0].requestId);
+
+    // Update vault entry too
+    entry.docAiResult = EngineBridge.summarize('transcript', result.extracted, applyResult);
+    entry.docAiData = result.extracted;
+    entry.processed = true;
+    entry._engineProvenance = result.prov;
+
+    saveAppData();
+    closeMo();
+    var body = document.getElementById('vp-body');
+    if (body) body.innerHTML = renderPlayerInfo(playerIdx, a);
+
+    var msg = '✓ ' + applyResult.applied.length + ' field' + (applyResult.applied.length===1?'':'s') + ' updated';
+    if (applyResult.protected.length) msg += ' · ' + applyResult.protected.length + ' protected';
+    toast(msg);
+  } catch (e) {
+    if (status) status.textContent = '⚠ ' + (e && e.message || 'Extraction crashed');
+    if (btn) { btn.disabled = false; btn.textContent = 'Try again'; }
+    Engine.audit.add('error', 'runTranscriptExtractFromVault: ' + (e && e.message));
+  }
 }
 
 function runTranscriptExtract(playerIdx) {
@@ -7862,6 +8163,64 @@ async function autoProcessAthFile(playerIdx, fileIdx, fileObj) {
   var files = D.athleteFiles[a.init];
   var entry = files[fileIdx]; if (!entry) return;
 
+  // Try engine pipeline first if the category maps to a known engine category
+  var engCat = EngineBridge.mapCategory(entry.category);
+  if (engCat && engCat !== 'film') {
+    try {
+      Engine.audit.add('extract', 'autoProcessAthFile: ' + entry.name + ' · ' + entry.category + ' → ' + engCat + ' · athlete=' + a.init);
+      var result = await EngineBridge.processOneFile(
+        fileObj || entry._fileRef,
+        entry.category,
+        'admin',
+        '', // no override - implicit override is "this athlete owns the file"
+        EngineBridge.rosterContext()
+      );
+
+      if (result.error) {
+        // Fall through to legacy path
+        Engine.audit.add('error', 'Engine path failed: ' + result.error + ' - using legacy autoProcess');
+      } else {
+        // Apply category-appropriate writes
+        var summary = '';
+        var applyResult = null;
+        if (engCat === 'transcript') {
+          applyResult = EngineBridge.applyTranscriptToAthlete(a, result.extracted, result.prov);
+          summary = EngineBridge.summarize('transcript', result.extracted, applyResult);
+          Engine.versioning.recordVersion(a.init, 'transcript', result.extracted, result.records[0].requestId);
+        } else {
+          // collection_append categories: tests, offers, recs, financial aid
+          var appendRes = EngineBridge.appendCollectionRecord(a, engCat, result.extracted, result.prov);
+          summary = EngineBridge.summarize(engCat, result.extracted, null);
+          if (appendRes.recordsReplaced) summary = '↻ ' + summary;
+          else summary = '+ ' + summary;
+          Engine.versioning.recordVersion(a.init, engCat, result.extracted, result.records[0].requestId);
+        }
+
+        entry.docAiResult = summary;
+        entry.docAiData = result.extracted;
+        entry.docAiFlags = result.extracted.warnings || [];
+        entry.docAiUpdates = applyResult ? ('Applied: ' + applyResult.applied.join(', ') + (applyResult.protected.length ? ' · Protected: ' + applyResult.protected.join(', ') : '')) : '';
+        entry.processed = true;
+        entry._engineProvenance = result.prov;
+        entry._engineCategory = engCat;
+
+        saveAppData();
+        var body = document.getElementById('vp-body');
+        if (body && D._playerTab === 'files') playerTab('files');
+
+        if (result.extracted.warnings && result.extracted.warnings.length) {
+          toast('⚠️ ' + a.name.split(' ')[0] + ': ' + result.extracted.warnings[0]);
+        } else {
+          toast('✓ ' + a.name.split(' ')[0] + ' — ' + summary);
+        }
+        return;
+      }
+    } catch (e) {
+      Engine.audit.add('error', 'Engine path crashed: ' + (e && e.message) + ' - using legacy autoProcess');
+    }
+  }
+
+  // ── Legacy path (medical, other, or engine path failed) ──
   // Read file content
   var fileContent = null;
   var isImg = fileObj && fileObj.type && fileObj.type.startsWith('image/');
