@@ -1539,6 +1539,10 @@ var Engine = (function() {
     var BUDGET_KEY = 'bffsa_engine_budget';
     var PENDING_KEY = 'bffsa_engine_pending';
 
+    // CRITICAL: capture the real fetch before any interceptor is installed.
+    // Engine's own calls must bypass the interceptor or we'll recurse infinitely.
+    var realFetch = window.fetch.bind(window);
+
     function loadBudget() {
       var raw = localStorage.getItem(BUDGET_KEY);
       var today = new Date().toISOString().slice(0, 10);
@@ -1589,7 +1593,7 @@ var Engine = (function() {
     }
 
     async function callOnce(body) {
-      var res = await fetch(ENDPOINT, {
+      var res = await realFetch(ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -1676,14 +1680,13 @@ var Engine = (function() {
 
     function installFetchInterceptor() {
       if (window._engineFetchInstalled) return;
-      var origFetch = window.fetch.bind(window);
       window.fetch = function(input, init) {
         var url = (typeof input === 'string') ? input : (input && input.url) || '';
         // Only intercept POSTs to the Claude function endpoint
         if (url.indexOf('/.netlify/functions/claude') >= 0 && init && init.method === 'POST' && init.body) {
           var body;
           try { body = JSON.parse(init.body); }
-          catch (e) { return origFetch(input, init); }
+          catch (e) { return realFetch(input, init); }
           return callClaude({
             model: body.model,
             max_tokens: body.max_tokens,
@@ -1698,7 +1701,7 @@ var Engine = (function() {
             return makeFakeResponse({ error: { message: err.message || 'API error' } }, status);
           });
         }
-        return origFetch(input, init);
+        return realFetch(input, init);
       };
       window._engineFetchInstalled = true;
       audit.add('extract', 'Fetch interceptor installed - all Claude API calls now route through Engine');
@@ -2291,16 +2294,30 @@ var Engine = (function() {
 
       if (override && override.length > 2) {
         var ov = override.toLowerCase();
-        var pinned = ranked.find(function(c) {
-          var n = (c.athlete.name||'').toLowerCase();
-          return ov.indexOf(n) >= 0 || n.split(' ').every(function(t){ return t.length > 2 && ov.indexOf(t) >= 0; });
+        // Search the FULL roster for a name that matches the override - not just
+        // the pre-ranked candidates. The override-named athlete may not match the
+        // document's content at all, but the user is explicitly pinning them.
+        var pinnedAthlete = null;
+        roster.forEach(function(a) {
+          var n = (a.name || '').toLowerCase();
+          if (!n || n.length < 3) return;
+          var tokens = n.split(/\s+/).filter(function(t){ return t.length > 2; });
+          var allTokensInOverride = tokens.length >= 2 && tokens.every(function(t){ return ov.indexOf(t) >= 0; });
+          if (ov.indexOf(n) >= 0 || allTokensInOverride) {
+            if (!pinnedAthlete || (a.name||'').length > (pinnedAthlete.name||'').length) {
+              pinnedAthlete = a;
+            }
+          }
         });
-        if (pinned) {
-          pinned.score = 1;
-          pinned.reasons = ['User override: pinned to ' + pinned.athlete.name];
-          var idx = ranked.indexOf(pinned);
-          ranked.splice(idx, 1);
-          ranked.unshift(pinned);
+        if (pinnedAthlete) {
+          // Remove it if it's already in ranked, then put it at top with score 1
+          var existingIdx = ranked.findIndex(function(c){ return c.athlete === pinnedAthlete; });
+          if (existingIdx >= 0) ranked.splice(existingIdx, 1);
+          ranked.unshift({
+            athlete: pinnedAthlete,
+            score: 1,
+            reasons: ['User override: pinned to ' + pinnedAthlete.name]
+          });
         }
       }
       return ranked.slice(0, 5);
@@ -2570,6 +2587,56 @@ var EngineBridge = (function() {
     });
   }
 
+  // Build a content block array for a Doc AI file. Returns null if the file is
+  // text-based (no engine record). Used by diDetect / diRunCmd / diRunStructuredExtract.
+  // The text prompt is appended at the end.
+  function buildDocAiContent(f, prompt) {
+    if (f && f.engineRecord) {
+      return [
+        { type: f.engineRecord.blockType, source: { type: 'base64', media_type: f.engineRecord.mediaType, data: f.engineRecord.base64 } },
+        { type: 'text', text: prompt }
+      ];
+    }
+    // No engine record - either text-based file, or fallback to marker parsing
+    if (f && f.raw && typeof f.raw === 'string') {
+      if (f.raw.indexOf('__IMG__') === 0) {
+        var b64 = f.raw.replace(/^__IMG__data:[^;]+;base64,/, '');
+        var mime = (f.ext === 'png') ? 'image/png' : (f.ext === 'webp') ? 'image/webp' : 'image/jpeg';
+        return [
+          { type: 'image', source: { type: 'base64', media_type: mime, data: b64 } },
+          { type: 'text', text: prompt }
+        ];
+      }
+      if (f.raw.indexOf('__PDF__') === 0) {
+        var b64p = f.raw.replace('__PDF__', '');
+        return [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64p } },
+          { type: 'text', text: prompt }
+        ];
+      }
+    }
+    return null;
+  }
+
+  // Process a Doc AI file's image or PDF through engine ingest. Stores the result
+  // on f.engineRecord and also sets f.raw to the legacy marker format for any code
+  // that still reads it. Resolves with the engineRecord, or rejects on failure.
+  async function ingestDocAiFile(f) {
+    if (!f || !f.file) throw new Error('No file');
+    var pf = await Engine.ingest.processFiles([f.file], 'admin');
+    if (pf.errors.length) throw new Error(pf.errors[0].error);
+    if (!pf.records.length) throw new Error('Ingest produced no records');
+    var rec = pf.records[0];
+    f.engineRecord = rec;
+    // Mirror to legacy markers so any unmigrated code still works
+    if (rec.blockType === 'document') {
+      f.raw = '__PDF__' + rec.base64;
+    } else if (rec.blockType === 'image') {
+      f.raw = '__IMG__data:' + rec.mediaType + ';base64,' + rec.base64;
+    }
+    return rec;
+  }
+
   return {
     mapCategory: mapCategory,
     getFileObject: getFileObject,
@@ -2578,6 +2645,8 @@ var EngineBridge = (function() {
     appendCollectionRecord: appendCollectionRecord,
     summarize: summarize,
     rosterContext: rosterContext,
+    buildDocAiContent: buildDocAiContent,
+    ingestDocAiFile: ingestDocAiFile,
   };
 })();
 
@@ -8028,7 +8097,7 @@ function renderPlayerFiles(idx, a) {
         (f.docAiResult ? '<div style="font-size:.68rem;color:var(--grn);margin-top:2px;">✓ AI processed</div>' : '') +
         '</div>' +
         '<div style="display:flex;gap:6px;">' +
-        (f.url ? '<a href="' + f.url + '" target="_blank" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border-radius:7px;text-decoration:none;font-weight:700;">Open</a>' : '') +
+        ((f.url || f._fileRef || f.base64) ? '<button onclick="openAthVaultFile(' + idx + ',' + realIdx + ')" style="font-size:.7rem;padding:4px 9px;background:var(--gm);color:var(--grn);border:none;border-radius:7px;font-weight:700;cursor:pointer;">Open</button>' : '') +
         '<button onclick="athFileOptions(' + idx + ',' + realIdx + ')" style="font-size:.7rem;padding:4px 9px;background:var(--card2);color:var(--sub);border:1px solid var(--b1);border-radius:7px;cursor:pointer;">⋯</button>' +
         '</div></div>' +
         (f.docAiResult ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1);font-size:.72rem;color:var(--tx2);line-height:1.5;">' + f.docAiResult.slice(0,200) + (f.docAiResult.length>200?'...':'') + '</div>' : '') +
@@ -8048,6 +8117,92 @@ function renderPlayerFiles(idx, a) {
   out += '</div></div><div style="height:80px;"></div>';
 
   return out;
+}
+
+// ════════════════════════════════════════════════════════
+// ENGINE AUDIT VIEWER - admin visibility into AI activity
+// Call: showEngineAudit() from console, or add a button.
+// ════════════════════════════════════════════════════════
+function showEngineAudit() {
+  if (typeof Engine === 'undefined' || !Engine.audit) {
+    toast('Engine not loaded');
+    return;
+  }
+  var entries = Engine.audit.list();
+  var budget = Engine.api.loadBudget();
+  var totalToks = (budget.input || 0) + (budget.output || 0);
+  var pct = Math.min(100, Math.round(totalToks / 2000000 * 100));
+
+  var html = '<div class="mt">🔍 Engine Audit Log</div>' +
+    '<div style="background:var(--card2);border:1px solid var(--b1);border-radius:9px;padding:11px;margin-bottom:10px;">' +
+    '<div style="font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);font-weight:700;margin-bottom:5px;">Today\'s API Usage · ' + (budget.calls || 0) + ' call' + (budget.calls === 1 ? '' : 's') + '</div>' +
+    '<div style="height:6px;background:var(--card3);border-radius:99px;overflow:hidden;margin-bottom:5px;">' +
+    '<div style="height:100%;width:' + pct + '%;background:var(--grn);"></div></div>' +
+    '<div style="font-size:.7rem;color:var(--tx3);font-variant-numeric:tabular-nums;">' + (totalToks / 1000).toFixed(1) + 'k tokens · ' + (budget.input || 0).toLocaleString() + ' in / ' + (budget.output || 0).toLocaleString() + ' out</div>' +
+    '</div>' +
+    '<div style="max-height:50vh;overflow-y:auto;background:var(--card2);border-radius:9px;border:1px solid var(--b1);">';
+
+  if (!entries.length) {
+    html += '<div style="padding:20px;text-align:center;color:var(--tx3);font-size:.78rem;">No audit entries yet. Process a file to start logging.</div>';
+  } else {
+    entries.slice().reverse().slice(0, 50).forEach(function(e) {
+      var when = new Date(e.ts).toLocaleTimeString();
+      var color = e.kind === 'error' ? 'var(--red2)' : e.kind === 'extract' ? 'var(--grn)' : 'var(--sub)';
+      html += '<div style="padding:8px 11px;border-bottom:1px solid var(--b1);font-size:.74rem;">' +
+        '<div style="display:flex;justify-content:space-between;gap:6px;color:var(--tx3);font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;font-weight:700;margin-bottom:2px;">' +
+        '<span style="color:' + color + ';">' + e.kind + '</span><span>' + when + '</span></div>' +
+        '<div style="color:var(--tx);">' + (e.msg || '').replace(/</g, '&lt;') + '</div>' +
+        '</div>';
+    });
+  }
+
+  html += '</div>' +
+    '<div style="display:flex;gap:6px;margin-top:10px;">' +
+    '<button class="btn br3 bsm" style="flex:1;" onclick="showEngineAudit()">↻ Refresh</button>' +
+    '<button class="btn br3 bsm" style="flex:1;background:var(--card2);" onclick="Engine.audit.clear();showEngineAudit();">🗑 Clear log</button>' +
+    '</div>';
+
+  openMo(html);
+}
+
+function openAthVaultFile(playerIdx, fileIdx) {
+  var a = D.roster[playerIdx]; if (!a) return;
+  var f = (D.athleteFiles && D.athleteFiles[a.init] || [])[fileIdx];
+  if (!f) { toast('File not found'); return; }
+
+  // Strategy 1: live File reference (current session)
+  if (f._fileRef instanceof File || f._fileRef instanceof Blob) {
+    try {
+      var fresh = URL.createObjectURL(f._fileRef);
+      window.open(fresh, '_blank');
+      // Note: we don't revoke immediately - need to give the new tab time to load.
+      setTimeout(function() { URL.revokeObjectURL(fresh); }, 60000);
+      return;
+    } catch (e) { /* fall through */ }
+  }
+
+  // Strategy 2: persisted base64 (cross-session reload)
+  if (f.base64) {
+    var mime = f.mime || (f.type === 'pdf' ? 'application/pdf' : 'application/octet-stream');
+    try {
+      var bytes = atob(f.base64);
+      var arr = new Uint8Array(bytes.length);
+      for (var i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      var blob = new Blob([arr], { type: mime });
+      var fresh2 = URL.createObjectURL(blob);
+      window.open(fresh2, '_blank');
+      setTimeout(function() { URL.revokeObjectURL(fresh2); }, 60000);
+      return;
+    } catch (e) { /* fall through */ }
+  }
+
+  // Strategy 3: legacy stored URL (this is the one that breaks on reload)
+  if (f.url) {
+    window.open(f.url, '_blank');
+    return;
+  }
+
+  toast('File data not available - re-upload to view');
 }
 
 function openAthFileUpload(idx, defaultCat) {
@@ -8100,6 +8255,7 @@ function handleAthFileUpload(input, idx) {
       category: detectedCat,
       name: file.name,
       type: file.name.split('.').pop().toLowerCase() || 'other',
+      mime: file.type || '',
       size: file.size > 1048576 ? (file.size/1048576).toFixed(1)+' MB' : (file.size/1024).toFixed(0)+' KB',
       date: fdate,
       notes: notes,
@@ -8203,6 +8359,12 @@ async function autoProcessAthFile(playerIdx, fileIdx, fileObj) {
         entry.processed = true;
         entry._engineProvenance = result.prov;
         entry._engineCategory = engCat;
+
+        // Persist base64 + MIME for cross-session Open button (small files only - localStorage limit)
+        if (result.records[0] && result.records[0].base64 && (result.records[0].processedSize || result.records[0].originalSize) < 2 * 1024 * 1024) {
+          entry.base64 = result.records[0].base64;
+          entry.mime = result.records[0].mediaType;
+        }
 
         saveAppData();
         var body = document.getElementById('vp-body');
@@ -10541,7 +10703,7 @@ function diSanitize(str) {
 
 function diIcon(ext) {
   var map = {xlsx:'📊',xls:'📊',csv:'📋',docx:'📝',doc:'📝',pdf:'🔴',
-             png:'🖼️',jpg:'🖼️',jpeg:'🖼️',gif:'🖼️',webp:'🖼️',txt:'📃',json:'🗂️',pptx:'📌'};
+             png:'🖼️',jpg:'🖼️',jpeg:'🖼️',gif:'🖼️',webp:'🖼️',heic:'🖼️',heif:'🖼️',txt:'📃',json:'🗂️',pptx:'📌'};
   return map[ext] || '📄';
 }
 function diTypeLabel(t) {
@@ -10680,7 +10842,9 @@ function renderDocs() {
     out += '<div class="di-sec-hd"><div>' +
            '<div class="di-sec-hd-title">Document Intelligence</div>' +
            '<div class="di-sec-hd-sub">Drop a document to get started</div>' +
-           '</div></div>';
+           '</div>' +
+           '<button class="exb" onclick="showEngineAudit()" title="View AI activity log">🔍 Audit</button>' +
+           '</div>';
     out += '<div class="rt-grid">';
     var routeCards = [
       {icon:'👥',label:'Athlete Roster'},
@@ -11058,17 +11222,28 @@ function diReadAndProcess(idx) {
       }
     });
   } else if (ext === 'pdf') {
-    diReadBuffer(file, function(buf) {
-      var bytes = new Uint8Array(buf);
-      var chunk = 8192, binary = '';
-      for (var i=0;i<bytes.length;i+=chunk) binary+=String.fromCharCode.apply(null,bytes.subarray(i,Math.min(i+chunk,bytes.length)));
-      f.raw = '__PDF__' + btoa(binary);
+    EngineBridge.ingestDocAiFile(f).then(function() {
       diDetect(idx);
+    }).catch(function(e) {
+      // Fallback to legacy path
+      Engine.audit.add('error', 'Doc AI PDF ingest failed (' + e.message + ') - using legacy path');
+      diReadBuffer(file, function(buf) {
+        var bytes = new Uint8Array(buf);
+        var chunk = 8192, binary = '';
+        for (var i=0;i<bytes.length;i+=chunk) binary+=String.fromCharCode.apply(null,bytes.subarray(i,Math.min(i+chunk,bytes.length)));
+        f.raw = '__PDF__' + btoa(binary);
+        diDetect(idx);
+      });
     });
-  } else if (['png','jpg','jpeg','gif','webp'].includes(ext)) {
-    diReadDataURL(file, function(dataUrl) {
-      f.raw = '__IMG__' + dataUrl;
+  } else if (['png','jpg','jpeg','gif','webp','heic','heif'].includes(ext)) {
+    EngineBridge.ingestDocAiFile(f).then(function() {
       diDetect(idx);
+    }).catch(function(e) {
+      Engine.audit.add('error', 'Doc AI image ingest failed (' + e.message + ') - using legacy path');
+      diReadDataURL(file, function(dataUrl) {
+        f.raw = '__IMG__' + dataUrl;
+        diDetect(idx);
+      });
     });
   } else if (ext === 'pptx' || ext === 'ppt') {
     // PPTX: no client-side text extraction available
@@ -11193,13 +11368,9 @@ async function diDetect(idx) {
 
   try {
     var messages;
-    if (isImg) {
-      var b64 = f.raw.replace(/^__IMG__data:[^;]+;base64,/, '');
-      var mime = f.ext==='png' ? 'image/png' : 'image/jpeg';
-      messages = [{role:'user', content:[{type:'image',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:detectionPrompt}]}];
-    } else if (isPdf) {
-      var b64p = f.raw.replace('__PDF__','');
-      messages = [{role:'user', content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64p}},{type:'text',text:detectionPrompt}]}];
+    var engineContent = EngineBridge.buildDocAiContent(f, detectionPrompt);
+    if (engineContent) {
+      messages = [{role:'user', content: engineContent}];
     } else {
       messages = [{role:'user', content:'File: '+f.name+'\nContent:\n'+f.raw.slice(0,40000)+'\n\n'+detectionPrompt}];
     }
@@ -11370,17 +11541,14 @@ async function diRunCmd() {
     var fullCmd = cmd + '\n\nAnswer thoroughly and helpfully. If the response includes structured data to import into the app, append IMPORT_JSON at the very end of your response.';
     var isImg = f.raw && f.raw.startsWith('__IMG__');
     var isPdf = f.raw && f.raw.startsWith('__PDF__');
+    var isBinary = isImg || isPdf || (f.engineRecord && (f.engineRecord.blockType === 'image' || f.engineRecord.blockType === 'document'));
 
     // Build messages with optional conversation context (previous result)
     var messages;
     var docUserContent;
-    if (isImg) {
-      var b64 = f.raw.replace(/^__IMG__data:[^;]+;base64,/,'');
-      var mime = f.ext==='png'?'image/png':f.ext==='gif'?'image/gif':'image/jpeg';
-      docUserContent = [{type:'image',source:{type:'base64',media_type:mime,data:b64}},{type:'text',text:fullCmd}];
-    } else if (isPdf) {
-      var b64p = f.raw.replace('__PDF__','');
-      docUserContent = [{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64p}},{type:'text',text:fullCmd}];
+    var engineBlocks = EngineBridge.buildDocAiContent(f, fullCmd);
+    if (engineBlocks) {
+      docUserContent = engineBlocks;
     } else {
       var docContext = 'Document: ' + f.name + '\n';
       if (f.summary) docContext += 'AI Summary: ' + f.summary.split('\n')[0] + '\n';
@@ -11389,7 +11557,7 @@ async function diRunCmd() {
     }
 
     // Include previous result as conversation context if available
-    if (f.result && f.lastCmd && !isImg && !isPdf) {
+    if (f.result && f.lastCmd && !isBinary) {
       messages = [
         {role:'user', content: docUserContent},
         {role:'assistant', content: f.result.slice(0,2000)},
@@ -11499,13 +11667,9 @@ async function diRunStructuredExtract(f, cmd, extractType) {
 
   try {
     var messages;
-    if (isImg) {
-      var b64 = f.raw.replace(/^__IMG__data:[^;]+;base64,/,'');
-      var imgMime = f.ext==='png'?'image/png':f.ext==='gif'?'image/gif':'image/jpeg';
-      messages=[{role:'user',content:[{type:'image',source:{type:'base64',media_type:imgMime,data:b64}},{type:'text',text:prompt}]}];
-    } else if (isPdf) {
-      var b64p = f.raw.replace('__PDF__','');
-      messages=[{role:'user',content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64p}},{type:'text',text:prompt}]}];
+    var engineBlocks = EngineBridge.buildDocAiContent(f, prompt);
+    if (engineBlocks) {
+      messages = [{role:'user', content: engineBlocks}];
     } else {
       messages=[{role:'user',content:'File: '+f.name+'\nContent:\n'+f.raw.slice(0,50000)+'\n\n'+prompt}];
     }
@@ -11565,23 +11729,19 @@ async function diRunCompare() {
   toast('Comparing documents with AI...');
   DI.running = true;
 
-  // Build content arrays for PDFs/images
+  // Build content arrays for PDFs/images via engine when available
   var doc1Content, doc2Content;
-  if (f1.raw.startsWith('__PDF__')) {
-    doc1Content = [{type:'document',source:{type:'base64',media_type:'application/pdf',data:f1.raw.replace('__PDF__','')}},{type:'text',text:'This is Document 1: '+f1.name}];
-  } else if (f1.raw.startsWith('__IMG__')) {
-    var m1 = f1.ext==='png'?'image/png':'image/jpeg';
-    doc1Content = [{type:'image',source:{type:'base64',media_type:m1,data:f1.raw.replace(/^__IMG__data:[^;]+;base64,/,'')}},{type:'text',text:'This is Document 1: '+f1.name}];
+  var d1Blocks = EngineBridge.buildDocAiContent(f1, 'This is Document 1: ' + f1.name);
+  if (d1Blocks) {
+    doc1Content = d1Blocks;
   } else {
-    doc1Content = 'DOCUMENT 1 — '+f1.name+':\n'+f1.raw.slice(0,25000);
+    doc1Content = 'DOCUMENT 1 - '+f1.name+':\n'+f1.raw.slice(0,25000);
   }
-  if (f2.raw.startsWith('__PDF__')) {
-    doc2Content = [{type:'document',source:{type:'base64',media_type:'application/pdf',data:f2.raw.replace('__PDF__','')}},{type:'text',text:'This is Document 2: '+f2.name}];
-  } else if (f2.raw.startsWith('__IMG__')) {
-    var m2 = f2.ext==='png'?'image/png':'image/jpeg';
-    doc2Content = [{type:'image',source:{type:'base64',media_type:m2,data:f2.raw.replace(/^__IMG__data:[^;]+;base64,/,'')}},{type:'text',text:'This is Document 2: '+f2.name}];
+  var d2Blocks = EngineBridge.buildDocAiContent(f2, 'This is Document 2: ' + f2.name);
+  if (d2Blocks) {
+    doc2Content = d2Blocks;
   } else {
-    doc2Content = 'DOCUMENT 2 — '+f2.name+':\n'+f2.raw.slice(0,25000);
+    doc2Content = 'DOCUMENT 2 - '+f2.name+':\n'+f2.raw.slice(0,25000);
   }
 
   var compareInstruction = 'Compare these two documents for the BFFSA recruiting platform admin team.\n\n' +
