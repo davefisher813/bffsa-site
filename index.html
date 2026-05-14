@@ -3715,11 +3715,11 @@ function renderEventsPrev() {
   var el = document.getElementById('events-prev');
   if (!el) return;
   var now = new Date().toISOString().slice(0,10);
-  var simple = (D.events||[]).map(function(ev){
-    return {title:ev.title||ev.name||'Event', date:ev.date||'', location:ev.location||'', special:false};
+  var simple = (D.events||[]).map(function(ev, i){
+    return {title:ev.title||ev.name||'Event', date:ev.date||'', location:ev.location||ev.loc||'', special:false, idx:i};
   });
-  var special = (D.specialEvents||[]).map(function(ev){
-    return {title:ev.name||'Event', date:ev.date||'', location:ev.venue||'', special:true};
+  var special = (D.specialEvents||[]).map(function(ev, i){
+    return {title:ev.name||'Event', date:ev.date||'', location:ev.venue||'', special:true, idx:i};
   });
   var upcoming = simple.concat(special).filter(function(ev){ return ev.date && ev.date >= now; })
     .sort(function(a,b) { return a.date > b.date ? 1 : -1; }).slice(0,3);
@@ -3728,13 +3728,13 @@ function renderEventsPrev() {
     return;
   }
   el.innerHTML = upcoming.map(function(ev) {
-    var sec = ev.special ? 'events' : 'events';
-    return '<button onclick="admSec(\''+sec+'\')" style="width:100%;padding:10px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:12px;background:transparent;border-left:none;border-right:none;border-top:none;cursor:pointer;text-align:left;">' +
+    var openCall = ev.special ? ('seOpenEdit(' + ev.idx + ')') : ('openEditEvent(' + ev.idx + ')');
+    return '<button onclick="' + openCall + '" style="width:100%;padding:10px 20px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:12px;background:transparent;border-left:none;border-right:none;border-top:none;cursor:pointer;text-align:left;">' +
       '<div style="width:40px;height:40px;border-radius:10px;background:rgba(39,174,96,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>' +
       '<div style="flex:1;min-width:0;"><div style="font-size:.82rem;font-weight:600;color:var(--tx);">' + ev.title + '</div>' +
       '<div style="font-size:.7rem;color:var(--tx2);">' + ev.date + (ev.location ? ' · ' + ev.location : '') + '</div></div>' +
-      '<span style="color:var(--tx3);font-size:1.1rem;flex-shrink:0;">&#8250;</span></button>';
+      '<span style="color:var(--tx3);font-size:1.1rem;flex-shrink:0;">&#9998;</span></button>';
   }).join('');
 }
 
@@ -5615,12 +5615,11 @@ function renderCal() {
 
   var evRows = D.events.length ? D.events.map(function(e, ei){
     var ec = e.type==='event'?'br2':e.type==='meeting'?'bb2':e.type==='program'?'bg':'bgr';
-    return '<div class="evr" style="display:flex;align-items:center;">' +
+    return '<div class="evr" style="display:flex;align-items:center;cursor:pointer;" onclick="openEditEvent(' + ei + ')">' +
       '<div class="edb"><div class="edn">' + e.date + '</div><div class="edm">' + e.mo + '</div></div>' +
       '<div style="flex:1;min-width:0;"><div class="cn">' + e.title + '</div><div class="cs">' + e.time + ' &middot; ' + e.loc + '</div></div>' +
       '<span class="bd ' + ec + '">' + e.type + '</span>' +
-      '<button onclick="openEditEvent(' + ei + ')" style="padding:8px 10px;background:none;border:none;cursor:pointer;color:var(--sub);font-size:.8rem;flex-shrink:0;">✏️</button>' +
-      '<button onclick="deleteEvent(' + ei + ')" style="padding:8px 12px;background:none;border:none;cursor:pointer;color:var(--sub);font-size:.9rem;flex-shrink:0;" title="Delete">✕</button>' +
+      '<button onclick="event.stopPropagation();deleteEvent(' + ei + ')" style="padding:8px 12px;background:none;border:none;cursor:pointer;color:var(--sub);font-size:.9rem;flex-shrink:0;" title="Delete">✕</button>' +
       '</div>';
   }).join('') : '<div style="padding:16px;text-align:center;color:var(--tx2);font-size:.83rem;">No events yet. Tap + Add to create one.</div>';
 
@@ -5770,7 +5769,7 @@ function seCard(e, idx, now) {
   var netRevenue = actual - (parseFloat(e.expenses)||0);
 
   return '<div style="background:var(--card);border:1px solid var(--b1);border-radius:12px;margin:0 16px 10px;overflow:hidden;opacity:'+(isPast?'.78':'1')+'">' +
-    '<div style="padding:12px 13px 11px;cursor:pointer;" onclick="seOpenDetail('+idx+')">' +
+    '<div style="padding:12px 13px 11px;cursor:pointer;" onclick="seOpenEdit('+idx+')">' +
     '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:5px;">' +
     '<div style="flex:1;min-width:0;">' +
     '<div style="font-size:.92rem;font-weight:800;color:var(--tx);">'+e.name+'</div>' +
