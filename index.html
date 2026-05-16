@@ -1681,6 +1681,12 @@ var Engine = (function() {
           te.transient = true;
           throw te;
         }
+        // FIX-0.4: Mark network errors as transient so the retry loop at L1734 kicks in
+        // with backoff (800ms/2200ms/5000ms). Without this, one iOS network blip
+        // permanently fails the AI call. Covers Chrome, Firefox, and iOS Safari errors.
+        if (fe && fe.message && /fetch|network|offline|load failed/i.test(fe.message)) {
+          fe.transient = true;
+        }
         throw fe;
       }
       if (timer) clearTimeout(timer);
@@ -1803,7 +1809,14 @@ var Engine = (function() {
     var HEIC_TYPES = ['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence'];
 
     function detectMime(file) {
-      if (file.type) return file.type;
+      // Don't trust generic/empty MIME types — Supabase and some download paths
+      // return 'application/octet-stream' for valid PDFs. Fall through to the
+      // extension-based map in those cases.
+      var declared = (file.type || '').toLowerCase();
+      var generic = !declared
+                  || declared === 'application/octet-stream'
+                  || declared === 'application/binary'
+                  || declared === 'binary/octet-stream';
       var ext = (file.name || '').toLowerCase().split('.').pop();
       var map = {
         pdf: 'application/pdf',
@@ -1813,7 +1826,14 @@ var Engine = (function() {
         gif: 'image/gif',
         mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/mp4',
       };
-      return map[ext] || 'application/octet-stream';
+      if (generic) return map[ext] || 'application/octet-stream';
+      // If declared type and extension disagree but extension is in our supported
+      // map, trust the extension (handles cases where Drive / Supabase mis-label).
+      if (map[ext] && declared !== map[ext]) {
+        // Extension says supported type but declared doesn't match. Prefer extension.
+        return map[ext];
+      }
+      return declared;
     }
 
     function classify(mime) {
@@ -1990,7 +2010,17 @@ var Engine = (function() {
         throw new Error('Video uploads are not yet supported. Film and highlights pipeline is coming in a later phase. Please upload a screenshot or share a link instead.');
       }
       if (kind === 'unknown') {
-        throw new Error('File type "' + mime + '" is not supported. Please upload a PDF, JPEG, PNG, WebP, or HEIC.');
+        var ext = (file.name || '').toLowerCase().split('.').pop();
+        var hint = '';
+        if (ext === 'pdf' || ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'heic' || ext === 'webp') {
+          hint = ' · File extension says .' + ext + ' but contents do not match. The file may be corrupted or have the wrong extension. Try re-downloading or re-exporting.';
+        } else if (ext === 'docx' || ext === 'doc') {
+          hint = ' · DOCX is not supported here · please export to PDF first.';
+        } else if (ext) {
+          hint = ' · .' + ext + ' is not a supported format. Supported: PDF, JPEG, PNG, WebP, HEIC.';
+        }
+        audit.add('error', 'Ingest rejected ' + file.name + ' · declared=' + declaredMime + ' · sniffed=' + (sniffed ? sniffed.mime : 'none') + ' · ext=.' + ext);
+        throw new Error('File type "' + mime + '" is not supported.' + hint);
       }
 
       if (kind === 'pdf') {
@@ -3004,6 +3034,11 @@ var _spInfoTimer = null;
 // Write the current D snapshot to localStorage immediately, bypassing the debounce.
 // Also flushes any pending player-info input that hasn't been read into D yet.
 function flushSaves() {
+  // FIX-0.6: dedupe across the 3 iOS lifecycle events (visibilitychange + pagehide +
+  // beforeunload) that all fire on backgrounding. Without this guard, 3 beacons fire
+  // per backgrounding (3x function quota burn + race). Flag reset on visibility=visible.
+  if (window._alreadyFlushed) return;
+  window._alreadyFlushed = true;
   // Force any pending savePlayerInfoDebounced to run NOW
   if (_spInfoTimer) {
     clearTimeout(_spInfoTimer);
@@ -3030,13 +3065,27 @@ function flushSaves() {
   _writeSnapNow();
   // SAVE-3 fix: also push to cloud on close. Use sendBeacon since page may be unloading.
   // This survives tab close, navigation, app background on iOS.
+  // FIX-0.8: iOS silently drops sendBeacon payloads above ~64KB. Pre-check size and skip
+  // rather than fire a beacon that goes nowhere. Data is still in localStorage; the next
+  // page load's syncPush picks it up. Skips are logged to console + sessionStorage for
+  // diagnosis (visible via Safari Web Inspector).
   try {
     if (navigator && navigator.sendBeacon) {
       var raw = localStorage.getItem('bffsa-data');
       if (raw) {
         var body = JSON.stringify({ data: JSON.parse(raw), client_ts: new Date().toISOString() });
-        var blob = new Blob([body], { type: 'application/json' });
-        navigator.sendBeacon('/.netlify/functions/sync', blob);
+        var BEACON_LIMIT = 60 * 1024;
+        if (body.length > BEACON_LIMIT) {
+          console.warn('flushSaves: payload ' + body.length + ' bytes exceeds iOS beacon limit (' + BEACON_LIMIT + '). Skipping beacon — will sync on next load via syncPush.');
+          try { sessionStorage.setItem('_lastBeaconSkipped', body.length + '@' + Date.now()); } catch(_){}
+        } else {
+          var blob = new Blob([body], { type: 'application/json' });
+          var queued = navigator.sendBeacon('/.netlify/functions/sync', blob);
+          if (!queued) {
+            console.warn('flushSaves: sendBeacon returned false. Browser refused to queue ' + body.length + ' bytes.');
+            try { sessionStorage.setItem('_lastBeaconRejected', body.length + '@' + Date.now()); } catch(_){}
+          }
+        }
       }
     }
   } catch (e) { /* beacon best-effort; ignore */ }
@@ -3054,6 +3103,11 @@ function _writeSnapNow() {
       scholarships: D.scholarships, athleteFiles: D.athleteFiles, files: D.files,
       specialEvents: D.specialEvents, devBoard: D.devBoard, fitBenchmarks: D.fitBenchmarks,
       people: D.people, msgs: D.msgs, checkins: D.checkins, templates: D.templates,
+      // FIX-0.2: previously dropped from snap → silently discarded on every reload.
+      // funding requests, error/security logs, AI-extracted data, and AI review queue
+      // all need to persist across sessions.
+      funding: D.funding, errorLog: D.errorLog, securityLog: D.securityLog,
+      athleteData: D.athleteData, extractionReview: D.extractionReview,
       meetings: (typeof MTG !== 'undefined') ? MTG.meetings : undefined
     };
     localStorage.setItem('bffsa-data', JSON.stringify(snap));
@@ -3105,6 +3159,7 @@ function saveAppData() {
   window.addEventListener('beforeunload', flushSaves);
   document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'hidden') flushSaves();
+    else if (document.visibilityState === 'visible') window._alreadyFlushed = false;
   });
 })();
 
@@ -3119,7 +3174,9 @@ function loadAppData() {
     var _seedSpecialEvents = (D.specialEvents || []).slice();
 
     // Restore all data EXCEPT roster — hardcoded roster is always source of truth
-    var keys = ['playerColleges','portalEnabled','roster','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','files','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents','devBoard','fitBenchmarks','msgs','checkins','templates','people'];
+    var keys = ['playerColleges','portalEnabled','roster','collegeInfo','aTasks','config','acct','athProfile','txns','tasks','donors','contacts','goals','events','offers','scholarships','assignments','athleteFiles','files','commLog','visits','measurables','eligibility','coaches','schoolsDB','specialEvents','devBoard','fitBenchmarks','msgs','checkins','templates','people',
+      // FIX-0.2: previously not restored on load → orphaned even when present in snap
+      'funding','errorLog','securityLog','athleteData','extractionReview'];
     if (snap.meetings) MTG.meetings = snap.meetings;
     keys.forEach(function(k) {
       if (snap[k] !== undefined) D[k] = snap[k];
@@ -3177,6 +3234,44 @@ function loadAppData() {
         }
       });
     });
+
+    // FIX-0.1: Migrate D.athProfile from flat shape to per-athlete object.
+    // Old: D.athProfile = {name, gpa, dash60, ...}  (one global → leaked across views)
+    // New: D.athProfile = {[init]: {name, gpa, dash60, ...}}
+    // Guarded by D.config.athProfileMigrated so it only runs once per device.
+    // Idempotent: if no flat fields present, it just sets the flag.
+    if (!(D.config && D.config.athProfileMigrated) && D.athProfile && typeof D.athProfile === 'object') {
+      var apKeys = Object.keys(D.athProfile);
+      var legacyData = {};
+      var nestedShape = {};
+      apKeys.forEach(function(k) {
+        var v = D.athProfile[k];
+        if (v && typeof v === 'object' && !Array.isArray(v)) {
+          // Already a per-athlete entry — preserve as-is
+          nestedShape[k] = v;
+        } else if (v !== null && v !== undefined) {
+          // Top-level scalar — old shape
+          legacyData[k] = v;
+        }
+      });
+      if (Object.keys(legacyData).length > 0) {
+        // Match legacy data back to the right athlete via name
+        var matchInit = null;
+        if (legacyData.name && D.roster && Array.isArray(D.roster)) {
+          var ath = D.roster.find(function(r){ return r && r.name === legacyData.name; });
+          if (ath) matchInit = ath.init;
+        }
+        if (matchInit) {
+          // Merge: any nested entry for this athlete keeps existing keys, legacy fills the rest
+          nestedShape[matchInit] = Object.assign({}, legacyData, nestedShape[matchInit] || {});
+        }
+        // If no match, legacy data is silently dropped — it was likely stale leakage anyway
+      }
+      D.athProfile = nestedShape;
+      if (!D.config) D.config = {};
+      D.config.athProfileMigrated = true;
+      console.log('FIX-0.1: athProfile migrated to per-athlete shape (' + Object.keys(nestedShape).length + ' athlete entries)');
+    }
 
     // Reset stuck profileLoading flags from previous sessions
     Object.keys(D.playerColleges).forEach(function(init) {
@@ -4269,6 +4364,18 @@ function checkPin() {
 }
 
 // ── UPDATE BAR ──
+// FIX-0.7: tracks the newest waiting SW so doUpdate can message it to skipWaiting.
+var _pendingSW = null;
+
+function _showUpdateBar(newWorker) {
+  // Don't re-show if the user already dismissed it this session
+  if (sessionStorage.getItem('upd-dismissed') === '1') return;
+  _pendingSW = newWorker || _pendingSW;
+  var b1 = document.getElementById('upd-bar');
+  var b2 = document.getElementById('upd-bar2');
+  if (b1) b1.style.display = 'flex';
+  if (b2) b2.style.display = 'flex';
+}
 
 function dismissUpdateBar() {
   sessionStorage.setItem('upd-dismissed', '1');
@@ -4278,6 +4385,12 @@ function dismissUpdateBar() {
   if (b2) b2.style.display = 'none';
 }
 function doUpdate() {
+  // FIX-0.7: tell the waiting SW to swap in. The controllerchange listener
+  // in the SW registration block reloads the page once the swap completes.
+  // If no pending SW (rare), safeUpdate's reload still pulls fresh content.
+  if (_pendingSW && _pendingSW.postMessage) {
+    try { _pendingSW.postMessage({ action: 'skipWaiting' }); } catch(_){}
+  }
   safeUpdate();
 }
 
@@ -4578,6 +4691,7 @@ var SECTIONS = [
   {id:'files',     label:'Files',      cat:'red',   svgPath:'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z'},
   {id:'schools',   label:'Schools DB', cat:'red',   svgPath:'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22'},
   {id:'devboard',  label:'Dev Board',  cat:'red',   svgPath:'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75'},
+  {id:'funding',   label:'Funding',    cat:'green',  svgPath:'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6'},
 ];
 
 var CAT_COLORS = {
@@ -5114,7 +5228,7 @@ function admSec(sec) {
   // Financial edit read-only flag
   D._acctReadOnly = role !== 'admin' && !(D._currentUser && D._currentUser.canEditFinancials);
   curSec = sec;
-  var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',files:'File Storage',contacts:'Coaches Database',schools:'Schools Database',more:'More Settings',events:'Special Events',devboard:'Development Board',benchmarks:'Fit Benchmarks',security:'Security',extractreview:'AI Extraction Review',help:'Help Guide'};
+  var titles = {recruiting:'Recruiting Coordinators',docs:'Document Intelligence',acct:'Accounting',msgs:'Message Board',tasks:'Task Manager',cal:'Calendar',goals:'Goals',roster:'Athlete Roster',donors:'Donor CRM',reports:'Reports',meetings:'Board Meetings',files:'File Storage',contacts:'Coaches Database',schools:'Schools Database',more:'More Settings',events:'Special Events',devboard:'Development Board',benchmarks:'Fit Benchmarks',security:'Security',extractreview:'AI Extraction Review',help:'Help Guide',funding:'Funding Requests'};
   var isDesktop = window.innerWidth >= 768;
   var sp = document.getElementById('adm-sec-panel');
   var hp = document.getElementById('adm-home-content');
@@ -5155,6 +5269,7 @@ function admSec(sec) {
     else if (sec === 'files') body.innerHTML = renderFiles();
     else if (sec === 'contacts') body.innerHTML = renderAdminCoachesDB();
     else if (sec === 'schools') body.innerHTML = renderSchoolsDB();
+    else if (sec === 'funding') body.innerHTML = renderAdminFunding();
     else body.innerHTML = renderMore();
     sp.scrollTop = 0;
   } else {
@@ -5187,6 +5302,7 @@ function admSec(sec) {
     else if (sec === 'files') body.innerHTML = renderFiles();
     else if (sec === 'contacts') body.innerHTML = renderAdminCoachesDB();
     else if (sec === 'schools') body.innerHTML = renderSchoolsDB();
+    else if (sec === 'funding') body.innerHTML = renderAdminFunding();
     else body.innerHTML = renderMore();
   }
 }
@@ -8804,7 +8920,8 @@ async function loadSchoolProfile(playerIdx, collegeIdx, force) {
   searchName = searchName.replace(/\s*(juco\s*(d[123])?|d[123]|division\s*[123iii]+)\s*/gi, ' ').trim();
 
   var isTransfer = (athStage === 'Transfer Portal' || (D._currentAthIsCollege));
-  var majorQuery = (D.athProfile && D.athProfile.desiredMajor) ? D.athProfile.desiredMajor :
+  // FIX-0.1: per-athlete athProfile read
+  var majorQuery = _athP(D._currentAthInit||'').desiredMajor ||
     (D.roster.find(function(r){return r.init===(D._currentAthInit||'');})||{}).desiredMajor || '';
   var prompt = 'Research the current ' + athSport + ' program at ' + searchName + divHint + (isTransfer?' (athlete is in transfer portal)':'') + '.\n\n' +
     'CRITICAL RULES:\n' +
@@ -10262,7 +10379,8 @@ function calcAcademicFitTag(a, profile) {
 
   // Major availability check (advisory — doesn't change tag but adds to reasons)
   var majorNote = '';
-  var desiredMajor = a.desiredMajor || (D.athProfile && D.athProfile.desiredMajor) || '';
+  // FIX-0.1: per-athlete athProfile read scoped to this athlete
+  var desiredMajor = a.desiredMajor || _athP(a.init).desiredMajor || '';
   if (desiredMajor && profile.major_availability) {
     var ma = profile.major_availability;
     if (ma.offered === false) {
@@ -14263,19 +14381,33 @@ function cancelAthletePin() {
   if (pinInput) pinInput.value = '';
 }
 
+// FIX-0.1: per-athlete athProfile accessor. Replaces the old global D.athProfile
+// which leaked one athlete's measurables (dash60, exitVelo, etc.) onto the next
+// athlete's view because _loadAthletePortal only overwrote 7 of 14 fields.
+// Each athlete now has their own object at D.athProfile[init].
+function _athP(init) {
+  if (!init) return {};
+  if (!D.athProfile) D.athProfile = {};
+  if (!D.athProfile[init] || typeof D.athProfile[init] !== 'object' || Array.isArray(D.athProfile[init])) {
+    D.athProfile[init] = {};
+  }
+  return D.athProfile[init];
+}
+
 function _loadAthletePortal(init) {
   var a = D.roster.find(function(r){ return r.init === init; });
   if (!a) return;
   D._currentAthInit = init;
   D._currentAthIsCollege = (a.status === 'Graduated' || a.status === 'Transfer Portal');
-  if (!D.athProfile) D.athProfile = {};
-  D.athProfile.name         = a.name;
-  D.athProfile.sport        = a.sport || 'Baseball';
-  D.athProfile.grad         = a.grad;
-  D.athProfile.gpa          = a.gpa;
-  D.athProfile.school       = a.school;
-  D.athProfile.recruitStage = a.recruitStage;
-  D.athProfile.email        = a.email || '';
+  // FIX-0.1: write to per-athlete entry, not the global object
+  var ap = _athP(init);
+  ap.name         = a.name;
+  ap.sport        = a.sport || 'Baseball';
+  ap.grad         = a.grad;
+  ap.gpa          = a.gpa;
+  ap.school       = a.school;
+  ap.recruitStage = a.recruitStage;
+  ap.email        = a.email || '';
   goV('vATH');
   refreshAthDashboard();
 }
@@ -15276,7 +15408,8 @@ function saveCollegeInfo() {
 }
 
 function renderAthProfile() {
-  var p = D.athProfile || {};
+  // FIX-0.1: per-athlete athProfile
+  var p = _athP(D._currentAthInit || '');
   var hasData = p.position || p.gpa || p.grad;
   var initials = (p.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').toUpperCase().slice(0,2)||'?';
   var stats = [
@@ -15312,7 +15445,8 @@ function renderAthProfile() {
 }
 
 function openEditAthProfile() {
-  var p = D.athProfile || {};
+  // FIX-0.1: per-athlete athProfile
+  var p = _athP(D._currentAthInit || '');
   openMo('<div class="mt">Edit Profile</div>' +
     '<div class="fg"><label class="fl">Position</label><input class="fi" id="ep-p" placeholder="e.g. SS, PG, MF" value="' + (p.position||'') + '"></div>' +
     '<div class="fr">' +
@@ -15332,27 +15466,32 @@ function openEditAthProfile() {
 }
 
 function saveAthProfile() {
-  if (!D.athProfile) D.athProfile = {};
-  D.athProfile.position    = (document.getElementById('ep-p')||{}).value  || D.athProfile.position  || '';
-  D.athProfile.gpa         = (document.getElementById('ep-g')||{}).value  || D.athProfile.gpa       || '';
-  D.athProfile.grad        = (document.getElementById('ep-y')||{}).value  || D.athProfile.grad      || '';
-  D.athProfile.dash60      = (document.getElementById('ep-60')||{}).value || D.athProfile.dash60    || '';
-  D.athProfile.exitVelo    = (document.getElementById('ep-ev')||{}).value || D.athProfile.exitVelo  || '';
-  D.athProfile.battingAvg  = (document.getElementById('ep-av')||{}).value || D.athProfile.battingAvg|| '';
-  D.athProfile.video       = (document.getElementById('ep-vd')||{}).value || D.athProfile.video     || '';
-  D.athProfile.bio         = (document.getElementById('ep-bi')||{}).value || D.athProfile.bio       || '';
-  D.athProfile.email       = (document.getElementById('ep-em')||{}).value || D.athProfile.email     || '';
-  D.athProfile.desiredMajor = (document.getElementById('ep-major')||{}).value || D.athProfile.desiredMajor || '';
-  // Sync key fields back to roster entry so admin view stays current
+  // FIX-0.1: per-athlete athProfile + sync ALL editable fields to roster (was only 4; X-04 leaked the rest)
   var init = D._currentAthInit;
-  if (init) {
-    var rEntry = D.roster.find(function(r){ return r.init === init; });
-    if (rEntry) {
-      if (D.athProfile.gpa)      rEntry.gpa      = D.athProfile.gpa;
-      if (D.athProfile.position) rEntry.position  = D.athProfile.position;
-      if (D.athProfile.grad)     rEntry.grad      = D.athProfile.grad;
-      if (D.athProfile.email)    rEntry.email     = D.athProfile.email;
-    }
+  if (!init) { toast('No active athlete'); return; }
+  var ap = _athP(init);
+  ap.position    = (document.getElementById('ep-p')||{}).value  || ap.position  || '';
+  ap.gpa         = (document.getElementById('ep-g')||{}).value  || ap.gpa       || '';
+  ap.grad        = (document.getElementById('ep-y')||{}).value  || ap.grad      || '';
+  ap.dash60      = (document.getElementById('ep-60')||{}).value || ap.dash60    || '';
+  ap.exitVelo    = (document.getElementById('ep-ev')||{}).value || ap.exitVelo  || '';
+  ap.battingAvg  = (document.getElementById('ep-av')||{}).value || ap.battingAvg|| '';
+  ap.video       = (document.getElementById('ep-vd')||{}).value || ap.video     || '';
+  ap.bio         = (document.getElementById('ep-bi')||{}).value || ap.bio       || '';
+  ap.email       = (document.getElementById('ep-em')||{}).value || ap.email     || '';
+  ap.desiredMajor = (document.getElementById('ep-major')||{}).value || ap.desiredMajor || '';
+  // Sync editable fields back to roster entry so admin view stays current
+  var rEntry = D.roster.find(function(r){ return r.init === init; });
+  if (rEntry) {
+    if (ap.gpa)         rEntry.gpa         = ap.gpa;
+    if (ap.position)    rEntry.position    = ap.position;
+    if (ap.grad)        rEntry.grad        = ap.grad;
+    if (ap.email)       rEntry.email       = ap.email;
+    // X-04: previously NOT synced — admin's measurables view never saw athlete edits
+    if (ap.dash60)       rEntry.dash60       = ap.dash60;
+    if (ap.exitVelo)     rEntry.exitVelo     = ap.exitVelo;
+    if (ap.battingAvg)   rEntry.battingAvg   = ap.battingAvg;
+    if (ap.desiredMajor) rEntry.desiredMajor = ap.desiredMajor;
   }
   saveAppData();
   closeMo();
@@ -15614,11 +15753,13 @@ function renderColleges() {
 
 
   var athRoster = D.roster.find(function(r){ return r.init === athInit; }) || {};
+  // FIX-0.1: per-athlete athProfile reads
+  var athAp = _athP(athInit);
   var athFitProfile = {
-    name:         athRoster.name || (D.athProfile&&D.athProfile.name) || 'Athlete',
-    gpa:          parseFloat((D.athProfile&&D.athProfile.gpa) || athRoster.gpa) || 0,
-    recruitStage: (D.athProfile&&D.athProfile.recruitStage) || athRoster.recruitStage || '',
-    grad:         parseInt((D.athProfile&&D.athProfile.grad) || athRoster.grad, 10) || 0,
+    name:         athRoster.name || athAp.name || 'Athlete',
+    gpa:          parseFloat(athAp.gpa || athRoster.gpa) || 0,
+    recruitStage: athAp.recruitStage || athRoster.recruitStage || '',
+    grad:         parseInt(athAp.grad || athRoster.grad, 10) || 0,
     sport:        athRoster.sport || '',
     init:         athInit
   };
@@ -16467,11 +16608,90 @@ function saveFunding() {
   var t = (document.getElementById('fr-t')||{}).value||'';
   var a = (document.getElementById('fr-a')||{}).value||'';
   if (!t||!a) { toast('Fill all fields'); return; }
-  D.funding.unshift({title:t.trim(),amt:a.trim(),status:'Pending',desc:(document.getElementById('fr-d')||{}).value||'',cl:'by'});
+  // FIX-0.3: capture submitter so admin funding review can show who submitted
+  var init = D._currentAthInit || '';
+  var ath  = (D.roster||[]).find(function(r){ return r.init === init; }) || {};
+  D.funding.unshift({
+    title: t.trim(),
+    amt: a.trim(),
+    status: 'Pending',
+    desc: (document.getElementById('fr-d')||{}).value || '',
+    cl: 'by',
+    athInit: init,
+    athName: ath.name || '',
+    submittedAt: Date.now()
+  });
   closeMo();
   var body = document.getElementById('asec-body');
   if (body) body.innerHTML = renderFunding();
   saveAppData(); toast('Request submitted!');
+}
+
+// ── FIX-0.3: Admin funding review ──
+function renderAdminFunding() {
+  var all = D.funding || [];
+  if (!all.length) {
+    return '<div style="padding:30px 16px;text-align:center;color:var(--sub);font-size:.88rem;">No funding requests yet.</div>';
+  }
+  // Stable indices: use indexOf on original array so approve/deny target correct entry
+  var pending  = [];
+  var resolved = [];
+  all.forEach(function(f, i){
+    (f.status === 'Pending' ? pending : resolved).push({f:f, i:i});
+  });
+
+  function row(item) {
+    var f = item.f, idx = item.i;
+    var statusColor = f.status === 'Approved' ? 'var(--grn)' : f.status === 'Denied' ? 'var(--red)' : 'var(--gold)';
+    var submitted = f.submittedAt ? new Date(f.submittedAt).toLocaleDateString() : '';
+    var resolved = f.resolvedAt ? new Date(f.resolvedAt).toLocaleDateString() : '';
+    return '<div class="fc" style="margin:0 14px 10px;">' +
+      '<div class="ftp"><div>' +
+        '<div class="fnm">' + _esc(f.title || '(no title)') + '</div>' +
+        (f.athName ? '<div style="font-size:.72rem;color:var(--sub);margin-top:2px;">from ' + _esc(f.athName) + (submitted ? ' &middot; ' + submitted : '') + '</div>'
+                   : (submitted ? '<div style="font-size:.72rem;color:var(--sub);margin-top:2px;">' + submitted + '</div>' : '')) +
+      '</div>' +
+      '<div class="fam">$' + _esc(String(f.amt || '')) + '</div></div>' +
+      (f.desc ? '<div class="fds" style="margin-top:6px;">' + _esc(f.desc) + '</div>' : '') +
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">' +
+        '<span style="color:' + statusColor + ';font-size:.74rem;font-weight:700;">' + _esc(f.status) + '</span>' +
+        (f.status === 'Pending'
+          ? '<button onclick="approveFunding(' + idx + ')" style="margin-left:auto;padding:8px 14px;background:var(--gm);border:1px solid var(--grn);border-radius:8px;color:var(--grn);font-size:.78rem;font-weight:700;cursor:pointer;">Approve</button>' +
+            '<button onclick="denyFunding(' + idx + ')" style="padding:8px 14px;background:var(--rm);border:1px solid var(--red);border-radius:8px;color:var(--red);font-size:.78rem;font-weight:700;cursor:pointer;">Deny</button>'
+          : (resolved ? '<span style="margin-left:auto;font-size:.72rem;color:var(--tx3);">resolved ' + resolved + '</span>' : '')) +
+      '</div></div>';
+  }
+
+  var out = '<div style="height:14px;"></div>';
+  if (pending.length) {
+    out += '<div style="padding:0 16px 8px;font-weight:700;color:var(--gold);font-size:.85rem;">Pending (' + pending.length + ')</div>';
+    out += pending.map(row).join('');
+  }
+  if (resolved.length) {
+    out += '<div style="padding:12px 16px 8px;font-weight:700;color:var(--sub);font-size:.85rem;">Resolved (' + resolved.length + ')</div>';
+    out += resolved.map(row).join('');
+  }
+  return out + '<div style="height:30px;"></div>';
+}
+
+function approveFunding(idx) {
+  if (!D.funding || !D.funding[idx]) return;
+  D.funding[idx].status = 'Approved';
+  D.funding[idx].resolvedAt = Date.now();
+  saveAppData();
+  toast('Approved');
+  var body = document.getElementById('adm-sec-body') || (typeof getSecBody === 'function' ? getSecBody() : null);
+  if (body) body.innerHTML = renderAdminFunding();
+}
+
+function denyFunding(idx) {
+  if (!D.funding || !D.funding[idx]) return;
+  D.funding[idx].status = 'Denied';
+  D.funding[idx].resolvedAt = Date.now();
+  saveAppData();
+  toast('Denied');
+  var body = document.getElementById('adm-sec-body') || (typeof getSecBody === 'function' ? getSecBody() : null);
+  if (body) body.innerHTML = renderAdminFunding();
 }
 
 // ── PUBLIC PORTAL ──
@@ -16618,12 +16838,41 @@ window.addEventListener('unhandledrejection', function(e) {
 
 
 document.addEventListener('DOMContentLoaded', function(){
-  // Register service worker for offline support (BUG-5)
+  // Register service worker for offline support (BUG-5) + update detection (FIX-0.7).
   // sw.js must be committed to repo root. Browser silently retries on next load if missing.
+  // The previous version registered the SW but never told users when a new version was
+  // available, so iPhones served stale cached app shells indefinitely after deploys.
   if ('serviceWorker' in navigator) {
     try {
-      navigator.serviceWorker.register('/sw.js').catch(function(err){
+      navigator.serviceWorker.register('/sw.js').then(function(reg) {
+        // If a worker is already waiting at page load, surface it now
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          _showUpdateBar(reg.waiting);
+        }
+        // Listen for the browser detecting a new sw.js
+        reg.addEventListener('updatefound', function() {
+          var newWorker = reg.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', function() {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // The OLD worker is still controlling this page → real update available
+              _showUpdateBar(newWorker);
+            }
+          });
+        });
+        // Poll for new SW every 5 minutes in case the user keeps the tab open all day
+        setInterval(function(){ try { reg.update(); } catch(_){} }, 5 * 60 * 1000);
+      }).catch(function(err){
         console.warn('SW register failed (will retry on next load):', err && err.message);
+      });
+
+      // When the controller changes (after waiting SW skips waiting), reload to pick up fresh assets
+      var _swReloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function() {
+        if (_swReloading) return;
+        _swReloading = true;
+        // Slight delay so the toast in safeUpdate (if any) is visible
+        setTimeout(function(){ window.location.reload(); }, 200);
       });
     } catch (e) { /* unsupported */ }
   }
