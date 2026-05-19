@@ -1202,7 +1202,7 @@ body.light .qa-art-sub{color:rgba(0,0,0,.85);}
   <div class="tb">
     <div class="tbl">
       <div class="ndot"></div>
-      <button class="ta" onclick="D._currentUser=null; goV('vSP');">Exit</button>
+      <button class="ta" onclick="logout();">Exit</button>
     </div>
     <div class="bridge-logo-img" style="width:70px;height:37px;object-fit:contain;display:block;"></div>
   </div>
@@ -1411,7 +1411,7 @@ body.light .qa-art-sub{color:rgba(0,0,0,.85);}
   <div class="tb">
     <div class="tbl">
       <button onclick="D._athPickFrom='vATH';goV('vATHPICK');renderAthPicker();" style="font-size:.72rem;font-weight:700;padding:5px 11px;border-radius:8px;border:1px solid var(--b2);background:var(--card2);color:var(--sub);cursor:pointer;">Switch</button>
-      <button class="ta" onclick="D._currentUser=null; goV('vSP');">&#8962; Home</button>
+      <button class="ta" onclick="logout();">&#8962; Home</button>
     </div>
     <div class="bridge-logo-img" style="width:70px;height:37px;object-fit:contain;display:block;"></div>
   </div>
@@ -1539,7 +1539,6 @@ body.light .qa-art-sub{color:rgba(0,0,0,.85);}
     <button class="bb" id="pbn-apply" onclick="pubTab('apply')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>Apply</span></button>
   </div>
 </div>
-</div>
 
 <!-- ========== MEETING ROOM ========== -->
 <div class="V" id="vMTG">
@@ -1559,6 +1558,49 @@ body.light .qa-art-sub{color:rgba(0,0,0,.85);}
 </div><!-- #app -->
 <script>
 'use strict';
+
+// ════════════════════════════════════════════════════════
+//  TIER-1.2 · ?preview=1 mode
+//  Visit app.bffsa.org/?preview=1 to load the app with an ISOLATED localStorage
+//  namespace. All 'bffsa-*' keys get prefixed with 'preview-' so test runs don't
+//  touch production data. Lets you exercise risky deploys before pasting them live.
+//  Visit without ?preview=1 to return to normal production data.
+// ════════════════════════════════════════════════════════
+(function(){
+  if (window.location.search.indexOf('preview=1') < 0) return;
+  var PREFIX = 'preview-';
+  var origGet    = Storage.prototype.getItem;
+  var origSet    = Storage.prototype.setItem;
+  var origRemove = Storage.prototype.removeItem;
+  var origKey    = Storage.prototype.key;
+  function maybePrefix(k) {
+    if (typeof k !== 'string') return k;
+    if (k.indexOf('bffsa-') === 0) return PREFIX + k;
+    return k;
+  }
+  Storage.prototype.getItem    = function(k)    { return origGet.call(this, maybePrefix(k)); };
+  Storage.prototype.setItem    = function(k, v) { return origSet.call(this, maybePrefix(k), v); };
+  Storage.prototype.removeItem = function(k)    { return origRemove.call(this, maybePrefix(k)); };
+  // TIER-1.2 patch: clear() must only wipe preview-prefixed bffsa keys, not production data.
+  // Walk all keys via the captured original key() function, delete only those starting with 'preview-bffsa-'.
+  Storage.prototype.clear = function() {
+    var toRemove = [];
+    for (var i = 0; i < this.length; i++) {
+      var k = origKey.call(this, i);
+      if (k && k.indexOf(PREFIX + 'bffsa-') === 0) toRemove.push(k);
+    }
+    for (var j = 0; j < toRemove.length; j++) origRemove.call(this, toRemove[j]);
+  };
+  // Show a banner so it's obvious which mode you're in
+  document.addEventListener('DOMContentLoaded', function(){
+    var bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c41e1e;color:#fff;padding:4px 12px;font-weight:700;font-size:.7rem;text-align:center;z-index:99999;letter-spacing:.05em;font-family:-apple-system,BlinkMacSystemFont,sans-serif;';
+    bar.textContent = '⚠ PREVIEW MODE · production data isolated';
+    document.body.appendChild(bar);
+    document.body.style.paddingTop = '24px';
+  });
+  console.log('[PREVIEW MODE] localStorage isolated under preview-bffsa-* namespace');
+})();
 
 /* ════════════════════════════════════════════════════════
    BFFSA ENGINE - Document intelligence pipeline
@@ -1582,12 +1624,19 @@ var Engine = (function() {
   // ── Audit log (internal) ──────────────────────────────
   var audit = (function() {
     var KEY = 'bffsa_engine_audit';
-    var entries = JSON.parse(localStorage.getItem(KEY) || '[]');
+    // H-2: corrupted audit log shouldn't prevent engine from loading
+    var entries = (function(){
+      try { return JSON.parse(localStorage.getItem(KEY) || '[]'); }
+      catch(e) { console.warn('Audit log corrupted, resetting:', e && e.message); return []; }
+    })();
     function persist() {
       try {
         if (entries.length > 200) entries = entries.slice(-200);
         localStorage.setItem(KEY, JSON.stringify(entries));
-      } catch (e) { /* quota */ }
+      } catch (e) {
+        // M-1: was silent. Log so the user sees this in Web Inspector if it ever fires.
+        console.warn('Audit log persist failed (likely storage quota):', e && e.message);
+      }
     }
     return {
       add: function(kind, msg, detail) {
@@ -1617,7 +1666,10 @@ var Engine = (function() {
     function loadBudget() {
       var raw = localStorage.getItem(BUDGET_KEY);
       var today = new Date().toISOString().slice(0, 10);
-      var b = raw ? JSON.parse(raw) : { date: today, input: 0, output: 0, calls: 0 };
+      // H-2: corrupted budget data shouldn't break API path
+      var b;
+      try { b = raw ? JSON.parse(raw) : { date: today, input: 0, output: 0, calls: 0 }; }
+      catch(e) { console.warn('Budget data corrupted, resetting:', e && e.message); b = { date: today, input: 0, output: 0, calls: 0 }; }
       if (b.date !== today) return { date: today, input: 0, output: 0, calls: 0 };
       return b;
     }
@@ -3110,7 +3162,12 @@ function _writeSnapNow() {
       athleteData: D.athleteData, extractionReview: D.extractionReview,
       meetings: (typeof MTG !== 'undefined') ? MTG.meetings : undefined
     };
-    localStorage.setItem('bffsa-data', JSON.stringify(snap));
+    localStorage.setItem('bffsa-data', JSON.stringify(snap, function(key, val){
+      // L-2: skip _fileRef (live File objects serialize as empty {}) and similar
+      // underscore-prefixed runtime-only properties. Keeps localStorage lean.
+      if (key === '_fileRef') return undefined;
+      return val;
+    }));
     localStorage.setItem('bffsa-sync-ts', Date.now().toString());
     // Clear quota warning if a save succeeded
     if (window._storageFullWarned) {
@@ -3235,50 +3292,152 @@ function loadAppData() {
       });
     });
 
-    // FIX-0.1: Migrate D.athProfile from flat shape to per-athlete object.
-    // Old: D.athProfile = {name, gpa, dash60, ...}  (one global → leaked across views)
-    // New: D.athProfile = {[init]: {name, gpa, dash60, ...}}
-    // Guarded by D.config.athProfileMigrated so it only runs once per device.
-    // Idempotent: if no flat fields present, it just sets the flag.
-    if (!(D.config && D.config.athProfileMigrated) && D.athProfile && typeof D.athProfile === 'object') {
-      var apKeys = Object.keys(D.athProfile);
-      var legacyData = {};
-      var nestedShape = {};
-      apKeys.forEach(function(k) {
-        var v = D.athProfile[k];
-        if (v && typeof v === 'object' && !Array.isArray(v)) {
-          // Already a per-athlete entry — preserve as-is
-          nestedShape[k] = v;
-        } else if (v !== null && v !== undefined) {
-          // Top-level scalar — old shape
-          legacyData[k] = v;
-        }
-      });
-      if (Object.keys(legacyData).length > 0) {
-        // Match legacy data back to the right athlete via name
-        var matchInit = null;
-        if (legacyData.name && D.roster && Array.isArray(D.roster)) {
-          var ath = D.roster.find(function(r){ return r && r.name === legacyData.name; });
-          if (ath) matchInit = ath.init;
-        }
-        if (matchInit) {
-          // Merge: any nested entry for this athlete keeps existing keys, legacy fills the rest
-          nestedShape[matchInit] = Object.assign({}, legacyData, nestedShape[matchInit] || {});
-        }
-        // If no match, legacy data is silently dropped — it was likely stale leakage anyway
-      }
-      D.athProfile = nestedShape;
-      if (!D.config) D.config = {};
-      D.config.athProfileMigrated = true;
-      console.log('FIX-0.1: athProfile migrated to per-athlete shape (' + Object.keys(nestedShape).length + ' athlete entries)');
+    // ════════════════════════════════════════════════════════
+    //  B · Schema versioning framework
+    //  Each migration has a `from` version and a `to` version. The framework
+    //  reads D.config.schemaVersion (defaults to 0 for fresh data), walks the
+    //  migration list in order, and applies only those whose `from` matches the
+    //  current version. After each migration, the version bumps to `to`.
+    //  Adding a new migration is one append; ordering is explicit and idempotent.
+    //  The old per-flag guards (athProfileMigrated, aTasksMigrated, checkinsMigrated)
+    //  are still honored as upgrade shortcuts so devices that already ran the
+    //  individual migrations skip ahead to v3 cleanly.
+    // ════════════════════════════════════════════════════════
+    if (!D.config) D.config = {};
+
+    // Upgrade-shortcut: previous per-flag migrations imply specific schema versions.
+    // Devices that ran the old migrations get fast-forwarded to v3 without re-running.
+    if (D.config.schemaVersion == null) {
+      var inferred = 0;
+      if (D.config.athProfileMigrated)  inferred = Math.max(inferred, 1);
+      if (D.config.aTasksMigrated)      inferred = Math.max(inferred, 2);
+      if (D.config.checkinsMigrated)    inferred = Math.max(inferred, 3);
+      D.config.schemaVersion = inferred;
     }
 
-    // Reset stuck profileLoading flags from previous sessions
-    Object.keys(D.playerColleges).forEach(function(init) {
-      (D.playerColleges[init]||[]).forEach(function(c) {
-        if (c.profileLoading) { c.profileLoading = false; }
-      });
+    var migrations = [
+      {
+        from: 0, to: 1, name: 'athProfile-per-athlete',
+        run: function() {
+          // FIX-0.1: flat athProfile object → per-athlete keyed by init.
+          // Match legacy data back to the right athlete via name field; drop unmatched.
+          if (!D.athProfile || typeof D.athProfile !== 'object') return;
+          var apKeys = Object.keys(D.athProfile);
+          var legacyData = {};
+          var nestedShape = {};
+          apKeys.forEach(function(k) {
+            var v = D.athProfile[k];
+            if (v && typeof v === 'object' && !Array.isArray(v)) nestedShape[k] = v;
+            else if (v !== null && v !== undefined) legacyData[k] = v;
+          });
+          if (Object.keys(legacyData).length > 0) {
+            var matchInit = null;
+            if (legacyData.name && Array.isArray(D.roster)) {
+              var ath = D.roster.find(function(r){ return r && r.name === legacyData.name; });
+              if (ath) matchInit = ath.init;
+            }
+            if (matchInit) nestedShape[matchInit] = Object.assign({}, legacyData, nestedShape[matchInit] || {});
+          }
+          D.athProfile = nestedShape;
+          D.config.athProfileMigrated = true; // back-compat flag
+          console.log('schema v0→v1: athProfile per-athlete (' + Object.keys(nestedShape).length + ' entries)');
+        }
+      },
+      {
+        from: 1, to: 2, name: 'aTasks-per-athlete',
+        run: function() {
+          // TIER-1.1: flat aTasks array → per-athlete keyed by init.
+          if (!Array.isArray(D.aTasks)) return;
+          var legacyTasks = D.aTasks;
+          D.aTasks = legacyTasks.length > 0 ? { __legacy: legacyTasks } : {};
+          D.config.aTasksMigrated = true;
+          console.log('schema v1→v2: aTasks per-athlete (' + legacyTasks.length + ' legacy preserved)');
+        }
+      },
+      {
+        from: 2, to: 3, name: 'checkins-per-athlete',
+        run: function() {
+          // M-3: checkin string status → per-athlete object status. Preserves session-level
+          // timing in c.when so the icon/coloring still works for everyone.
+          if (!Array.isArray(D.checkins)) return;
+          var n = 0;
+          D.checkins.forEach(function(c){
+            if (typeof c.status === 'string') {
+              c.when = (c.status === 'today') ? 'today' : 'upcoming';
+              c.status = {};
+              n++;
+            } else if (c.status == null) {
+              c.status = {};
+            }
+          });
+          D.config.checkinsMigrated = true;
+          if (n) console.log('schema v2→v3: checkins per-athlete (' + n + ' sessions normalized)');
+        }
+      },
+      {
+        from: 3, to: 4, name: 'positions-normalize',
+        run: function() {
+          // FIX-1.4 v3→v4: normalize all legacy free-text position values to the
+          // canonical 7-option vocabulary: OF, 1B, 3B, MIF, C, LHP, RHP.
+          // Mappings:
+          //   SS, 2B            → MIF (middle infield)
+          //   CF, LF, RF        → OF  (outfield)
+          //   P, SP, RP         → RHP (default; user can change to LHP after)
+          //   anything else not in the 7 → blank (user must pick from dropdown)
+          // Applied to D.roster[].position/position2, D.measurables[init].position/position2,
+          // and D.athProfile[init].position/position2.
+          var canonical = ['OF','1B','3B','MIF','C','LHP','RHP'];
+          function normalize(v) {
+            if (!v) return '';
+            var s = String(v).trim().toUpperCase();
+            if (canonical.indexOf(s) >= 0) return s;       // already canonical
+            if (s === 'SS' || s === '2B') return 'MIF';
+            if (s === 'CF' || s === 'LF' || s === 'RF') return 'OF';
+            if (s === 'P' || s === 'SP' || s === 'RP') return 'RHP';
+            return ''; // anything else (DH, UTL, free-text, etc) gets blanked
+          }
+          var changed = 0;
+          (D.roster||[]).forEach(function(r){
+            if (!r) return;
+            var origP = r.position, origP2 = r.position2;
+            r.position  = normalize(r.position);
+            r.position2 = normalize(r.position2);
+            if (r.position !== origP || r.position2 !== origP2) changed++;
+          });
+          if (D.measurables && typeof D.measurables === 'object') {
+            Object.keys(D.measurables).forEach(function(init){
+              var m = D.measurables[init];
+              if (!m) return;
+              m.position  = normalize(m.position);
+              m.position2 = normalize(m.position2);
+            });
+          }
+          if (D.athProfile && typeof D.athProfile === 'object') {
+            Object.keys(D.athProfile).forEach(function(init){
+              var p = D.athProfile[init];
+              if (!p || typeof p !== 'object') return;
+              p.position  = normalize(p.position);
+              p.position2 = normalize(p.position2);
+            });
+          }
+          if (changed) console.log('schema v3→v4: positions normalized (' + changed + ' roster entries touched)');
+        }
+      }
+      // Future migrations append here: { from: 4, to: 5, name: '...', run: function() {...} }
+    ];
+
+    var current = Number(D.config.schemaVersion) || 0; // B patch: defensive coercion
+    // B patch: sort by `from` so list-literal order doesn't matter; if two share
+    // the same `from`, only the first runs (intentional — caller error if both want to apply).
+    migrations.sort(function(a,b){ return a.from - b.from; });
+    var applied = 0;
+    migrations.forEach(function(m) {
+      if (current === m.from) {
+        try { m.run(); current = m.to; D.config.schemaVersion = current; applied++; }
+        catch(e) { console.warn('Migration ' + m.name + ' failed:', e && e.message); }
+      }
     });
+    if (applied > 0) console.log('Schema migrations applied: ' + applied + ' · now at v' + current);
 
     migrateToPeople();
     console.log('App data loaded · roster: ' + D.roster.length + ' athletes, people: ' + (D.people||[]).length);
@@ -3342,11 +3501,54 @@ function syncUpdateIndicator(status, msg) {
 }
 
 // Push local data to Supabase via Netlify function
+// TIER-1.3: pre-push pull check. Before pushing, check whether the cloud has data
+// newer than our last-sync timestamp. If so, surface the conflict modal so the user
+// chooses (use cloud / keep mine) instead of silently overwriting another device's
+// changes. Falls through to a normal push on network errors or when cloud is older.
 function syncPush(silent) {
   try {
     var raw = localStorage.getItem('bffsa-data');
     if (!raw) return;
     if (!silent) syncUpdateIndicator('pushing', 'Saving...');
+    // Step 0: HEAD-style pre-pull to compare timestamps before committing the write
+    fetch('/.netlify/functions/sync', { method: 'GET' })
+      .then(function(r){
+        if (!r.ok) return null; // network/server issue → skip check, proceed with push
+        return r.text().then(function(t){ try { return JSON.parse(t); } catch(_) { return null; } });
+      })
+      .then(function(preRes){
+        if (preRes && preRes.found) {
+          var cloudTs = new Date(preRes.updated_at).getTime();
+          var localTs = parseInt(localStorage.getItem('bffsa-sync-ts') || '0', 10);
+          if (cloudTs > localTs) {
+            // Cloud has newer data we haven't pulled. Surface conflict.
+            syncUpdateIndicator('idle');
+            if (window._pendingChanges && typeof _showSyncConflict === 'function') {
+              _showSyncConflict(preRes.data, cloudTs, null);
+            } else {
+              // No unpushed changes flagged but cloud is newer — pull silently
+              try {
+                localStorage.setItem('bffsa-data', JSON.stringify(preRes.data));
+                localStorage.setItem('bffsa-sync-ts', String(cloudTs));
+                loadAppData();
+                if (typeof renderAdmHome === 'function') renderAdmHome();
+              } catch(_){}
+            }
+            return; // abort push
+          }
+        }
+        // Safe to push: cloud is older or empty
+        _doSyncPush(raw, silent);
+      })
+      .catch(function(){
+        // Pre-pull failed (offline, function down, etc.) — proceed with push anyway
+        _doSyncPush(raw, silent);
+      });
+  } catch(e) { console.warn('syncPush error:', e); }
+}
+
+function _doSyncPush(raw, silent) {
+  try {
     fetch('/.netlify/functions/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3361,6 +3563,10 @@ function syncPush(silent) {
       if (res.ok) {
         _lastSyncAt = new Date();
         window._pendingChanges = false;   // Fix E: clear after successful push
+        // Track the cloud's new updated_at so future pre-pull checks compare correctly
+        if (res.updated_at) {
+          try { localStorage.setItem('bffsa-sync-ts', String(new Date(res.updated_at).getTime())); } catch(_){}
+        }
         syncUpdateIndicator('ok', 'Synced');
         setTimeout(function(){ syncUpdateIndicator('idle'); }, 3000);
       } else {
@@ -3389,7 +3595,7 @@ function syncPush(silent) {
       console.warn('Sync push error:', msg);
     }
     });
-  } catch(e) { console.warn('syncPush error:', e); }
+  } catch(e) { console.warn('_doSyncPush error:', e); }
 }
 
 // Pull latest data from Supabase and merge into local
@@ -3469,10 +3675,19 @@ function syncPushManual() {
   syncUpdateIndicator('pushing', 'Pushing...');
   var raw = localStorage.getItem('bffsa-data');
   if (!raw) { toast('Nothing to push'); return; }
+  // H-2: corrupted local data shouldn't throw before fetch starts
+  var body;
+  try { body = JSON.stringify({ data: JSON.parse(raw), client_ts: new Date().toISOString() }); }
+  catch(parseErr) {
+    syncUpdateIndicator('error', 'Bad local data');
+    toast('Local data corrupted · cannot push · ' + (parseErr.message || ''));
+    console.warn('syncPushManual · localStorage corrupted:', parseErr);
+    return;
+  }
   fetch('/.netlify/functions/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: JSON.parse(raw), client_ts: new Date().toISOString() })
+    body: body
   })
   .then(function(r){
     if (!r.ok) throw new Error('HTTP '+r.status);
@@ -3531,6 +3746,60 @@ function syncPullManual() {
 }
 
 // ── SYNC CONFLICT MODAL · shown when cloud has changes AND local has unsent edits (Fix E) ──
+// C · summarize the difference between cloudData and current local data so the user
+// can see what they'd be choosing between in the conflict modal. Returns a short
+// HTML snippet highlighting the most user-meaningful changes (roster size, file
+// counts, task counts, etc). Conservative — only flags clear differences.
+function _summarizeDataDiff(cloudData) {
+  try {
+    var localRaw = localStorage.getItem('bffsa-data');
+    if (!localRaw) return '<div style="font-size:.74rem;color:var(--sub);">(no local data to compare)</div>';
+    var local = JSON.parse(localRaw);
+    var cloud = cloudData || {};
+    var rows = [];
+    function countObjItems(obj) {
+      if (!obj) return 0;
+      if (Array.isArray(obj)) return obj.length;
+      if (typeof obj === 'object') {
+        return Object.keys(obj).reduce(function(t, k){
+          var v = obj[k];
+          if (Array.isArray(v)) return t + v.length;
+          return t + 1;
+        }, 0);
+      }
+      return 0;
+    }
+    function diffRow(label, l, c) {
+      if (l === c) return '';
+      var arrow = l < c ? '▲' : '▼';
+      var color = l < c ? 'var(--grn)' : 'var(--ylw)';
+      return '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.74rem;">' +
+        '<span style="color:var(--tx2);">' + label + '</span>' +
+        '<span style="font-family:ui-monospace,Menlo,monospace;color:var(--sub);">' +
+          'mine ' + l + ' <span style="color:' + color + ';">' + arrow + '</span> cloud ' + c +
+        '</span></div>';
+    }
+    rows.push(diffRow('Athletes', (local.roster||[]).length, (cloud.roster||[]).length));
+    rows.push(diffRow('Colleges (total)',
+      Object.values(local.playerColleges||{}).reduce(function(t,a){return t+(a||[]).length;}, 0),
+      Object.values(cloud.playerColleges||{}).reduce(function(t,a){return t+(a||[]).length;}, 0)));
+    rows.push(diffRow('Vault files', countObjItems(local.athleteFiles), countObjItems(cloud.athleteFiles)));
+    rows.push(diffRow('Funding requests', (local.funding||[]).length, (cloud.funding||[]).length));
+    rows.push(diffRow('Athlete tasks', countObjItems(local.aTasks), countObjItems(cloud.aTasks)));
+    rows.push(diffRow('Org tasks', (local.tasks||[]).length, (cloud.tasks||[]).length));
+    rows.push(diffRow('Events', (local.events||[]).length, (cloud.events||[]).length));
+    rows.push(diffRow('Coaches/contacts', (local.contacts||[]).length, (cloud.contacts||[]).length));
+    var nonEmpty = rows.filter(function(r){ return r; });
+    if (!nonEmpty.length) return '<div style="font-size:.74rem;color:var(--grn);padding:8px 0;">No differences in tracked counts. Recent edits may not be visible at this level.</div>';
+    return '<div style="background:var(--card2);border:1px solid var(--b1);border-radius:8px;padding:8px 12px;margin:12px 0;">' +
+      '<div style="font-size:.66rem;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);font-weight:700;margin-bottom:4px;">What differs</div>' +
+      nonEmpty.join('') +
+      '</div>';
+  } catch(e) {
+    return '<div style="font-size:.74rem;color:var(--sub);">(diff unavailable: ' + (e && e.message || 'error') + ')</div>';
+  }
+}
+
 function _showSyncConflict(cloudData, cloudTs, onDone) {
   // Stash cloud data on window so the button handlers can reach it
   window._conflictCloudData = cloudData;
@@ -3540,9 +3809,12 @@ function _showSyncConflict(cloudData, cloudTs, onDone) {
   try { when = new Date(cloudTs).toLocaleString([], {month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'}); } catch(_){}
   openMo(
     '<div class="mt">Sync Conflict</div>' +
-    '<div style="font-size:.8rem;color:var(--tx2);margin-bottom:14px;line-height:1.55;">' +
+    '<div style="font-size:.8rem;color:var(--tx2);margin-bottom:8px;line-height:1.55;">' +
       'Another device pushed changes at ' + (when || 'a newer time') + '. You also have unsaved changes on this device.' +
-      '<br><br><b>Use cloud</b> · replace this device with the other device\'s data (your unsent changes will be lost)' +
+    '</div>' +
+    _summarizeDataDiff(cloudData) +
+    '<div style="font-size:.78rem;color:var(--tx2);margin-bottom:14px;line-height:1.55;">' +
+      '<b>Use cloud</b> · replace this device with the other device\'s data (your unsent changes will be lost)' +
       '<br><b>Keep mine</b> · push this device\'s data to the cloud (the other device\'s changes will be overwritten on its next sync)' +
       '<br><b>Cancel</b> · do nothing for now' +
     '</div>' +
@@ -3898,7 +4170,7 @@ function downloadBackup() {
 // ══════════════════════════════════════════════════
 var D = {
   tasks: [],
-  aTasks: [],
+  aTasks: {},     // TIER-1.1: per-athlete {[init]: [task, ...]} keyed shape
   coaches: [],   // master coaches DB: [{name, school, role, email, phone, sport, addedBy, addedAt, source}]
   schoolsDB: {},   // keyed by normalized name: {name, division, conference, academics, financials, athletics, conflicts, lastUpdated, source}
   commLog: {},       // keyed by player init: [{date, type, school, contact, notes, createdAt}]
@@ -4284,6 +4556,29 @@ function _authRecord(success, kind, identifier) {
   }
 }
 
+// H-3: dedicated logout function. Previously the 2 "Exit" / "Home" buttons did
+// only `D._currentUser=null; goV('vSP')` inline, leaving athlete/player context
+// state stale across sessions. If a different user logged in next, residual
+// state could surface (e.g. _acctReadOnly stuck, wrong _currentAthInit feeding
+// reads, dirty _pendingChanges triggering spurious sync conflicts). Centralizing
+// the cleanup makes adding future session fields safer.
+function logout() {
+  D._currentUser = null;
+  D._currentAthInit = null;
+  D._currentAthIsCollege = false;
+  D._playerIdx = -1;
+  D._acctReadOnly = false;
+  D._currentAthCoords = null;
+  window._pendingChanges = false;
+  // H-3 patch: clear conflict modal state too. If a user logs out mid-conflict,
+  // these globals would otherwise persist and the next user could see stale data
+  // injected into a new conflict modal.
+  window._conflictCloudData = null;
+  window._conflictCloudTs = null;
+  window._conflictOnDone = null;
+  try { goV('vSP'); } catch(_) {}
+}
+
 function checkPin() {
   var el = document.getElementById('apin');
   if (!el) return;
@@ -4441,10 +4736,18 @@ function safeUpdate() {
     return;
   }
   syncUpdateIndicator('pushing', 'Saving...');
+  // H-2: if local data is corrupted, fall through to confirm reload rather than throw
+  var body;
+  try { body = JSON.stringify({data: JSON.parse(raw), client_ts: new Date().toISOString()}); }
+  catch(parseErr) {
+    console.warn('safeUpdate · localStorage corrupted, asking for confirmation:', parseErr);
+    _confirmUnsavedReload();
+    return;
+  }
   fetch('/.netlify/functions/sync', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({data: JSON.parse(raw), client_ts: new Date().toISOString()})
+    body: body
   })
   .then(function(r){
     return r.text().then(function(txt){
@@ -8350,6 +8653,17 @@ async function _extOnUpload(playerIdx, inputEl) {
     status.textContent = 'Uploading ' + _esc(file.name) + '...';
   }
 
+  // FIX-1.6: skip duplicate uploads (same name + size already in this athlete's vault)
+  var dupExisting = (D.athleteFiles[a.init]||[]).some(function(e){
+    return e && e.name === file.name && (e._byteSize || 0) === file.size;
+  });
+  if (dupExisting) {
+    if (status) status.textContent = 'Already in vault: ' + file.name + ' — pick it from the list above.';
+    toast('Already in vault');
+    inputEl.value = '';
+    return;
+  }
+
   // Save to vault with category 'transcript'
   if (!D.athleteFiles) D.athleteFiles = {};
   if (!D.athleteFiles[a.init]) D.athleteFiles[a.init] = [];
@@ -8362,6 +8676,7 @@ async function _extOnUpload(playerIdx, inputEl) {
     type: (file.name.split('.').pop()||'').toLowerCase(),
     mime: file.type || '',
     size: file.size > 1048576 ? (file.size/1048576).toFixed(1)+' MB' : (file.size/1024).toFixed(0)+' KB',
+    _byteSize: file.size,
     date: new Date().toISOString().split('T')[0],
     notes: '',
     url: url,
@@ -8415,6 +8730,83 @@ function extractTranscriptAIPasteFallback(playerIdx) {
     '<button class="btn br3 bf" onclick="runTranscriptExtract(' + playerIdx + ')">Analyze Transcript</button>');
 }
 
+// FIX-1.5: rebuild a File with proper name + MIME so the ingest engine
+// (which checks file.type and file.name extension) can identify the format.
+// Vault metadata is more reliable than live File.type because iOS share sheet
+// and some upload paths produce Files with empty type or no extension in name.
+// Returns a fresh File when needed, or the original _fileRef when it's already
+// well-tagged.
+function _hydrateFileForIngest(entry) {
+  var raw = entry && entry._fileRef;
+  if (!raw) return raw;
+
+  function extOf(name) {
+    var m = String(name||'').match(/\.([a-z0-9]{2,5})$/i);
+    return m ? m[1].toLowerCase() : '';
+  }
+  function mimeForExt(ext) {
+    return ({
+      pdf:  'application/pdf',
+      jpg:  'image/jpeg', jpeg: 'image/jpeg',
+      png:  'image/png',
+      webp: 'image/webp',
+      heic: 'image/heic', heif: 'image/heif',
+      gif:  'image/gif'
+    })[ext] || '';
+  }
+
+  var rawName = raw.name || '';
+  var rawType = raw.type || '';
+  var entryName = entry.name || '';
+  var entryMime = entry.mime || '';
+  var entryExt = entry.type || ''; // vault stores extension here
+
+  // Figure out the best name (must have a recognizable extension)
+  var bestName = rawName;
+  if (!extOf(bestName)) {
+    bestName = entryName;
+    if (!extOf(bestName) && entryExt && /^[a-z0-9]{2,5}$/i.test(entryExt)) {
+      bestName = (bestName || 'file') + '.' + entryExt.toLowerCase();
+    }
+  }
+
+  // Figure out the best MIME
+  var bestType = rawType;
+  var genericTypes = ['', 'application/octet-stream', 'application/binary', 'binary/octet-stream'];
+  if (genericTypes.indexOf(bestType.toLowerCase()) >= 0) {
+    if (entryMime && genericTypes.indexOf(entryMime.toLowerCase()) < 0) {
+      bestType = entryMime;
+    } else {
+      var derived = mimeForExt(extOf(bestName) || entryExt);
+      if (derived) bestType = derived;
+    }
+  }
+
+  // Last-resort: when category is transcript/academic and we still have no clue,
+  // assume PDF and append .pdf to the name. The engine's magic-byte sniffer runs
+  // first and will override this if the file is actually a JPEG/PNG/HEIC. If it
+  // really is a PDF, sniff confirms it. Worst case (file is corrupt or unsupported)
+  // the engine fails with a more useful error than "octet-stream not supported".
+  if (genericTypes.indexOf(bestType.toLowerCase()) >= 0) {
+    var cat = ((entry.category || '') + '').toLowerCase();
+    if (cat === 'transcript' || cat === 'academic' || cat === 'test_scores' || cat === 'other' || cat === '') {
+      bestType = 'application/pdf';
+      if (!extOf(bestName)) bestName = (bestName || 'file') + '.pdf';
+    }
+  }
+
+  // If nothing changed, return the original
+  if (bestName === rawName && bestType === rawType) return raw;
+
+  // Try to construct a fresh File with the hydrated metadata
+  try {
+    return new File([raw], bestName, { type: bestType, lastModified: raw.lastModified || Date.now() });
+  } catch (e) {
+    // Older browsers without File constructor — fall back to a Blob (loses name but keeps type)
+    try { return new Blob([raw], { type: bestType }); } catch(_) { return raw; }
+  }
+}
+
 async function runTranscriptExtractFromVault(playerIdx) {
   var a = D.roster[playerIdx]; if (!a) return;
   var override = ((document.getElementById('ext-override')||{}).value || '').trim();
@@ -8448,10 +8840,18 @@ async function runTranscriptExtractFromVault(playerIdx) {
     return;
   }
 
+  // FIX-1.5: hydrate the file with proper name + MIME from vault metadata.
+  // iOS share sheet and some upload paths produce a File with empty type and/or
+  // name without extension, which causes the ingest engine to throw
+  // 'File type "application/octet-stream" is not supported'. Vault metadata is
+  // captured at upload time when these fields are usually intact, so we use it
+  // to reconstruct a properly-tagged File before passing to the engine.
+  var fileForEngine = _hydrateFileForIngest(entry);
+
   try {
     if (status) status.textContent = 'Reading ' + _esc(entry.name) + '...';
     var result = await EngineBridge.processOneFileWithRetry(
-      entry._fileRef,
+      fileForEngine,
       'transcript',
       'admin',
       override,
@@ -9523,6 +9923,20 @@ function handleAthFileUpload(input, idx) {
 
     if (!D.athleteFiles) D.athleteFiles = {};
     if (!D.athleteFiles[a.init]) D.athleteFiles[a.init] = [];
+
+    // FIX-1.6: skip duplicate uploads. If a file with the same name + size already
+    // exists in this athlete's vault, do not create a second entry. Dave hit this
+    // when the same transcript appeared twice. Comparison uses raw byte size, not
+    // the human-readable string, to avoid mismatches across MB/KB rounding.
+    var existingDup = D.athleteFiles[a.init].some(function(e){
+      return e && e.name === file.name && (e._byteSize || 0) === file.size;
+    });
+    if (existingDup) {
+      toast('Already in vault: ' + file.name);
+      return; // skip this file in the forEach
+    }
+    entry._byteSize = file.size; // store raw size for future dedupe checks
+
     D.athleteFiles[a.init].push(entry);
     // Fix A: also stash the blob in IndexedDB so it survives reloads even when the file
     // is too big to fit in localStorage base64. Best-effort · doesn't block upload.
@@ -10671,14 +11085,20 @@ function divisionToTier(divStr) {
 
 // Determine athlete position group · sport-aware (FIT-2)
 function athletePositionGroup(a) {
-  var pos = ((a.measurables && a.measurables.position)||a.position||'').toUpperCase();
+  // FIX-1.4: read position from any of the 3 stores. Previously only a.measurables
+  // (nested, unused) and a.position. D.measurables[init] is where the admin's
+  // saveMeasurables modal writes — that path was disconnected from the fit calc.
+  var measurables = (a && a.init && D.measurables && D.measurables[a.init]) || {};
+  var pos = ((a.measurables && a.measurables.position) ||
+             a.position ||
+             measurables.position || '').toUpperCase();
   var sport = _normalizeSport(a.sport);
 
   if (sport === 'baseball' || sport === 'softball') {
     if (/LHP/.test(pos)) return 'lhp';
     if (/RHP|SP|RP|P\b/.test(pos)) return 'rhp';
-    if (/SS|2B|CF/.test(pos)) return 'middle_inf';
-    if (/1B|3B|LF|RF|DH/.test(pos)) return 'corner';
+    if (/SS|2B|CF|MIF/.test(pos)) return 'middle_inf';
+    if (/1B|3B|LF|RF|DH|OF/.test(pos)) return 'corner';
     if (/C\b|CATCH/.test(pos)) return 'catcher';
     return null;
   }
@@ -11660,10 +12080,22 @@ function openMeasurables(idx) {
     '<div class="fg"><label class="fl">Weight (lbs)</label><input class="fi" id="ms-weight" type="number" placeholder="185" value="'+(m.weight||'')+'"></div>' +
     '</div>' +
     '<div class="fr">' +
-    '<div class="fg"><label class="fl">Position</label><input class="fi" id="ms-pos" placeholder="SS, RHP, CF..." value="'+(m.position||'')+'" oninput="_msRerender('+idx+')"></div>' +
+    '<div class="fg"><label class="fl">Primary Position</label><select class="fi" id="ms-pos" oninput="_msRerender('+idx+')" onchange="_msRerender('+idx+')">' +
+      ['','OF','C','RHP','LHP','1B','3B','MIF'].map(function(v){
+        return '<option value="'+v+'"'+(m.position===v?' selected':'')+'>'+(v||'· Select ·')+'</option>';
+      }).join('') +
+    '</select></div>' +
+    '<div class="fg"><label class="fl">Secondary Position</label><select class="fi" id="ms-pos2">' +
+      ['','OF','C','RHP','LHP','1B','3B','MIF'].map(function(v){
+        return '<option value="'+v+'"'+(m.position2===v?' selected':'')+'>'+(v||'· None ·')+'</option>';
+      }).join('') +
+    '</select></div>' +
+    '</div>' +
+    '<div class="fr">' +
     '<div class="fg"><label class="fl">Bat / Throw</label><select class="fi" id="ms-bt">' +
     ['','R/R','L/L','L/R','R/L','S/R'].map(function(v){ return '<option'+(m.batThrow===v?' selected':'')+'>'+v+'</option>'; }).join('') +
     '</select></div>' +
+    '<div class="fg"></div>' +
     '</div>' +
     // Dynamic position-aware section
     '<div id="ms-dyn"></div>' +
@@ -11813,6 +12245,7 @@ function saveMeasurables(idx) {
   m.height      = gv('ms-height');
   m.weight      = gv('ms-weight');
   m.position    = gv('ms-pos');
+  m.position2   = gv('ms-pos2');
   m.batThrow    = gv('ms-bt');
   m.sixty       = gv('ms-sixty');
   if (isBB) {
@@ -11835,6 +12268,17 @@ function saveMeasurables(idx) {
   }
   m.highlightUrl  = gv('ms-hl');
   m.fitOverride   = (document.getElementById('ms-fit-override')||{}).value || '';
+  // FIX-1.4: sync key fields back to the roster entry so calc paths that read
+  // a.position / a.dash60 / a.exitVelo / etc. see the values. Previously these
+  // only lived in D.measurables[init], which the fit calculators don't read from.
+  if (m.position)   a.position   = m.position;
+  if (m.position2)  a.position2  = m.position2;
+  if (m.height)     a.height     = m.height;
+  if (m.weight)     a.weight     = m.weight;
+  if (m.batThrow)   a.batThrow   = m.batThrow;
+  if (m.sixty)      a.dash60     = m.sixty;
+  if (m.exitVelo)   a.exitVelo   = m.exitVelo;
+  if (m.fbVelo)     a.fbVelo     = m.fbVelo;
   closeMo(); saveAppData();
   toast('Measurables saved ✓');
   playerTab('info');
@@ -14394,6 +14838,22 @@ function _athP(init) {
   return D.athProfile[init];
 }
 
+// TIER-1.1: per-athlete aTasks accessor. Old D.aTasks was a flat array shared
+// across all athletes — anyone could see anyone else's tasks. Migration converts
+// the array to {[init]: [tasks]} keyed shape with a __legacy bucket for any
+// existing data we can't unambiguously assign to a specific athlete.
+function _athT(init) {
+  if (!init) return [];
+  if (!D.aTasks) D.aTasks = {};
+  if (Array.isArray(D.aTasks)) {
+    // Defensive: should have been migrated in loadAppData. Preserve via __legacy.
+    var legacy = D.aTasks;
+    D.aTasks = legacy.length > 0 ? { __legacy: legacy } : {};
+  }
+  if (!Array.isArray(D.aTasks[init])) D.aTasks[init] = [];
+  return D.aTasks[init];
+}
+
 function _loadAthletePortal(init) {
   var a = D.roster.find(function(r){ return r.init === init; });
   if (!a) return;
@@ -14451,7 +14911,7 @@ function refreshAthDashboard() {
   }
   var colleges   = a ? (D.playerColleges[a.init]||[]) : [];
   var offers     = colleges.filter(function(c){ return c.status==='Offer'||c.status==='Committed'; }).length;
-  var tasksDue   = (D.aTasks||[]).filter(function(t){ return !t.done; }).length;
+  var tasksDue   = _athT(D._currentAthInit||'').filter(function(t){ return !t.done; }).length;
   var isCollege  = D._currentAthIsCollege;
   var cEl = document.getElementById('ath-stat-colleges');
   var oEl = document.getElementById('ath-stat-offers');
@@ -15447,8 +15907,21 @@ function renderAthProfile() {
 function openEditAthProfile() {
   // FIX-0.1: per-athlete athProfile
   var p = _athP(D._currentAthInit || '');
+  function posSel(id, current, defaultLabel) {
+    // 7 canonical positions: OF, 1B, 3B, MIF, C, LHP, RHP. Legacy values like SS, CF, P
+    // are normalized to these by the v3→v4 schema migration, so the dropdown stays clean.
+    var opts = ['','OF','C','RHP','LHP','1B','3B','MIF'];
+    return '<select class="fi" id="' + id + '">' + opts.map(function(v){
+      var lbl = v || defaultLabel;
+      return '<option value="' + v + '"' + (current === v ? ' selected' : '') + '>' + lbl + '</option>';
+    }).join('') + '</select>';
+  }
   openMo('<div class="mt">Edit Profile</div>' +
-    '<div class="fg"><label class="fl">Position</label><input class="fi" id="ep-p" placeholder="e.g. SS, PG, MF" value="' + (p.position||'') + '"></div>' +
+    // FIX-1.4 athlete-side: same 7-option dropdown treatment as the admin Measurables modal.
+    '<div class="fr">' +
+    '<div class="fg"><label class="fl">Primary Position</label>' + posSel('ep-p', p.position||'', '· Select ·') + '</div>' +
+    '<div class="fg"><label class="fl">Secondary Position</label>' + posSel('ep-p2', p.position2||'', '· None ·') + '</div>' +
+    '</div>' +
     '<div class="fr">' +
     '<div class="fg"><label class="fl">GPA</label><input class="fi" id="ep-g" placeholder="e.g. 3.2" value="' + (p.gpa||'') + '"></div>' +
     '<div class="fg"><label class="fl">Grad Year</label><input class="fi" id="ep-y" placeholder="e.g. 2026" value="' + (p.grad||'') + '"></div>' +
@@ -15470,7 +15943,9 @@ function saveAthProfile() {
   var init = D._currentAthInit;
   if (!init) { toast('No active athlete'); return; }
   var ap = _athP(init);
+  // FIX-1.4 athlete-side: capture both primary + secondary position from new dropdowns
   ap.position    = (document.getElementById('ep-p')||{}).value  || ap.position  || '';
+  ap.position2   = (document.getElementById('ep-p2')||{}).value || ap.position2 || '';
   ap.gpa         = (document.getElementById('ep-g')||{}).value  || ap.gpa       || '';
   ap.grad        = (document.getElementById('ep-y')||{}).value  || ap.grad      || '';
   ap.dash60      = (document.getElementById('ep-60')||{}).value || ap.dash60    || '';
@@ -15485,6 +15960,7 @@ function saveAthProfile() {
   if (rEntry) {
     if (ap.gpa)         rEntry.gpa         = ap.gpa;
     if (ap.position)    rEntry.position    = ap.position;
+    if (ap.position2)   rEntry.position2   = ap.position2;
     if (ap.grad)        rEntry.grad        = ap.grad;
     if (ap.email)       rEntry.email       = ap.email;
     // X-04: previously NOT synced — admin's measurables view never saw athlete edits
@@ -16531,8 +17007,9 @@ function renderAthTasks() {
       return '<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;background:var(--card);border-bottom:1px solid var(--b1);">'        + '<button data-init="'+init+'" data-tid="'+t.id+'" onclick="toggleCoordTask(this.dataset.init,+this.dataset.tid)" style="'+chkStyle+'">'+(t.done?'&#10003;':'')+'</button>'        + '<div style="flex:1;min-width:0;">'        + '<div class="tn '+(t.done?'done':'')+'">'+_esc(t.text)+'</div>'        + '<div class="tm">'+(t.due?'Due '+t.due:'')+(t.notes?' &mdash; '+t.notes:'')+'</div>'        + '</div>'        + '<span style="font-size:.58rem;padding:2px 6px;border-radius:20px;background:var(--card2);color:'+(priC[t.priority]||'var(--sub)')+';font-weight:700;text-transform:uppercase;flex-shrink:0;">'+(t.priority||'med')+'</span>'        + '<button data-init="'+init+'" data-tid="'+t.id+'" onclick="openEditCoordTask(this.dataset.init,+this.dataset.tid)" style="padding:6px 8px;background:none;border:none;cursor:pointer;color:var(--sub);font-size:.85rem;flex-shrink:0;">&#9998;</button>'        + '<button data-init="'+init+'" data-tid="'+t.id+'" onclick="deleteCoordTask(this.dataset.init,+this.dataset.tid)" style="padding:6px 8px;background:none;border:none;cursor:pointer;color:var(--sub);font-size:1rem;flex-shrink:0;">&#215;</button>'        + '</div>';
     }).join('') + '<div ="height:6px;background:var(--bg2);"></div>';
   }
-  var open = D.aTasks.filter(function(t){ return !t.done; }).length + coordTasks.filter(function(t){ return !t.done; }).length;
-  var rows = D.aTasks.length ? D.aTasks.map(function(t){
+  var open = _athT(D._currentAthInit||'').filter(function(t){ return !t.done; }).length + coordTasks.filter(function(t){ return !t.done; }).length;
+  var myTasks = _athT(D._currentAthInit||'');
+  var rows = myTasks.length ? myTasks.map(function(t){
     return '<button class="trow" onclick="toggleAthTask(' + t.id + ')">' +
       '<div class="tck ' + (t.done?'done':'') + '">' + (t.done?'&#10003;':'') + '</div>' +
       '<div style="flex:1;"><div class="tn ' + (t.done?'done':'') + '">' + _esc(t.text) + '</div>' +
@@ -16543,7 +17020,9 @@ function renderAthTasks() {
     rows + '<div style="height:20px;"></div>';
 }
 function toggleAthTask(id) {
-  var t = D.aTasks.find(function(x){ return x.id===id; });
+  // TIER-1.1: per-athlete lookup
+  var tasks = _athT(D._currentAthInit||'');
+  var t = tasks.find(function(x){ return x.id===id; });
   if (!t) return;
   t.done = !t.done;
   var body = document.getElementById('asec-body');
@@ -16560,7 +17039,11 @@ function openAddAthTask() {
 function saveAthTask() {
   var text = (document.getElementById('at-nt')||{}).value||'';
   if (!text.trim()) { toast('Enter a task'); return; }
-  D.aTasks.unshift({id:Date.now(),text:text.trim(),done:false,due:(document.getElementById('at-nd')||{}).value||'TBD'});
+  // TIER-1.1: write to per-athlete task list, not the shared global
+  var init = D._currentAthInit;
+  if (!init) { toast('No active athlete'); return; }
+  var tasks = _athT(init);
+  tasks.unshift({id:Date.now(),text:text.trim(),done:false,due:(document.getElementById('at-nd')||{}).value||'TBD'});
   closeMo();
   var body = document.getElementById('asec-body');
   saveAppData();
@@ -16568,23 +17051,35 @@ function saveAthTask() {
   toast('Task added');
 }
 function renderCheckin() {
+  // M-3: status is now per-athlete. c.status is an object keyed by athlete init.
+  // c.when ('today' | 'upcoming') tracks the session-level timing separately.
+  // Legacy string status (pre-migration) treated as old today/upcoming hint, no check-in recorded.
+  var init = D._currentAthInit || '';
   var rows = D.checkins.length ? D.checkins.map(function(c,i){
+    var isToday = (c.when === 'today') || (typeof c.status === 'string' && c.status === 'today');
+    var checkedIn = c.status && typeof c.status === 'object' && c.status[init] === 'done';
     return '<div class="cic">' +
-      '<div class="cii">' + (c.status==='today'?'&#128308;':'&#128197;') + '</div>' +
+      '<div class="cii">' + (isToday?'&#128308;':'&#128197;') + '</div>' +
       '<div style="flex:1;"><div class="cinm">' + _esc(c.title) + '</div>' +
       '<div class="citm">' + c.date + ' &middot; ' + c.time + ' &middot; ' + c.loc + '</div></div>' +
-      '<button class="cib ' + (c.status==='done'?'done':'') + '" onclick="doCheckin(' + i + ')">' +
-      (c.status==='done'?'&#10003; In':'Check In') + '</button></div>';
+      '<button class="cib ' + (checkedIn?'done':'') + '" onclick="doCheckin(' + i + ')">' +
+      (checkedIn?'&#10003; In':'Check In') + '</button></div>';
   }).join('') : '<div style="padding:30px 16px;text-align:center;color:var(--tx2);font-size:.84rem;">No upcoming sessions. Check back soon.</div>';
   return '<div class="al g" style="margin-top:12px;">&#128205; Check in to today\'s session: <strong>Film &amp; Strategy &mdash; 6:00 PM</strong></div>' +
     rows + '<div style="height:20px;"></div>';
 }
 function doCheckin(idx) {
-  D.checkins[idx].status = 'done';
+  // M-3: writes per-athlete status. Each session tracks who has checked in via c.status[init].
+  var init = D._currentAthInit || '';
+  if (!init) { toast('No active athlete'); return; }
+  var c = D.checkins[idx];
+  if (!c) return;
+  if (!c.status || typeof c.status !== 'object') c.status = {};
+  c.status[init] = 'done';
   var body = document.getElementById('asec-body');
   saveAppData();
   if (body) body.innerHTML = renderCheckin();
-  toast('Checked in: ' + D.checkins[idx].title);
+  toast('Checked in: ' + c.title);
 }
 function renderFunding() {
   var rows = D.funding.length ? D.funding.map(function(f){
