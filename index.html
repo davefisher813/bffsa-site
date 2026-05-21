@@ -2064,18 +2064,44 @@ var Engine = (function() {
       if (kind === 'unknown') {
         var ext = (file.name || '').toLowerCase().split('.').pop();
         var hint = '';
+        var generic = ['', 'application/octet-stream', 'application/binary', 'binary/octet-stream'];
+        var isGeneric = generic.indexOf((mime||'').toLowerCase()) >= 0;
         if (ext === 'pdf' || ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'heic' || ext === 'webp') {
           hint = ' · File extension says .' + ext + ' but contents do not match. The file may be corrupted or have the wrong extension. Try re-downloading or re-exporting.';
         } else if (ext === 'docx' || ext === 'doc') {
           hint = ' · DOCX is not supported here · please export to PDF first.';
         } else if (ext) {
           hint = ' · .' + ext + ' is not a supported format. Supported: PDF, JPEG, PNG, WebP, HEIC.';
+        } else if (isGeneric) {
+          // No extension AND generic MIME · likely iOS share sheet stripped both
+          hint = ' · File type could not be determined. Try re-uploading from the Files app instead of using Share Sheet.';
         }
         audit.add('error', 'Ingest rejected ' + file.name + ' · declared=' + declaredMime + ' · sniffed=' + (sniffed ? sniffed.mime : 'none') + ' · ext=.' + ext);
-        throw new Error('File type "' + mime + '" is not supported.' + hint);
+        // Surface a cleaner top-level message when MIME is generic (no .pdf gibberish quoted at user)
+        var headline = isGeneric
+          ? 'File type couldn\'t be determined'
+          : 'File type "' + mime + '" is not supported';
+        throw new Error(headline + '.' + hint);
       }
 
       if (kind === 'pdf') {
+        // Pre-validate the actual bytes start with %PDF before sending to API.
+        // Catches corrupted iOS Share Sheet uploads early with an actionable error
+        // instead of letting the API reject with cryptic "base64.data: The PDF specified was not valid"
+        var firstBytes = await file.slice(0, 8).arrayBuffer().then(function(buf){
+          return new Uint8Array(buf);
+        }).catch(function(){ return null; });
+        if (firstBytes && firstBytes.length >= 4) {
+          var isPdf = firstBytes[0] === 0x25 && firstBytes[1] === 0x50 &&
+                      firstBytes[2] === 0x44 && firstBytes[3] === 0x46;
+          if (!isPdf) {
+            var first4 = Array.from(firstBytes.slice(0,4)).map(function(b){
+              return b.toString(16).padStart(2,'0');
+            }).join(' ');
+            audit.add('error', file.name + ': claimed PDF but magic bytes are ' + first4 + ' (expected 25 50 44 46)');
+            throw new Error('File appears corrupted · header is not a valid PDF (first bytes: ' + first4 + '). Re-upload from the Files app instead of Share Sheet.');
+          }
+        }
         var b64 = await fileToBase64(file);
         return Object.assign({}, meta, { mediaType: 'application/pdf', base64: b64, blockType: 'document' });
       }
@@ -3439,6 +3465,34 @@ function loadAppData() {
     });
     if (applied > 0) console.log('Schema migrations applied: ' + applied + ' · now at v' + current);
 
+    // #6 · Position health scan: after migrations run, audit the roster for athletes
+    // whose position is empty (couldn't auto-normalize). Logged for visibility only —
+    // doesn't block anything, just helps Dave see if anyone needs manual position setting.
+    try {
+      var canonical = ['OF','1B','3B','MIF','C','LHP','RHP'];
+      var unmapped = [];
+      (D.roster||[]).forEach(function(r){
+        if (!r) return;
+        var pos = (r.position||'').toUpperCase().trim();
+        if (!pos) {
+          unmapped.push({init:r.init, name:r.name, reason:'empty'});
+        } else if (canonical.indexOf(pos) < 0) {
+          // Shouldn't happen if migration ran, but defensive
+          unmapped.push({init:r.init, name:r.name, reason:'non-canonical: '+r.position});
+        }
+      });
+      if (unmapped.length > 0) {
+        console.warn('Position health: ' + unmapped.length + ' athlete(s) need position set:');
+        unmapped.forEach(function(u){
+          console.warn('  · ' + u.name + ' (' + u.init + ') · ' + u.reason);
+        });
+        // Also store for any admin UI tools that want to display it
+        D._positionHealthIssues = unmapped;
+      } else {
+        D._positionHealthIssues = [];
+      }
+    } catch(e) { console.warn('Position health scan failed:', e && e.message); }
+
     migrateToPeople();
     console.log('App data loaded · roster: ' + D.roster.length + ' athletes, people: ' + (D.people||[]).length);
   } catch(e) { console.warn('Load failed', e); }
@@ -4153,17 +4207,30 @@ function downloadBackup() {
   try {
     var raw = localStorage.getItem('bffsa-data');
     if (!raw) { toast('No data to export'); return; }
-    var blob = new Blob([raw], {type:'application/json'});
+    var data;
+    try { data = JSON.parse(raw); } catch(e) {
+      toast('Cannot export: local data is corrupted');
+      console.warn('downloadBackup parse failed:', e.message);
+      return;
+    }
+    // Embed export metadata as top-level fields (alongside existing fields) so
+    // future imports can validate schema version. Doesn't change the rest of
+    // the shape — existing backup-inspector tools still work.
+    var schemaV = (data && data.config && data.config.schemaVersion) || 0;
+    data._exportedAt = new Date().toISOString();
+    data._schemaVersion = schemaV;
+    data._backupVersion = 'bffsa-backup-v1';
+    var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'bffsa-backup-' + new Date().toISOString().slice(0,10) + '.json';
+    a.download = 'bffsa-backup-v' + schemaV + '-' + new Date().toISOString().slice(0,10) + '.json';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast('Backup downloaded \u2713');
-  } catch(e) { toast('Export failed'); }
+  } catch(e) { toast('Export failed'); console.warn('downloadBackup error:', e); }
 }
 
 
@@ -9794,6 +9861,9 @@ function openAthVaultFile(playerIdx, fileIdx) {
   var f = (D.athleteFiles && D.athleteFiles[a.init] || [])[fileIdx];
   if (!f) { toast('File not found'); return; }
 
+  var diagPrefix = '[vault open · ' + (f.name||'unnamed') + ']';
+  console.log(diagPrefix + ' attempting · has _fileRef=' + !!f._fileRef + ' base64=' + !!f.base64 + ' id=' + f.id + ' url=' + !!f.url);
+
   // Strategy 1: live File reference (current session)
   if (f._fileRef instanceof File || f._fileRef instanceof Blob) {
     try {
@@ -9801,8 +9871,9 @@ function openAthVaultFile(playerIdx, fileIdx) {
       window.open(fresh, '_blank');
       // Note: we don't revoke immediately - need to give the new tab time to load.
       setTimeout(function() { URL.revokeObjectURL(fresh); }, 60000);
+      console.log(diagPrefix + ' ✓ strategy 1: live _fileRef');
       return;
-    } catch (e) { /* fall through */ }
+    } catch (e) { console.warn(diagPrefix + ' strategy 1 failed:', e && e.message); }
   }
 
   // Strategy 2: persisted base64 (cross-session reload, small files only)
@@ -9816,8 +9887,9 @@ function openAthVaultFile(playerIdx, fileIdx) {
       var fresh2 = URL.createObjectURL(blob);
       window.open(fresh2, '_blank');
       setTimeout(function() { URL.revokeObjectURL(fresh2); }, 60000);
+      console.log(diagPrefix + ' ✓ strategy 2: persisted base64 (' + mime + ')');
       return;
-    } catch (e) { /* fall through */ }
+    } catch (e) { console.warn(diagPrefix + ' strategy 2 failed:', e && e.message); }
   }
 
   // Strategy 3: IndexedDB blob backup (Fix A · survives reloads, larger than localStorage cap)
@@ -9832,17 +9904,21 @@ function openAthVaultFile(playerIdx, fileIdx) {
         var url4 = URL.createObjectURL(blobOut);
         if (idbWin) idbWin.location.href = url4;
         setTimeout(function() { URL.revokeObjectURL(url4); }, 60000);
+        console.log(diagPrefix + ' ✓ strategy 3: IndexedDB blob (' + mime4 + ')');
       } else if (f.url) {
         // Strategy 4 (last resort): legacy stored URL · likely broken after reload but try anyway
         if (idbWin) idbWin.location.href = f.url;
+        console.log(diagPrefix + ' ⚠ strategy 4 (last resort): legacy URL · may be stale');
       } else {
         if (idbWin) idbWin.close();
+        console.warn(diagPrefix + ' ✗ no strategies remain · re-upload needed');
         toast('File data not available · re-upload to view');
       }
     }).catch(function(e) {
-      console.warn('IDB lookup failed:', e && e.message);
+      console.warn(diagPrefix + ' IDB lookup failed:', e && e.message);
       if (f.url && idbWin) {
         idbWin.location.href = f.url;
+        console.log(diagPrefix + ' ⚠ strategy 4 (after IDB error): legacy URL');
       } else {
         if (idbWin) idbWin.close();
         toast('File data not available · re-upload to view');
@@ -9853,6 +9929,7 @@ function openAthVaultFile(playerIdx, fileIdx) {
 
   // Strategy 4 fallback when IndexedDB is unavailable: legacy URL
   if (f.url) {
+    console.log(diagPrefix + ' ⚠ strategy 4 (no IDB): legacy URL');
     window.open(f.url, '_blank');
     return;
   }
@@ -12790,12 +12867,150 @@ function openSettings() {
   html += '<button class="btn br3 bf" style="flex:1;background:var(--red);" onclick="exportAppData()">&#8681; Export Backup</button>';
   html += '<button class="btn br3" style="flex:1;" onclick="importAppData()">&#8679; Restore Backup</button>';
   html += '</div></div>';
+  // Maintenance tools (#1 vault dedupe, #3 legacy aTasks viewer)
+  html += '<div style="border-top:1px solid var(--b1);margin:12px 0;padding-top:12px;">';
+  html += '<div class="fl" style="margin-bottom:8px;font-weight:700;">Maintenance</div>';
+  html += '<div style="font-size:.78rem;color:var(--tx3);margin-bottom:10px;">One-shot tools for cleaning up legacy data. Safe to skip if nothing looks broken.</div>';
+  html += '<button class="btn br3" style="width:100%;margin-bottom:6px;" onclick="closeMo();openVaultDedupe();">&#9881; Scan vault for duplicates</button>';
+  html += '<button class="btn br3" style="width:100%;margin-bottom:6px;" onclick="closeMo();openLegacyTasks();">&#9881; Review legacy shared tasks</button>';
+  html += '<button class="btn br3" style="width:100%;" onclick="closeMo();openPositionHealth();">&#9881; Position health check</button>';
+  html += '</div>';
   openMo(html, '<button class="btn br3 bf" style="width:100%;" onclick="saveSettings()">Save Settings</button>');
 }
 function saveSettings() {
   var pin = (document.getElementById("set-pin")||{}).value||"";
   if (pin && pin.length >= 4) { D.adminPin = pin; saveAppData(); }
   toast("Settings saved"); closeMo();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// MAINTENANCE TOOLS · #1 vault dedupe · #3 legacy tasks · #6 position health
+// ══════════════════════════════════════════════════════════════════
+
+function openVaultDedupe() {
+  // Scan every athlete's vault for files with matching name+size. List them, offer remove.
+  var dupes = []; // [{init, name, indices:[idx,...]}]
+  if (D.athleteFiles && typeof D.athleteFiles === 'object') {
+    Object.keys(D.athleteFiles).forEach(function(init){
+      var arr = D.athleteFiles[init] || [];
+      var groups = {};
+      arr.forEach(function(f, idx){
+        if (!f) return;
+        var key = (f.name||'(unnamed)') + '|' + (f._byteSize||0);
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(idx);
+      });
+      Object.keys(groups).forEach(function(key){
+        if (groups[key].length > 1) {
+          var parts = key.split('|');
+          dupes.push({init:init, name:parts[0], size:parts[1], indices:groups[key]});
+        }
+      });
+    });
+  }
+  var html = '<div class="mt">Vault Duplicates</div>';
+  if (dupes.length === 0) {
+    html += '<div style="padding:20px;text-align:center;color:var(--sub);font-size:.86rem;">No duplicates found.</div>';
+  } else {
+    html += '<div style="font-size:.78rem;color:var(--tx3);margin-bottom:10px;">Found ' + dupes.length + ' duplicate group(s). Remove will keep the FIRST upload and delete the others.</div>';
+    dupes.forEach(function(d, dIdx){
+      var athleteName = (D.roster.find(function(r){return r.init===d.init;})||{}).name || d.init;
+      html += '<div style="background:var(--card2);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px;">';
+      html += '<div style="font-weight:700;font-size:.86rem;">' + d.name + '</div>';
+      html += '<div style="font-size:.72rem;color:var(--sub);margin:3px 0;">' + athleteName + ' · ' + d.indices.length + ' copies · ' + d.size + ' bytes</div>';
+      html += '<button class="btn br3" style="background:var(--red);color:#fff;font-size:.74rem;padding:6px 12px;width:auto;" onclick="_dedupeOne(\'' + d.init + '\', [' + d.indices.join(',') + '])">Keep first · remove ' + (d.indices.length-1) + ' others</button>';
+      html += '</div>';
+    });
+  }
+  openMo(html, '<button class="btn br3" style="width:100%;" onclick="closeMo()">Close</button>');
+}
+
+function _dedupeOne(init, indices) {
+  // Keep the first index, remove the rest (in reverse order so indices don't shift)
+  var arr = D.athleteFiles[init] || [];
+  var toRemove = indices.slice(1).sort(function(a,b){return b-a;});
+  toRemove.forEach(function(idx){ arr.splice(idx, 1); });
+  saveAppData();
+  toast('Removed ' + toRemove.length + ' duplicate(s) \u2713');
+  closeMo();
+  openVaultDedupe(); // re-render
+}
+
+function openLegacyTasks() {
+  // The TIER-1.1 migration stashed old shared tasks under D.aTasks.__legacy.
+  // This viewer shows them so Dave can reassign or delete.
+  var legacy = (D.aTasks && D.aTasks.__legacy) || [];
+  var html = '<div class="mt">Legacy Shared Tasks</div>';
+  if (!legacy.length) {
+    html += '<div style="padding:20px;text-align:center;color:var(--sub);font-size:.86rem;">No legacy tasks. Your data was either fresh or already migrated cleanly.</div>';
+  } else {
+    html += '<div style="font-size:.78rem;color:var(--tx3);margin-bottom:10px;">' + legacy.length + ' task(s) from before per-athlete tasks existed. Reassign to an athlete or delete.</div>';
+    legacy.forEach(function(t, i){
+      html += '<div style="background:var(--card2);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px;">';
+      html += '<div style="font-size:.84rem;margin-bottom:6px;">' + (t.text || '(no text)') + '</div>';
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+      html += '<select class="fi" id="lt-sel-' + i + '" style="flex:1;font-size:.74rem;padding:5px 7px;"><option value="">· Reassign to ·</option>';
+      (D.roster||[]).forEach(function(r){
+        html += '<option value="' + r.init + '">' + r.name + '</option>';
+      });
+      html += '</select>';
+      html += '<button class="btn br3" style="font-size:.74rem;padding:5px 10px;width:auto;" onclick="_reassignLegacyTask(' + i + ')">Assign</button>';
+      html += '<button class="btn br3" style="background:var(--red);color:#fff;font-size:.74rem;padding:5px 10px;width:auto;" onclick="_deleteLegacyTask(' + i + ')">Delete</button>';
+      html += '</div></div>';
+    });
+  }
+  openMo(html, '<button class="btn br3" style="width:100%;" onclick="closeMo()">Close</button>');
+}
+
+function _reassignLegacyTask(i) {
+  var sel = document.getElementById('lt-sel-' + i);
+  if (!sel || !sel.value) { toast('Pick an athlete first'); return; }
+  var init = sel.value;
+  var legacy = (D.aTasks && D.aTasks.__legacy) || [];
+  if (!legacy[i]) return;
+  if (!Array.isArray(D.aTasks[init])) D.aTasks[init] = [];
+  D.aTasks[init].unshift(legacy[i]);
+  legacy.splice(i, 1);
+  if (legacy.length === 0) delete D.aTasks.__legacy;
+  saveAppData();
+  toast('Task reassigned \u2713');
+  openLegacyTasks(); // re-render
+}
+
+function _deleteLegacyTask(i) {
+  var legacy = (D.aTasks && D.aTasks.__legacy) || [];
+  if (!legacy[i]) return;
+  legacy.splice(i, 1);
+  if (legacy.length === 0) delete D.aTasks.__legacy;
+  saveAppData();
+  toast('Task deleted');
+  openLegacyTasks();
+}
+
+function openPositionHealth() {
+  // Shows any athletes whose position is empty or non-canonical
+  var issues = D._positionHealthIssues || [];
+  var html = '<div class="mt">Position Health</div>';
+  if (!issues.length) {
+    html += '<div style="padding:20px;text-align:center;color:var(--grn);font-size:.9rem;">\u2713 All athletes have valid positions.</div>';
+  } else {
+    html += '<div style="font-size:.78rem;color:var(--tx3);margin-bottom:10px;">' + issues.length + ' athlete(s) need a position set. Tap to jump to measurables.</div>';
+    issues.forEach(function(u){
+      html += '<div style="background:var(--card2);border:1px solid var(--b1);border-radius:8px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">';
+      html += '<div><div style="font-weight:700;font-size:.86rem;">' + u.name + '</div><div style="font-size:.7rem;color:var(--sub);">' + u.init + ' · ' + u.reason + '</div></div>';
+      html += '<button class="btn br3" style="font-size:.74rem;padding:6px 12px;width:auto;" onclick="closeMo();_jumpToAthMeasurables(\'' + u.init + '\')">Edit</button>';
+      html += '</div>';
+    });
+  }
+  openMo(html, '<button class="btn br3" style="width:100%;" onclick="closeMo()">Close</button>');
+}
+
+function _jumpToAthMeasurables(init) {
+  // Find the athlete index and jump to their measurables
+  var idx = (D.roster||[]).findIndex(function(r){ return r && r.init === init; });
+  if (idx < 0) { toast('Athlete not found'); return; }
+  if (typeof openMeasurables === 'function') openMeasurables(idx);
+  else toast('Open athlete ' + init + ' manually');
 }
 
 // ══════════════════════════════════════════════════════════════════
