@@ -3448,8 +3448,36 @@ function loadAppData() {
           }
           if (changed) console.log('schema v3→v4: positions normalized (' + changed + ' roster entries touched)');
         }
+      },
+      {
+        from: 4, to: 5, name: 'measurables-to-roster-sync',
+        run: function() {
+          // FIX-1.4 synced measurables→roster on SAVE, but only going forward. Athletes whose
+          // measurables were entered before FIX-1.4 shipped have the values in D.measurables[init]
+          // but empty roster fields, so the fit calculators (which read roster) can't see them.
+          // This retroactively syncs them. Only fills empty roster fields — never overwrites.
+          if (!D.measurables || typeof D.measurables !== 'object') return;
+          var pairs = [
+            ['position','position'], ['position2','position2'],
+            ['height','height'], ['weight','weight'], ['batThrow','batThrow'],
+            ['sixty','dash60'], ['exitVelo','exitVelo'], ['fbVelo','fbVelo']
+          ];
+          var synced = 0;
+          (D.roster||[]).forEach(function(r){
+            if (!r || !r.init) return;
+            var m = D.measurables[r.init];
+            if (!m) return;
+            var touched = false;
+            pairs.forEach(function(p){
+              var mKey = p[0], rKey = p[1];
+              if (m[mKey] && !r[rKey]) { r[rKey] = m[mKey]; touched = true; }
+            });
+            if (touched) synced++;
+          });
+          if (synced) console.log('schema v4→v5: synced measurables→roster for ' + synced + ' athletes');
+        }
       }
-      // Future migrations append here: { from: 4, to: 5, name: '...', run: function() {...} }
+      // Future migrations append here: { from: 5, to: 6, name: '...', run: function() {...} }
     ];
 
     var current = Number(D.config.schemaVersion) || 0; // B patch: defensive coercion
@@ -3473,12 +3501,14 @@ function loadAppData() {
       var unmapped = [];
       (D.roster||[]).forEach(function(r){
         if (!r) return;
-        var pos = (r.position||'').toUpperCase().trim();
+        // Source of truth is D.measurables[init].position; roster.position is a synced copy.
+        // Check measurables first, fall back to roster.
+        var m = (D.measurables && D.measurables[r.init]) || {};
+        var pos = (m.position || r.position || '').toUpperCase().trim();
         if (!pos) {
           unmapped.push({init:r.init, name:r.name, reason:'empty'});
         } else if (canonical.indexOf(pos) < 0) {
-          // Shouldn't happen if migration ran, but defensive
-          unmapped.push({init:r.init, name:r.name, reason:'non-canonical: '+r.position});
+          unmapped.push({init:r.init, name:r.name, reason:'non-canonical: '+pos});
         }
       });
       if (unmapped.length > 0) {
@@ -8472,6 +8502,45 @@ function playerTab(tab) {
   else if (tab === 'activity') body.innerHTML = renderPlayerActivity(idx, a);
 }
 
+// Prominent Measurables card shown at the top of the Info tab. Position drives college fit,
+// so it gets gold pills; other stats render in a 2-col grid with "not set" for empties.
+function _renderMeasurablesCard(idx, a) {
+  var m = (D.measurables && D.measurables[a.init]) || {};
+  var isBB = (a.sport||'Baseball').toLowerCase().includes('baseball');
+  function cell(k, v, unit) {
+    var has = v != null && v !== '';
+    return '<div style="background:var(--bg);border-radius:9px;padding:9px 11px;">' +
+      '<div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;color:var(--sub);font-weight:700;">' + k + '</div>' +
+      '<div style="font-size:1rem;margin-top:2px;' + (has?'font-weight:700;color:var(--tx);':'color:var(--sub);font-style:italic;') + '">' +
+      (has ? (_esc(String(v)) + (unit||'')) : 'not set') + '</div></div>';
+  }
+  function pill(k, v) {
+    var has = !!v;
+    return '<div style="flex:1;background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.4);border-radius:9px;padding:9px 11px;">' +
+      '<div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);font-weight:700;">' + k + '</div>' +
+      '<div style="margin-top:2px;color:var(--gold);' + (has?'font-size:1.1rem;font-weight:800;':'font-size:.82rem;font-style:italic;opacity:.6;') + '">' +
+      (has ? _esc(v) : 'tap Edit') + '</div></div>';
+  }
+  var cells = [
+    cell('Height', m.height),
+    cell('Weight', m.weight, m.weight?' lb':''),
+    cell('60 Time', m.sixty, m.sixty?'s':'')
+  ];
+  if (isBB) {
+    cells.push(cell('Exit Velo', m.exitVelo, m.exitVelo?' mph':''));
+    cells.push(cell('Bat/Throw', m.batThrow));
+    cells.push(cell('Arm', m.infieldVelo, m.infieldVelo?' mph':''));
+  }
+  return '<div style="background:var(--card2);border:1px solid var(--b1);border-radius:14px;padding:15px;margin-bottom:16px;">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+    '<div style="font-family:\'Cormorant Garamond\',Georgia,serif;font-weight:600;font-size:1.25rem;display:flex;align-items:center;gap:7px;color:var(--tx);">\uD83D\uDCCF Measurables</div>' +
+    '<button onclick="openMeasurables(' + idx + ')" style="padding:8px 18px;border-radius:10px;background:var(--red);color:#fff;font-size:.84rem;font-weight:700;border:none;cursor:pointer;">Edit</button>' +
+    '</div>' +
+    '<div style="display:flex;gap:9px;margin-bottom:9px;">' + pill('Primary', m.position||'') + pill('Secondary', m.position2||'') + '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">' + cells.join('') + '</div>' +
+    '</div>';
+}
+
 function renderPlayerInfo(idx, a) {
   var statusColors = {Active:'var(--grn)',Committed:'var(--blu)',Graduated:'var(--sub)',Exited:'var(--red2)'};
   var statusBgs    = {Active:'var(--gm)',Committed:'rgba(52,152,219,.15)',Graduated:'var(--card2)',Exited:'var(--rm)'};
@@ -8487,6 +8556,9 @@ function renderPlayerInfo(idx, a) {
     '<div style="font-size:1.1rem;font-weight:800;color:var(--tx);">'+_esc(a.name)+'</div>' +
     '<div style="font-size:.7rem;color:var(--tx2);margin-top:2px;">'+(a.sport||'Baseball')+' · Class of '+(a.grad||'·')+'</div>' +
     '</div></div>';
+
+  // Prominent Measurables card at the top of the Info tab (drives college fit)
+  out += _renderMeasurablesCard(idx, a);
 
   // Single editable form — all fields
   out +=
@@ -8570,24 +8642,6 @@ function renderPlayerInfo(idx, a) {
       '<div style="font-size:.88rem;color:var(--tx);font-weight:700;">'+_esc(a.commitment)+'</div></div></div>';
   }
 
-  // Measurables summary
-  var m2 = (D.measurables && D.measurables[a.init]) || {};
-  var hasMeas = m2.sixty || m2.exitVelo || m2.fbVelo || m2.infieldVelo;
-  out += '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;">' +
-    '<div>' +
-    '<div style="font-size:.63rem;font-weight:800;text-transform:uppercase;color:var(--sub);letter-spacing:.07em;margin-bottom:4px;">Measurables</div>' +
-    (hasMeas ?
-      '<div style="font-size:.72rem;color:var(--tx2);">' +
-      [m2.position||null, m2.sixty?'60: '+m2.sixty:null, m2.exitVelo?'EV: '+m2.exitVelo:null, m2.fbVelo?'FB: '+m2.fbVelo+'mph':null, m2.infieldVelo?'Arm: '+m2.infieldVelo+'mph':null]
-        .filter(Boolean).join(' · ') +
-      '</div>' :
-      '<div style="font-size:.72rem;color:var(--red2);">None entered · affects fit accuracy</div>'
-    ) +
-    '</div>' +
-    '<button onclick="openMeasurables('+idx+')" style="font-size:.7rem;padding:5px 12px;background:var(--card2);border:1px solid var(--b2);border-radius:8px;color:var(--tx2);cursor:pointer;flex-shrink:0;">' +
-    (hasMeas ? 'Edit' : '+ Add') + '</button>' +
-    '</div>';
-
   // Portal button
   out += '<button class="btn br3" style="width:100%;margin-top:12px;background:var(--card2);color:var(--tx);" onclick="togglePlayerPortal()">&#9711; ' +
     (D.portalEnabled[a.init] ? 'Manage Athlete Portal' : 'Add to Athlete Portal') + '</button>';
@@ -8665,13 +8719,16 @@ function extractTranscriptAI(playerIdx) {
     if (cat === 'transcript' || cat === 'academic') return true;
     return /transcript|grades|academic|historia|matricula|matrícula|boletin|boletín|calificaciones|report\s*card|expediente|notas|registro\s*academico/i.test(nm);
   }
-  var candidates = athFiles.filter(function(f){ return f._fileRef; });
+  // A file is extractable if it has a live reference OR persisted base64 (survives reload).
+  // Old uploads with only a dead blob: URL are not extractable and need re-uploading.
+  var candidates = athFiles.filter(function(f){ return f._fileRef || f.base64; });
   var sorted = candidates.slice().sort(function(a,b) {
     var aMatch = looksLikeTranscript(a) ? 1 : 0;
     var bMatch = looksLikeTranscript(b) ? 1 : 0;
     if (aMatch !== bMatch) return bMatch - aMatch;
     return (b.date||'').localeCompare(a.date||'');
   });
+  var staleCount = athFiles.length - candidates.length;
 
   // Build the modal
   var fileOptions = sorted.length ? sorted.map(function(f, i) {
@@ -8689,7 +8746,11 @@ function extractTranscriptAI(playerIdx) {
     html += '<div style="font-size:.72rem;color:var(--tx3);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px;">Pick a file from vault</div>' +
       '<div style="max-height:30vh;overflow-y:auto;margin-bottom:12px;">' + fileOptions + '</div>';
   } else {
-    html += '<div style="font-size:.75rem;color:var(--tx3);margin-bottom:10px;">No files in vault yet. Upload one below or paste text.</div>';
+    if (staleCount > 0) {
+      html += '<div style="font-size:.78rem;color:var(--tx2);margin-bottom:10px;line-height:1.55;">You have ' + staleCount + ' file' + (staleCount===1?'':'s') + ' in this vault, but ' + (staleCount===1?'it was':'they were') + ' uploaded before the current storage system and can no longer be read after a reload. Re-upload below to extract.</div>';
+    } else {
+      html += '<div style="font-size:.75rem;color:var(--tx3);margin-bottom:10px;">No files in vault yet. Upload one below or paste text.</div>';
+    }
   }
 
   // Inline file upload
@@ -8801,6 +8862,28 @@ function extractTranscriptAIPasteFallback(playerIdx) {
 // (which checks file.type and file.name extension) can identify the format.
 // Vault metadata is more reliable than live File.type because iOS share sheet
 // and some upload paths produce Files with empty type or no extension in name.
+// Ensures a vault entry has a usable File object. Returns the live _fileRef if present,
+// otherwise reconstructs one from persisted base64 (survives reload). Returns null if the
+// file has no recoverable bytes (e.g. old uploads with only a dead blob: URL).
+function _ensureFileRef(entry) {
+  if (!entry) return null;
+  if (entry._fileRef instanceof File || entry._fileRef instanceof Blob) return entry._fileRef;
+  if (entry.base64) {
+    try {
+      var mime = entry.mime || (entry.type === 'pdf' ? 'application/pdf' : 'application/octet-stream');
+      var bytes = atob(entry.base64);
+      var arr = new Uint8Array(bytes.length);
+      for (var i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      var name = entry.name || 'file';
+      return new File([arr], name, { type: mime });
+    } catch(e) {
+      console.warn('_ensureFileRef base64 reconstruct failed:', e && e.message);
+      return null;
+    }
+  }
+  return null;
+}
+
 // Returns a fresh File when needed, or the original _fileRef when it's already
 // well-tagged.
 function _hydrateFileForIngest(entry) {
@@ -8893,7 +8976,7 @@ async function runTranscriptExtractFromVault(playerIdx) {
     if (cat === 'transcript' || cat === 'academic') return true;
     return /transcript|grades|academic|historia|matricula|matrícula|boletin|boletín|calificaciones|report\s*card|expediente|notas|registro\s*academico/i.test(nm);
   }
-  var candidates = athFiles.filter(function(f){ return f._fileRef; });
+  var candidates = athFiles.filter(function(f){ return f._fileRef || f.base64; });
   var sorted = candidates.slice().sort(function(a,b) {
     var aMatch = looksLikeTranscript(a) ? 1 : 0;
     var bMatch = looksLikeTranscript(b) ? 1 : 0;
@@ -8901,11 +8984,16 @@ async function runTranscriptExtractFromVault(playerIdx) {
     return (b.date||'').localeCompare(a.date||'');
   });
   var entry = (pickIdx >= 0 && pickIdx < sorted.length) ? sorted[pickIdx] : sorted[0];
-  if (!entry || !entry._fileRef) {
-    if (status) status.textContent = 'No file selected or file lost its live reference. Re-upload to fix.';
+  // Reconstruct a usable File from _fileRef or persisted base64
+  var liveFile = _ensureFileRef(entry);
+  if (!entry || !liveFile) {
+    if (status) status.textContent = 'This file needs re-uploading (it was stored before the current file system).';
     if (btn) { btn.disabled = false; btn.textContent = 'Run Extraction'; }
     return;
   }
+  // Attach the reconstructed file so _hydrateFileForIngest can tag it. saveAppData strips
+  // _fileRef on write (L-2), so this temporary attachment never gets persisted.
+  entry._fileRef = liveFile;
 
   // FIX-1.5: hydrate the file with proper name + MIME from vault metadata.
   // iOS share sheet and some upload paths produce a File with empty type and/or
@@ -9905,36 +9993,40 @@ function openAthVaultFile(playerIdx, fileIdx) {
         if (idbWin) idbWin.location.href = url4;
         setTimeout(function() { URL.revokeObjectURL(url4); }, 60000);
         console.log(diagPrefix + ' ✓ strategy 3: IndexedDB blob (' + mime4 + ')');
-      } else if (f.url) {
-        // Strategy 4 (last resort): legacy stored URL · likely broken after reload but try anyway
+      } else if (f.url && f.url.indexOf('blob:') !== 0) {
+        // Strategy 4: legacy stored URL · only if it's a real http(s) URL.
+        // blob: URLs never survive a reload, so opening one guarantees WebKitBlobResource error.
         if (idbWin) idbWin.location.href = f.url;
-        console.log(diagPrefix + ' ⚠ strategy 4 (last resort): legacy URL · may be stale');
+        console.log(diagPrefix + ' strategy 4: legacy http URL');
       } else {
+        // Only a dead blob: URL (or nothing) remains. Close the blank tab so we don't
+        // strand the user on a Safari error page, and explain what to do.
         if (idbWin) idbWin.close();
-        console.warn(diagPrefix + ' ✗ no strategies remain · re-upload needed');
-        toast('File data not available · re-upload to view');
+        console.warn(diagPrefix + ' ✗ only stale blob URL · re-upload needed');
+        toast('This file was uploaded before the current storage system · re-upload it to view or extract');
       }
     }).catch(function(e) {
       console.warn(diagPrefix + ' IDB lookup failed:', e && e.message);
-      if (f.url && idbWin) {
+      if (f.url && f.url.indexOf('blob:') !== 0 && idbWin) {
         idbWin.location.href = f.url;
-        console.log(diagPrefix + ' ⚠ strategy 4 (after IDB error): legacy URL');
+        console.log(diagPrefix + ' strategy 4 (after IDB error): legacy http URL');
       } else {
         if (idbWin) idbWin.close();
-        toast('File data not available · re-upload to view');
+        toast('This file was uploaded before the current storage system · re-upload it to view or extract');
       }
     });
     return;
   }
 
-  // Strategy 4 fallback when IndexedDB is unavailable: legacy URL
-  if (f.url) {
-    console.log(diagPrefix + ' ⚠ strategy 4 (no IDB): legacy URL');
+  // Strategy 4 fallback when IndexedDB is unavailable: legacy URL (http only, never stale blob:)
+  if (f.url && f.url.indexOf('blob:') !== 0) {
+    console.log(diagPrefix + ' strategy 4 (no IDB): legacy http URL');
     window.open(f.url, '_blank');
     return;
   }
 
-  toast('File data not available - re-upload to view');
+  console.warn(diagPrefix + ' ✗ no usable data · re-upload needed');
+  toast('This file was uploaded before the current storage system · re-upload it to view or extract');
 }
 
 function openAthFileUpload(idx, defaultCat) {
