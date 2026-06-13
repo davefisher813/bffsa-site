@@ -3233,6 +3233,21 @@ function saveAppData() {
   }, 800);
 }
 
+// PERSIST-FIX-1: Force an immediate write + immediate cloud push for critical data
+// (loaded school profiles, manual saves, etc). Bypasses the 800ms debounce that was
+// losing data when iOS suspended the tab before the timer fired.
+function saveAppDataNow() {
+  window._pendingChanges = true;
+  clearTimeout(_saveTimer);
+  _saveTimer = null;
+  _writeSnapNow();
+  // Push to cloud immediately too — don't wait the 5-30s sync debounce. Profile data
+  // is expensive to re-fetch and we want the cloud to have it before iOS can suspend us.
+  if (typeof syncPush === 'function') {
+    try { syncPush(true); } catch(e) { console.warn('immediate sync push failed:', e && e.message); }
+  }
+}
+
 // Install lifecycle handlers so data is never lost on navigation, tab switch, or close.
 // pagehide fires before app suspend on iOS; visibilitychange fires on tab switch.
 (function installSaveFlushHandlers() {
@@ -9458,7 +9473,7 @@ async function loadSchoolProfile(playerIdx, collegeIdx, force) {
     colleges[collegeIdx].profileLoading = false;
     colleges[collegeIdx].profileError = null;
     colleges[collegeIdx].profileDate = cachedSchool.lastUpdated;
-    saveAppData();
+    saveAppDataNow(); // PERSIST-FIX-3: was saveAppData() · could be lost mid-debounce
     _refreshCollegeView(playerIdx);
     return;
   }
@@ -9558,6 +9573,10 @@ async function loadSchoolProfile(playerIdx, collegeIdx, force) {
     }
     // Save to global schools database for future use
     saveSchoolToDB(college.school, profile, 'web-search');
+    // PERSIST-FIX-2: profile load was using debounced saveAppData() which lost data when
+    // iOS suspended the tab before the 800ms timer + 5-30s sync timer both fired. Force
+    // an immediate write and immediate cloud push so profiles always survive.
+    saveAppDataNow();
     _refreshCollegeView(playerIdx);
 
   } catch(e) {
@@ -10476,8 +10495,10 @@ function calcCollegeFit(a, college) {
 
   var reasons  = [].concat(acResult.reasons||[]).concat(athResult.reasons||[]).concat(finResult.reasons||[]);
   var warnings = [];
-  if (acResult.tag  === 'Unknown') warnings.push('AC: ' + (acResult.reasons||['No academic data'])[0]);
-  if (athResult.tag === 'Unknown') warnings.push('ATH: ' + (athResult.reasons||['No athletic data'])[0]);
+  // Use && fallback because `(arr||fallback)[0]` doesn't catch empty arrays — `[]||x` returns `[]`,
+  // and `[][0]` is undefined. That's what was rendering "ATH: undefined" in college cards.
+  if (acResult.tag  === 'Unknown') warnings.push('AC: '  + ((acResult.reasons  && acResult.reasons[0])  || 'No academic data'));
+  if (athResult.tag === 'Unknown') warnings.push('ATH: ' + ((athResult.reasons && athResult.reasons[0]) || 'No athletic data'));
 
   // FIT-3: recruiting-signal boost. A verbal/written offer at this school
   // is a very strong signal that should upweight the fit. Coach engagement
