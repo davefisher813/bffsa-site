@@ -92,7 +92,7 @@ Dave Fisher | Founder, runs Careers for now | All categories. First point of con
 Byron Valverde | Board, Vice Chair | To be confirmed on update.
 Wei Chang | Board, Treasurer | To be confirmed on update.
 Kevin Valdovinos | College Advisory Board Chair | To be confirmed on update.
-Mike | Board | To be confirmed on update.
+Mike Skrapits | Board | To be confirmed on update.
 DJ Peoples | College Advisory Board | To be confirmed on update.
 
 #### Trades partners, already on record

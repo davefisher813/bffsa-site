@@ -18,7 +18,7 @@ Dave Fisher | Runs Pathways Careers for now |  |  |
 Byron Valverde |  |  |  | 
 Way | Full name to add |  |  | 
 Kevin Valdovinos (Kev) |  |  |  | 
-Mike | Full name to add |  |  | 
+Mike Skrapits | |  |  | 
 DJ | Full name to add |  |  | 
 
 ### Category coverage
